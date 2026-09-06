@@ -1,4 +1,5 @@
 import { isAuthRequired, isDashboardSessionAuthenticated } from "@/shared/utils/apiAuth";
+import { isRequireApiKeyEnabled } from "@/shared/utils/featureFlags";
 import { extractApiKey } from "@/sse/services/auth";
 
 // Request-scoped catalog helpers: API-key auth gating for `/v1/models` and Codex
@@ -14,6 +15,12 @@ export async function getModelCatalogAuthRejection(
   settings: Record<string, any>,
   headers: Record<string, string>
 ): Promise<Response | null> {
+  // Keep model discovery aligned with the client API policy. Local installs
+  // commonly disable REQUIRE_API_KEY while still having dashboard login
+  // enabled; in that mode OpenAI-compatible clients such as Odysseus must be
+  // able to enumerate models without also carrying a management credential.
+  if (!isRequireApiKeyEnabled()) return null;
+
   const authRequired = await isAuthRequired(request);
   if (!authRequired) return null;
   if (settings.requireAuthForModels === false) return null;
