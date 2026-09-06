@@ -178,9 +178,10 @@ function buildCatalogCacheKey(request: Request, catalogSettings?: CatalogCacheOp
   const apiKey = extractApiKey(request) || "";
   const isCodex = isCodexModelCatalogClient(request) ? "1" : "0";
   const configuredOnly = url.searchParams.get("configuredOnly") === "true" ? "1" : "0";
+  const freeOnly = url.searchParams.get("free_only") === "true" ? "1" : "0";
   const hideAuto = catalogSettings?.hideAutoCombos ? "1" : "0";
   const hideNoThink = catalogSettings?.hideNoThinkVariants ? "1" : "0";
-  return `${prefix}|${isCodex}|${fingerprintCatalogAuthKey(apiKey)}|${configuredOnly}|${hideAuto}|${hideNoThink}`;
+  return `${prefix}|${isCodex}|${fingerprintCatalogAuthKey(apiKey)}|${configuredOnly}|${freeOnly}|${hideAuto}|${hideNoThink}`;
 }
 
 // Tracks the model-catalog cache version (src/lib/db/readCache.ts) as of the last

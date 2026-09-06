@@ -38,6 +38,11 @@ handler dispatch. Headers are:
 | `X-Odysseus-Allowed-Routes` | comma-separated exact `provider/model` IDs    |
 | `X-Odysseus-Policy-Version` | non-empty policy version                      |
 
+For a model picker that should show only OpenRouter's explicit free variants, append
+`?free_only=true` to the model-catalog request. With the Docker-host endpoint, configure the
+Odysseus base URL as `http://host.docker.internal:20128/v1?free_only=true`; the normal chat
+endpoint remains `/v1` and policy enforcement still selects only approved free routes.
+
 The body equivalent uses `odysseus_policy` with snake_case keys. Malformed metadata,
 unknown roles, and unknown privacy classes fail closed before model/provider resolution.
 
