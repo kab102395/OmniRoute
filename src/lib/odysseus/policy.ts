@@ -78,7 +78,7 @@ export const ODYSSEUS_HEADER_NAMES = {
 export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] = [
   {
     provider: "openrouter",
-    model: "nvidia/openai/gpt-oss-120b:free",
+    model: "nvidia/nemotron-3-super-120b-a12b:free",
     role: "scout",
     enabled: true,
     approvalStatus: "approved",
