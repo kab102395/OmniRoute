@@ -283,6 +283,8 @@ import {
   persistAttemptLogs as persistAttemptLogsFor,
   type PersistAttemptLogsArgs,
 } from "./chatCore/attemptLogging.ts";
+import { resolveOdysseusPolicyDecision } from "@/lib/odysseus/routeGuard";
+import { createOdysseusTelemetry } from "@/lib/odysseus/telemetry";
 import { stageTrace } from "./chatCore/stageTrace.ts";
 import { attachCompressionUsageReceiptAfterAnalytics as attachCompressionUsageReceiptAfterAnalyticsFor } from "./chatCore/compressionUsageReceipt.ts";
 import { prepareUpstreamBody } from "./chatCore/upstreamBody.ts";
@@ -577,6 +579,13 @@ export async function handleChatCore({
     body,
     model
   );
+  const odysseusDecision = resolveOdysseusPolicyDecision(
+    clientRawRequest?.headers instanceof Headers
+      ? clientRawRequest.headers
+      : new Headers(clientRawRequest?.headers as HeadersInit | undefined),
+    body,
+    `${provider}/${model}`
+  );
   const isModelScope = () => isModelScopeProvider(provider, credentials?.providerSpecificData);
   const startTime = Date.now();
   // Per-request trace id + checkpoint helper. Lets us see exactly which await
@@ -584,6 +593,10 @@ export async function handleChatCore({
   // (not Math.random) purely to satisfy CodeQL js/insecure-randomness — this id
   // is a log-correlation token, not a security secret.
   const traceId = globalThis.crypto.randomUUID().slice(0, 6);
+  const odysseusTelemetry =
+    odysseusDecision.result === "disabled"
+      ? null
+      : createOdysseusTelemetry(odysseusDecision, traceId, requestedModel);
   // Emit request.started event for real-time dashboard
   setImmediate(() => {
     emit("request.started", {
@@ -1101,6 +1114,7 @@ export async function handleChatCore({
       // resolvePreviousResponseState refuses to rehydrate a snapshot whose video
       // transcript was redacted. false for every non-video request.
       videoContentRemoved: videoBridgeObserved,
+      odysseusTelemetry,
     });
 
   // Primary path: merge client model id + alias target so config on either key applies; resolved

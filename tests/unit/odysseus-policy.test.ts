@@ -6,7 +6,11 @@ import {
   OdysseusApprovalRegistry,
   type OdysseusRouteApproval,
 } from "../../src/lib/odysseus/policy.ts";
-import { createOdysseusTelemetry, withOdysseusUsage } from "../../src/lib/odysseus/telemetry.ts";
+import {
+  createOdysseusTelemetry,
+  projectOdysseusUsage,
+  withOdysseusUsage,
+} from "../../src/lib/odysseus/telemetry.ts";
 import {
   addOdysseusTelemetryHeaders,
   enforceOdysseusPolicy,
@@ -172,6 +176,26 @@ test("telemetry keeps unavailable usage null and measured/estimated labels disti
   assert.equal(
     withOdysseusUsage(telemetry, { output_tokens: 4, usage_source: "estimated" }).usage_source,
     "estimated"
+  );
+});
+
+test("telemetry usage projection preserves measured cache and reasoning fields", () => {
+  assert.deepEqual(
+    projectOdysseusUsage({
+      prompt_tokens: 11,
+      prompt_tokens_details: { cached_tokens: 3 },
+      completion_tokens: 7,
+      completion_tokens_details: { reasoning_tokens: 2 },
+      total_tokens: 18,
+    }),
+    {
+      input_tokens: 11,
+      cached_input_tokens: 3,
+      output_tokens: 7,
+      reasoning_tokens: 2,
+      total_tokens: 18,
+      usage_source: "measured",
+    }
   );
 });
 

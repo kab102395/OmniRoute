@@ -22,6 +22,11 @@ import { takeEarlyKeepaliveBytes } from "../../utils/earlyKeepaliveByteBuffer.ts
 import { sanitizeErrorMessage } from "../../utils/error.ts";
 import { cloneBoundedChatLogPayload, truncateForLog } from "./logTruncation.ts";
 import { attachLogMeta } from "./cacheUsageMeta.ts";
+import {
+  projectOdysseusUsage,
+  withOdysseusUsage,
+  type OdysseusTelemetry,
+} from "@/lib/odysseus/telemetry";
 
 /**
  * Apply the video-bridge redaction shadow (P1a's `meta.videoBridgeLogRedaction`,
@@ -222,7 +227,7 @@ export type PersistAttemptLogsContext = {
   detailedLoggingEnabled: boolean;
   reqLogger: { getPipelinePayloads?: () => Record<string, unknown> | undefined } | null | undefined;
   pendingRequestId: unknown;
-  clientRawRequest: { endpoint?: string } | null | undefined;
+  clientRawRequest: { endpoint?: string; headers?: unknown } | null | undefined;
   requestedModel: unknown;
   credentials: { connectionId?: string } | null | undefined;
   startTime: number;
@@ -259,6 +264,7 @@ export type PersistAttemptLogsContext = {
    * history. Omitted/false for every non-video request.
    */
   videoContentRemoved?: boolean;
+  odysseusTelemetry?: OdysseusTelemetry | null;
 };
 
 function toConnectionId(value: unknown): string | null {
@@ -378,6 +384,7 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
     sessionTag,
     videoBridgeLogRedaction,
     videoContentRemoved,
+    odysseusTelemetry,
   } = ctx;
   const initialConnectionId = toConnectionId(connectionId);
   const finalConnectionId = toConnectionId(credentials?.connectionId) || initialConnectionId;
@@ -416,11 +423,35 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
   });
 
   const capturedPipeline = reqLogger?.getPipelinePayloads?.() ?? null;
-  const pipelinePayloads = detailedLoggingEnabled
+  let pipelinePayloads = detailedLoggingEnabled
     ? (capturedPipeline ?? {})
     : capturedPipeline?.routeDecision
       ? { routeDecision: capturedPipeline.routeDecision }
       : null;
+
+  if (odysseusTelemetry) {
+    const durationMs = Math.max(0, Date.now() - startTime);
+    const usageTelemetry = withOdysseusUsage(odysseusTelemetry, projectOdysseusUsage(tokens));
+    const outputTokens = usageTelemetry.output_tokens;
+    pipelinePayloads = {
+      ...(pipelinePayloads ?? {}),
+      odysseus: {
+        ...usageTelemetry,
+        provider: provider ?? usageTelemetry.provider,
+        provider_account: finalConnectionId,
+        actual_model: model ?? usageTelemetry.actual_model,
+        success: status >= 200 && status < 400 && !error,
+        provider_error: error || null,
+        completion_latency_ms: durationMs,
+        wall_clock_ms: durationMs,
+        output_tokens_per_second:
+          typeof outputTokens === "number" && durationMs > 0
+            ? Number((outputTokens / (durationMs / 1000)).toFixed(3))
+            : null,
+        usage_source: usageTelemetry.usage_source,
+      } satisfies OdysseusTelemetry,
+    };
+  }
 
   if (pipelinePayloads) {
     if (providerRequest !== undefined && !pipelinePayloads.providerRequest) {

@@ -106,3 +106,30 @@ export function withOdysseusUsage(
     usage_source: usage.usage_source ?? "unavailable",
   };
 }
+
+export function projectOdysseusUsage(usage: unknown): OdysseusUsageProjection {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return { usage_source: "unavailable" };
+  }
+  const details = usage as Record<string, unknown>;
+  const promptDetails =
+    details.prompt_tokens_details && typeof details.prompt_tokens_details === "object"
+      ? (details.prompt_tokens_details as Record<string, unknown>)
+      : {};
+  const completionDetails =
+    details.completion_tokens_details && typeof details.completion_tokens_details === "object"
+      ? (details.completion_tokens_details as Record<string, unknown>)
+      : {};
+  const numberOrNull = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  return {
+    input_tokens: numberOrNull(details.input_tokens ?? details.prompt_tokens),
+    cached_input_tokens: numberOrNull(
+      details.cached_input_tokens ?? details.cache_read_input_tokens ?? promptDetails.cached_tokens
+    ),
+    output_tokens: numberOrNull(details.output_tokens ?? details.completion_tokens),
+    reasoning_tokens: numberOrNull(details.reasoning_tokens ?? completionDetails.reasoning_tokens),
+    total_tokens: numberOrNull(details.total_tokens),
+    usage_source: "measured",
+  };
+}

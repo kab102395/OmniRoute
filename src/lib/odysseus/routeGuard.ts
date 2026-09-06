@@ -39,6 +39,27 @@ export interface OdysseusGuardResult {
   response: Response | null;
 }
 
+/** Resolve the same decision at execution time for durable telemetry attribution. */
+export function resolveOdysseusPolicyDecision(
+  headers: Headers,
+  body: unknown,
+  requestedRoute: string | null = null
+): PolicyDecision {
+  const parsed = parseOdysseusMetadata(headers, body);
+  if (!parsed.enabled) return evaluateOdysseusPolicy(parsed);
+  const registry = resolveConfiguredOdysseusApprovals();
+  if (!registry.available) {
+    return {
+      result: "denied",
+      reason: "POLICY_REGISTRY_UNAVAILABLE",
+      metadata: "metadata" in parsed ? parsed.metadata : null,
+      selectedRoute: null,
+      candidates: [],
+    };
+  }
+  return evaluateOdysseusPolicy(parsed, registry.approvals, requestedRoute);
+}
+
 /**
  * Enforce the policy before `handleChat` performs model resolution or provider work.
  * The `odysseus-free-*` aliases are filtered candidate pools, not autonomous routers.
@@ -54,20 +75,11 @@ export function enforceOdysseusPolicy(headers: Headers, body: unknown): Odysseus
     const decision = evaluateOdysseusPolicy(parsed);
     return { decision, body: bodyRecord, response: null };
   }
-  const registry = resolveConfiguredOdysseusApprovals();
-  const decision = !registry.available
-    ? {
-        result: "denied" as const,
-        reason: "POLICY_REGISTRY_UNAVAILABLE" as const,
-        metadata: "metadata" in parsed ? parsed.metadata : null,
-        selectedRoute: null,
-        candidates: [],
-      }
-    : evaluateOdysseusPolicy(
-        parsed,
-        registry.approvals,
-        model?.startsWith("odysseus-free-") ? null : model
-      );
+  const decision = resolveOdysseusPolicyDecision(
+    headers,
+    body,
+    model?.startsWith("odysseus-free-") ? null : model
+  );
   if (decision.result === "disabled") return { decision, body: bodyRecord, response: null };
   if (decision.result === "denied") {
     return {
