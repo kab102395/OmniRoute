@@ -22,6 +22,10 @@ import {
 } from "@omniroute/open-sse/utils/earlyStreamKeepalive";
 import { resolveKeepaliveThreshold } from "@omniroute/open-sse/utils/keepaliveThreshold";
 import { OPENAI_RESPONSES_IN_PROGRESS_FRAME } from "@omniroute/open-sse/utils/sseHeartbeat";
+import {
+  addOdysseusTelemetryHeaders,
+  enforceOdysseusPolicy,
+} from "@/lib/odysseus/routeGuard";
 
 // NOTE: We do NOT call initTranslators() here — the translator registry is
 // bootstrapped at module level inside open-sse/translator/index.ts when it
@@ -134,6 +138,10 @@ async function postHandler(request: any) {
     }
     admission.lease = structuralAdmission.lease;
 
+    const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+    if (odysseus.response) return finishAdmission(odysseus.response);
+    parsedBody = odysseus.body;
+
     let guardResult;
     try {
       guardResult = injectionGuard(parsedBody);
@@ -189,7 +197,7 @@ async function postHandler(request: any) {
         handleChat(resolved, null, resolvedBody, correlationId),
         admission.lease
       );
-      return await withEarlyStreamKeepalive(handlerResponse, {
+      const response = await withEarlyStreamKeepalive(handlerResponse, {
         signal: request.signal,
         thresholdMs,
         startupFrame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
@@ -200,9 +208,16 @@ async function postHandler(request: any) {
         errorFrame: OPENAI_RESPONSES_ERROR_FRAME,
         correlationId,
       });
+      return addOdysseusTelemetryHeaders(response, odysseus.decision, resolvedBody?.model ?? null);
     }
 
-    return finishAdmission(await handleChat(resolved, null, resolvedBody));
+    return finishAdmission(
+      addOdysseusTelemetryHeaders(
+        await handleChat(resolved, null, resolvedBody),
+        odysseus.decision,
+        resolvedBody?.model ?? null
+      )
+    );
   } catch (error) {
     admission.lease?.release();
     throw error;

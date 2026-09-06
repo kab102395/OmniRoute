@@ -36,6 +36,10 @@ import {
   assertCommonChatGptWebModelAvailable,
   isCommonChatGptWebRetirementError,
 } from "@/shared/constants/chatgptWebRetirement";
+import {
+  addOdysseusTelemetryHeaders,
+  enforceOdysseusPolicy,
+} from "@/lib/odysseus/routeGuard";
 
 let initPromise = null;
 
@@ -206,6 +210,10 @@ export async function POST(request) {
           await resolveModelAliasWithSeedFallbackOnBody(parsedBody).catch(() => {
             /* swallow — fall through with original model */
           });
+
+          const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+          if (odysseus.response) return finishAdmission(odysseus.response);
+          parsedBody = odysseus.body;
         }
 
         const { blocked, result } = injectionGuard(parsedBody);
@@ -267,15 +275,17 @@ export async function POST(request) {
         errorFrame: OPENAI_CHAT_ERROR_FRAME,
         extraHeaders: { "X-Correlation-Id": reqId },
       });
-      return withCompressionHeaderEcho(streamedResponse, compressionRequestHeader);
+      const response = withCompressionHeaderEcho(streamedResponse, compressionRequestHeader);
+      const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+      return addOdysseusTelemetryHeaders(response, odysseus.decision, parsedBody?.model ?? null);
     }
 
-    return finishAdmission(
-      withCompressionHeaderEcho(
+    const response = withCompressionHeaderEcho(
         await handleChat(request, null, parsedBody, callerCorrelationId ?? undefined),
         compressionRequestHeader
-      )
-    );
+      );
+    const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+    return finishAdmission(addOdysseusTelemetryHeaders(response, odysseus.decision, parsedBody?.model ?? null));
   } catch (error) {
     admission.lease?.release();
     throw error;
