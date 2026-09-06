@@ -44,7 +44,7 @@ unknown roles, and unknown privacy classes fail closed before model/provider res
 Operators may provide a complete approval registry with `ODYSSEUS_APPROVALS_JSON`. It
 must be a non-empty JSON array containing the documented provider/model/role approval
 records; malformed or partial configuration is treated as
-`POLICY_REGISTRY_UNAVAILABLE` and is denied. If unset, the single built-in route is used.
+the policy-registry-unavailable reason and is denied. If unset, the single built-in route is used.
 
 ## Decision flow
 
