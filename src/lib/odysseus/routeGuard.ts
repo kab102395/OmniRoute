@@ -8,7 +8,11 @@ function responseWithTelemetry(
   requestModel: string | null
 ) {
   if (decision.result === "disabled") return response;
-  const telemetry = createOdysseusTelemetry(decision, null, requestModel);
+  const telemetry = createOdysseusTelemetry(
+    decision,
+    response.headers.get("x-request-id"),
+    requestModel
+  );
   const headers = new Headers(response.headers);
   headers.set("X-Odysseus-Policy-Result", telemetry.policy_result);
   if (telemetry.provider) headers.set("X-Odysseus-Provider", telemetry.provider);
