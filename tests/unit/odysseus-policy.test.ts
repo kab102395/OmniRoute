@@ -4,6 +4,7 @@ import {
   evaluateOdysseusPolicy,
   parseOdysseusMetadata,
   OdysseusApprovalRegistry,
+  DEFAULT_ODYSSEUS_APPROVALS,
   type OdysseusRouteApproval,
 } from "../../src/lib/odysseus/policy.ts";
 import {
@@ -49,6 +50,19 @@ function headers(overrides: Record<string, string> = {}) {
 test("disabled metadata preserves normal behavior", () => {
   const parsed = parseOdysseusMetadata(new Headers());
   assert.equal(evaluateOdysseusPolicy(parsed, approvals).result, "disabled");
+});
+
+test("built-in registry approves the current OpenRouter free catalog for every role", () => {
+  const routes = new Set(
+    DEFAULT_ODYSSEUS_APPROVALS.map((route) => `${route.provider}/${route.model}`)
+  );
+  assert.equal(routes.size, 19);
+  assert.equal(DEFAULT_ODYSSEUS_APPROVALS.length, 19 * 4);
+  assert.ok(DEFAULT_ODYSSEUS_APPROVALS.every((route) => route.pricing === "free_api_tier"));
+  assert.ok(DEFAULT_ODYSSEUS_APPROVALS.every((route) => route.model.endsWith(":free")));
+  for (const role of ["coder", "scout", "reasoner", "compressor"] as const) {
+    assert.equal(DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.role === role).length, 19);
+  }
 });
 
 test("approval registry replaces and registers exact role-scoped routes", () => {

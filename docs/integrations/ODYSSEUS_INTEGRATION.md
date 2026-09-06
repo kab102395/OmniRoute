@@ -58,10 +58,11 @@ the policy-registry-unavailable reason and is denied. If unset, the single built
 5. Add `X-Odysseus-*` response telemetry and persist the same schema in the existing call-log
    pipeline when terminal attempt logging runs. Unknown measurements are `null`, never zero.
 
-Built-in approval is one operator-attested route: `openrouter/nvidia/nemotron-3-super-120b-a12b:free`
-for `scout`. OpenRouter's current model catalog listed this exact `:free` ID during the
-2026-09-05 verification pass; its retention, training, and risk metadata remain `unknown`.
-This is not a claim that provider terms are unchanged. Revalidate those terms before production.
+Built-in approval covers the 19 OpenRouter models advertised with the `:free` suffix during
+the 2026-09-05 verification pass, for every Odysseus role. The exact list is maintained in
+`src/lib/odysseus/policy.ts`; `openrouter/nvidia/nemotron-3-super-120b-a12b:free` remains the
+live-tested route. Retention, training, and risk metadata remain `unknown`, and this is not a
+claim that provider terms are unchanged. Revalidate those terms before production.
 
 ## Redacted denial, live response, and telemetry examples
 

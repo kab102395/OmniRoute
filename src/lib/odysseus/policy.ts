@@ -75,23 +75,52 @@ export const ODYSSEUS_HEADER_NAMES = {
   policyVersion: "x-odysseus-policy-version",
 } as const;
 
-/** One operator-attested route. It is intentionally the only built-in route. */
-export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] = [
-  {
-    provider: "openrouter",
-    model: "nvidia/nemotron-3-super-120b-a12b:free",
-    role: "scout",
-    enabled: true,
-    approvalStatus: "approved",
-    pricing: "free_api_tier",
-    signupCreditAllowed: false,
-    privateSourceApproved: false,
-    dataRetention: "unknown",
-    trainingOnInput: "unknown",
-    riskCategory: "unknown",
-    notes: "Operator-attested free route; verify current provider terms before production use.",
-  },
-];
+/**
+ * Current OpenRouter models advertised as free during the 2026-09-05 catalog
+ * verification. Keep this list explicit: a model must be present here and in
+ * the request's allowed-routes list before Odysseus can select it.
+ */
+const OPENROUTER_FREE_MODELS = [
+  "inclusionai/ling-3.0-flash-sante:free",
+  "inclusionai/ling-3.0-flash-fin:free",
+  "dots-studio/dots-3-note-preview:free",
+  "liquid/lfm-2.5-2.6b:free",
+  "nvidia/nemotron-3.5-lightning:free",
+  "thinkingmachines/inkling-small:free",
+  "poolside/laguna-s-2.1:free",
+  "thinkingmachines/inkling:free",
+  "poolside/laguna-xs-2.1:free",
+  "cohere/north-mini-code:free",
+  "z-ai/glm-5.2:free",
+  "nvidia/nemotron-3.5-content-safety:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "minimax/minimax-m3:free",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "google/gemma-4-31b-it:free",
+  "minimax/minimax-m2.7:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+] as const;
+
+/** All verified free routes are available to each Odysseus role. */
+export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] =
+  OPENROUTER_FREE_MODELS.flatMap((model) =>
+    ODYSSEUS_ROLES.map((role) => ({
+      provider: "openrouter",
+      model,
+      role,
+      enabled: true,
+      approvalStatus: "approved" as const,
+      pricing: "free_api_tier" as const,
+      signupCreditAllowed: false,
+      privateSourceApproved: false,
+      dataRetention: "unknown" as const,
+      trainingOnInput: "unknown" as const,
+      riskCategory: "unknown" as const,
+      notes:
+        "Catalog-verified free route; revalidate current provider terms before production use.",
+    }))
+  );
 
 function isApproval(value: unknown): value is OdysseusRouteApproval {
   const item = record(value);
