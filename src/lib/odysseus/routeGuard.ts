@@ -1,12 +1,12 @@
 import { errorResponse } from "@omniroute/open-sse/utils/error";
-import {
-  evaluateOdysseusPolicy,
-  parseOdysseusMetadata,
-  type PolicyDecision,
-} from "./policy";
+import { evaluateOdysseusPolicy, parseOdysseusMetadata, type PolicyDecision } from "./policy";
 import { createOdysseusTelemetry } from "./telemetry";
 
-function responseWithTelemetry(response: Response, decision: PolicyDecision, requestModel: string | null) {
+function responseWithTelemetry(
+  response: Response,
+  decision: PolicyDecision,
+  requestModel: string | null
+) {
   if (decision.result === "disabled") return response;
   const telemetry = createOdysseusTelemetry(decision, null, requestModel);
   const headers = new Headers(response.headers);
@@ -14,7 +14,12 @@ function responseWithTelemetry(response: Response, decision: PolicyDecision, req
   if (telemetry.provider) headers.set("X-Odysseus-Provider", telemetry.provider);
   if (telemetry.actual_model) headers.set("X-Odysseus-Actual-Model", telemetry.actual_model);
   headers.set("X-Odysseus-Free-Route-Verified", String(telemetry.free_route_verified));
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  headers.set("X-Odysseus-Telemetry", JSON.stringify(telemetry));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 export interface OdysseusGuardResult {
@@ -29,9 +34,10 @@ export interface OdysseusGuardResult {
  */
 export function enforceOdysseusPolicy(headers: Headers, body: unknown): OdysseusGuardResult {
   const parsed = parseOdysseusMetadata(headers, body);
-  const bodyRecord = body && typeof body === "object" && !Array.isArray(body)
-    ? { ...(body as Record<string, unknown>) }
-    : {};
+  const bodyRecord =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? { ...(body as Record<string, unknown>) }
+      : {};
   const model = typeof bodyRecord.model === "string" ? bodyRecord.model : null;
   const decision = evaluateOdysseusPolicy(
     parsed,

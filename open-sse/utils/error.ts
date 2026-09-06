@@ -32,6 +32,15 @@ export type ErrorBodyClassification = {
 
 const PUBLIC_ERROR_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
+  "malformed_policy",
+  "no_approved_free_route",
+  "free_quota_exhausted",
+  "provider_unavailable",
+  "policy_denied",
+  "privacy_denied",
+  "unknown_role",
+  "unknown_privacy_class",
+  "unsupported_route",
   "abort",
   "aborted",
   "account_semaphore_capacity",

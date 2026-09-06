@@ -77,7 +77,7 @@ export function createOdysseusTelemetry(
     rate_limit_state: null,
     provider_error: null,
     success: decision.result === "allowed" ? null : false,
-    policy_result: decision.result === "allowed" ? "allowed" : decision.reason ?? decision.result,
+    policy_result: decision.result === "allowed" ? "allowed" : (decision.reason ?? decision.result),
     usage_source: "unavailable",
   };
 }

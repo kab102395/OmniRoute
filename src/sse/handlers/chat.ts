@@ -175,7 +175,10 @@ import { registerBailianCodingPlanQuotaFetcher } from "@omniroute/open-sse/servi
 import { registerQwenTokenPlanQuotaFetcher } from "@omniroute/open-sse/services/qwenTokenPlanQuotaFetcher.ts";
 import { registerCrofUsageFetcher } from "@omniroute/open-sse/services/crofUsageFetcher.ts";
 import { registerDeepseekQuotaFetcher } from "@omniroute/open-sse/services/deepseekQuotaFetcher.ts";
-import { registerMoonshotQuotaFetcher, registerMoonshotFetchersForNodes } from "@omniroute/open-sse/services/moonshotQuotaFetcher.ts";
+import {
+  registerMoonshotQuotaFetcher,
+  registerMoonshotFetchersForNodes,
+} from "@omniroute/open-sse/services/moonshotQuotaFetcher.ts";
 import { registerOpenrouterQuotaFetcher } from "@omniroute/open-sse/services/openrouterQuotaFetcher.ts";
 import { registerOpencodeQuotaFetcher } from "@omniroute/open-sse/services/opencodeQuotaFetcher.ts";
 import { registerGrokWebQuotaFetcher } from "@omniroute/open-sse/services/grokQuotaFetcher.ts";
@@ -232,7 +235,7 @@ void import("@/lib/db/providers")
         id: typeof node.id === "string" ? node.id : null,
         prefix: typeof node.prefix === "string" ? node.prefix : null,
         baseUrl: typeof node.baseUrl === "string" ? node.baseUrl : null,
-      })),
+      }))
     );
   })
   .catch((error) => {
@@ -2206,7 +2209,10 @@ async function handleSingleModelChat(
       // Combo targets never emergency-hop: the combo is the operator's fallback policy
       // (target-level orchestration plus the global fallback #689 after it), and a
       // per-target hop burns extra upstream calls against exhausted providers (#1731).
-      if (!runtimeOptions.emergencyFallbackTried && !comboName) {
+      // Odysseus free-only requests are never allowed to enter OmniRoute's
+      // legacy emergency fallback, which may target a non-approved route.
+      const odysseusFreeOnly = request?.headers?.get?.("x-odysseus-free-only") === "true";
+      if (!odysseusFreeOnly && !runtimeOptions.emergencyFallbackTried && !comboName) {
         const fallbackDecision = shouldUseFallback(
           Number(result.status || 0),
           String(result.error || ""),

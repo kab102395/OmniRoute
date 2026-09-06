@@ -6,6 +6,7 @@ import {
   type OdysseusRouteApproval,
 } from "../../src/lib/odysseus/policy.ts";
 import { createOdysseusTelemetry } from "../../src/lib/odysseus/telemetry.ts";
+import { enforceOdysseusPolicy } from "../../src/lib/odysseus/routeGuard.ts";
 
 const base = {
   provider: "test-provider",
@@ -45,41 +46,89 @@ test("disabled metadata preserves normal behavior", () => {
 test("parses structured extension and headers", () => {
   const parsed = parseOdysseusMetadata(new Headers(), {
     odysseus_policy: {
-      task_id: "task-2", role: "coder", privacy_class: "public", free_only: true,
-      allowed_routes: ["test-provider/coder-model"], policy_version: "v1",
+      task_id: "task-2",
+      role: "coder",
+      privacy_class: "public",
+      free_only: true,
+      allowed_routes: ["test-provider/coder-model"],
+      policy_version: "v1",
     },
   });
   assert.equal("metadata" in parsed && parsed.metadata.role, "coder");
 });
 
 test("unknown role and privacy class fail closed", () => {
-  assert.equal(evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-role": "admin" })), approvals).reason, "UNKNOWN_ROLE");
-  assert.equal(evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-privacy-class": "secret" })), approvals).reason, "UNKNOWN_PRIVACY_CLASS");
+  assert.equal(
+    evaluateOdysseusPolicy(
+      parseOdysseusMetadata(headers({ "x-odysseus-role": "admin" })),
+      approvals
+    ).reason,
+    "UNKNOWN_ROLE"
+  );
+  assert.equal(
+    evaluateOdysseusPolicy(
+      parseOdysseusMetadata(headers({ "x-odysseus-privacy-class": "secret" })),
+      approvals
+    ).reason,
+    "UNKNOWN_PRIVACY_CLASS"
+  );
 });
 
 test("sensitive and default private_source are denied", () => {
-  assert.equal(evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-privacy-class": "sensitive" })), approvals).reason, "PRIVACY_DENIED");
-  assert.equal(evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-privacy-class": "private_source" })), approvals).reason, "PRIVACY_DENIED");
+  assert.equal(
+    evaluateOdysseusPolicy(
+      parseOdysseusMetadata(headers({ "x-odysseus-privacy-class": "sensitive" })),
+      approvals
+    ).reason,
+    "PRIVACY_DENIED"
+  );
+  assert.equal(
+    evaluateOdysseusPolicy(
+      parseOdysseusMetadata(headers({ "x-odysseus-privacy-class": "private_source" })),
+      approvals
+    ).reason,
+    "PRIVACY_DENIED"
+  );
 });
 
 test("approved public route succeeds with exact provider/model attribution", () => {
-  const decision = evaluateOdysseusPolicy(parseOdysseusMetadata(headers()), approvals, "test-provider/test-model");
+  const decision = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers()),
+    approvals,
+    "test-provider/test-model"
+  );
   assert.equal(decision.result, "allowed");
   assert.equal(decision.selectedRoute?.provider, "test-provider");
   assert.equal(decision.selectedRoute?.model, "test-model");
 });
 
 test("role approval does not cross from scout to coder", () => {
-  const decision = evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-role": "coder" })), approvals, "test-provider/test-model");
+  const decision = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers({ "x-odysseus-role": "coder" })),
+    approvals,
+    "test-provider/test-model"
+  );
   assert.equal(decision.reason, "POLICY_DENIED");
 });
 
 test("free-only excludes paid, unknown pricing, and exhausted quota", () => {
-  const paid = evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-allowed-routes": "test-provider/paid-model" })), approvals, "test-provider/paid-model");
+  const paid = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers({ "x-odysseus-allowed-routes": "test-provider/paid-model" })),
+    approvals,
+    "test-provider/paid-model"
+  );
   assert.equal(paid.reason, "POLICY_DENIED");
-  const unknown = evaluateOdysseusPolicy(parseOdysseusMetadata(headers({ "x-odysseus-allowed-routes": "test-provider/unknown-price" })), approvals, "test-provider/unknown-price");
+  const unknown = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers({ "x-odysseus-allowed-routes": "test-provider/unknown-price" })),
+    approvals,
+    "test-provider/unknown-price"
+  );
   assert.equal(unknown.reason, "POLICY_DENIED");
-  const exhausted = evaluateOdysseusPolicy(parseOdysseusMetadata(headers()), [{ ...base, role: "scout", quotaAvailable: false }], "test-provider/test-model");
+  const exhausted = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers()),
+    [{ ...base, role: "scout", quotaAvailable: false }],
+    "test-provider/test-model"
+  );
   assert.equal(exhausted.reason, "FREE_QUOTA_EXHAUSTED");
 });
 
@@ -91,4 +140,25 @@ test("telemetry keeps unavailable usage null and measured/estimated labels disti
   assert.equal(telemetry.usage_source, "unavailable");
   assert.equal(telemetry.actual_model, "test-model");
   assert.equal(telemetry.provider, "test-provider");
+});
+
+test("sensitive requests are rejected before a provider adapter can be invoked", async () => {
+  let providerCalls = 0;
+  const result = enforceOdysseusPolicy(headers({ "x-odysseus-privacy-class": "sensitive" }), {
+    model: "test-provider/test-model",
+    messages: [{ role: "user", content: "secret" }],
+  });
+  if (!result.response) providerCalls += 1;
+  assert.equal(result.response?.status, 403);
+  assert.equal(providerCalls, 0);
+  assert.match(await result.response!.text(), /PRIVACY_DENIED/);
+});
+
+test("malformed policy is a deterministic machine-readable denial", async () => {
+  const result = enforceOdysseusPolicy(new Headers({ "x-odysseus-role": "scout" }), {
+    model: "test-provider/test-model",
+  });
+  assert.equal(result.response?.status, 403);
+  const body = JSON.parse(await result.response!.text()) as { error: { code: string } };
+  assert.equal(body.error.code, "MALFORMED_POLICY");
 });
