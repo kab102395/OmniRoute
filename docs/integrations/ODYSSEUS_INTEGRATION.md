@@ -60,12 +60,14 @@ quota exhaustion, provider/model attribution, and null telemetry.
 Run the credential-gated live acceptance when a legitimate key is available:
 
 ```bash
-OPENROUTER_API_KEY=... npm run test:odysseus-live
+OMNIROUTE_API_KEY=... npm run test:odysseus-live
 ```
 
 The script targets the local `/v1/chat/completions` endpoint, uses the exact approved
 route, prints a redacted response and telemetry, and exits non-zero on a policy or
-provider failure. It does not print or persist the key. Production Odysseus is not connected.
+provider failure. The OpenRouter credential must already be configured in OmniRoute's
+provider connection store; the script does not accept or transmit upstream credentials.
+It does not print or persist the optional gateway key. Production Odysseus is not connected.
 
 ## Remaining milestone evidence
 
