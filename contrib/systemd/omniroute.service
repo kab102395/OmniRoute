@@ -1,0 +1,40 @@
+[Unit]
+Description=OmniRoute local model gateway
+Documentation=https://github.com/diegosouzapw/OmniRoute
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=kab
+Group=kab
+WorkingDirectory=/home/kab/Documents/OmniRoute
+
+# Only non-secret runtime pins belong here. OmniRoute bootstrap loads the
+# existing encrypted configuration from DATA_DIR (/home/kab/.omniroute).
+Environment=NODE_ENV=production
+Environment=DATA_DIR=/home/kab/.omniroute
+Environment=HOST=127.0.0.1
+Environment=PORT=20128
+Environment=DASHBOARD_PORT=20128
+Environment=API_PORT=20128
+
+ExecStart=/usr/bin/node --dns-result-order=ipv4first scripts/dev/run-next.mjs start
+ExecStartPost=/bin/sh -c 'i=0; while [ "$i" -lt 30 ]; do /usr/bin/curl --fail --silent --show-error --output /dev/null --max-time 2 http://127.0.0.1:20128/healthz && exit 0; i=$((i + 1)); /usr/bin/sleep 1; done; exit 1'
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=120s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ReadWritePaths=/home/kab/.omniroute
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omniroute
+
+[Install]
+WantedBy=multi-user.target
