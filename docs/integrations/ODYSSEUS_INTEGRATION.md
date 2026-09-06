@@ -7,10 +7,11 @@ authority, workspace/file access, tool execution, validation, and final acceptan
 ## Baseline and changes
 
 - Upstream base: `release/v3.8.51` at `9d1a896c6`.
-- Integration commits: `efa69d20b`, `94ccf7096`, `b6dee480e`, and `e9e56fa30`.
+- Integration commits include `efa69d20b`, `94ccf7096`, `b6dee480e`, `e9e56fa30`,
+  `890f82a28`, `6d68d0bfe`, and `f1af97a11`.
 - Changed files: `src/lib/odysseus/policy.ts`, `src/lib/odysseus/telemetry.ts`,
   `src/lib/odysseus/routeGuard.ts`, the OpenAI chat and Responses routes, the chat
-  emergency-fallback gate, and `tests/unit/odysseus-policy.test.ts`.
+  emergency-fallback gate, durable call-log telemetry, and `tests/unit/odysseus-policy.test.ts`.
 
 ## Request contract
 
@@ -42,8 +43,10 @@ records; malformed or partial configuration is treated as
 3. Filter by exact role, enabled + approved status, explicitly allowed route, provider
    availability, quota availability, and—when requested—verified free pricing.
 4. Pass only the selected exact route to normal OmniRoute routing. Free-only requests are
-   excluded from the legacy emergency paid/fallback path.
-5. Add `X-Odysseus-*` response telemetry. Unknown measurements are `null`, never zero.
+   excluded from legacy emergency, model-family, and context-overflow model fallback paths;
+   same-route transport/account recovery remains available.
+5. Add `X-Odysseus-*` response telemetry and persist the same schema in the existing call-log
+   pipeline when terminal attempt logging runs. Unknown measurements are `null`, never zero.
 
 Built-in approval is one operator-attested route: `openrouter/nvidia/nemotron-3-super-120b-a12b:free`
 for `scout`. OpenRouter's current model catalog listed this exact `:free` ID during the
@@ -60,7 +63,8 @@ node --import tsx/esm --test tests/unit/odysseus-policy.test.ts
 
 The suite covers disabled compatibility, structured/header parsing, unknown values,
 sensitive/private-source denial, exact role approval, paid/unknown pricing exclusion,
-quota exhaustion, provider/model attribution, and null telemetry.
+quota exhaustion, provider/model attribution, null telemetry, and measured cache/reasoning
+usage projection.
 
 Run the credential-gated live acceptance when a legitimate key is available:
 
