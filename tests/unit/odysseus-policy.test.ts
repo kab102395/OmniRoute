@@ -218,6 +218,11 @@ test("malformed policy is a deterministic machine-readable denial", async () => 
   assert.equal(result.response?.status, 403);
   const body = JSON.parse(await result.response!.text()) as { error: { code: string } };
   assert.equal(body.error.code, "MALFORMED_POLICY");
+  assert.match(result.response!.headers.get("x-request-id") ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal(
+    JSON.parse(result.response!.headers.get("x-odysseus-telemetry") ?? "{}").request_id,
+    result.response!.headers.get("x-request-id")
+  );
 });
 
 test("non-streaming response telemetry preserves measured usage", async () => {

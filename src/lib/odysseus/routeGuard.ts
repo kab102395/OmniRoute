@@ -14,13 +14,11 @@ function responseWithTelemetry(
   usage?: Parameters<typeof withOdysseusUsage>[1]
 ) {
   if (decision.result === "disabled") return response;
-  let telemetry = createOdysseusTelemetry(
-    decision,
-    response.headers.get("x-request-id"),
-    requestModel
-  );
+  const requestId = response.headers.get("x-request-id") || globalThis.crypto.randomUUID();
+  let telemetry = createOdysseusTelemetry(decision, requestId, requestModel);
   if (usage) telemetry = withOdysseusUsage(telemetry, usage);
   const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", requestId);
   headers.set("X-Odysseus-Policy-Result", telemetry.policy_result);
   if (telemetry.provider) headers.set("X-Odysseus-Provider", telemetry.provider);
   if (telemetry.actual_model) headers.set("X-Odysseus-Actual-Model", telemetry.actual_model);

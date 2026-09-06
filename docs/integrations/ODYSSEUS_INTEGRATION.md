@@ -13,6 +13,16 @@ authority, workspace/file access, tool execution, validation, and final acceptan
   `src/lib/odysseus/routeGuard.ts`, the OpenAI chat and Responses routes, the chat
   emergency-fallback gate, durable call-log telemetry, and `tests/unit/odysseus-policy.test.ts`.
 
+## Architecture map
+
+`/v1/chat/completions` and `/v1/responses` parse the request and invoke the Odysseus guard
+before injection, model resolution, credential selection, or provider execution. An allowed
+pool alias is rewritten to one exact approved `provider/model`; the normal OmniRoute handler
+then performs authentication, quota/rate handling, translation, execution, response shaping,
+and existing usage/call-log persistence. Odysseus adds response headers and a structured
+`pipeline.odysseus` record at terminal call-log persistence. No Odysseus code has filesystem,
+shell, browser, Docker, or tool authority.
+
 ## Request contract
 
 The integration is disabled unless at least one `X-Odysseus-*` header or the structured
@@ -52,6 +62,53 @@ Built-in approval is one operator-attested route: `openrouter/nvidia/nemotron-3-
 for `scout`. OpenRouter's current model catalog listed this exact `:free` ID during the
 2026-09-05 verification pass; its retention, training, and risk metadata remain `unknown`.
 This is not a claim that provider terms are unchanged. Revalidate those terms before production.
+
+## Redacted denial and telemetry examples
+
+The local preflight acceptance captured this denial before any provider adapter call:
+
+```http
+HTTP/1.1 403 Forbidden
+X-Odysseus-Policy-Result: PRIVACY_DENIED
+X-Odysseus-Free-Route-Verified: false
+```
+
+```json
+{
+  "error": {
+    "message": "Odysseus policy denied request: PRIVACY_DENIED",
+    "type": "policy_error",
+    "code": "PRIVACY_DENIED"
+  }
+}
+```
+
+An allowed terminal call-log record uses the same schema as the response telemetry; measured
+fields are populated only from provider usage:
+
+```json
+{
+  "request_id": "trace-id",
+  "odysseus_role": "scout",
+  "provider": "openrouter",
+  "requested_model": "odysseus-free-scout",
+  "actual_model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "free_only": true,
+  "free_route_verified": true,
+  "input_tokens": 42,
+  "cached_input_tokens": null,
+  "output_tokens": 17,
+  "reasoning_tokens": null,
+  "total_tokens": 59,
+  "usage_source": "measured",
+  "success": true,
+  "fallback_chain": null
+}
+```
+
+For a provider/quota failure, the request returns a controlled error and does not enter a
+paid or unapproved model fallback. If an approved-route account/transport recovery occurs,
+the terminal record retains the actual provider/model and its fallback metadata.
 
 ## Testability
 
