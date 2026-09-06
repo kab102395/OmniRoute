@@ -1,5 +1,10 @@
 import { errorResponse } from "@omniroute/open-sse/utils/error";
-import { evaluateOdysseusPolicy, parseOdysseusMetadata, type PolicyDecision } from "./policy";
+import {
+  evaluateOdysseusPolicy,
+  parseOdysseusMetadata,
+  resolveConfiguredOdysseusApprovals,
+  type PolicyDecision,
+} from "./policy";
 import { createOdysseusTelemetry, withOdysseusUsage } from "./telemetry";
 
 function responseWithTelemetry(
@@ -45,11 +50,24 @@ export function enforceOdysseusPolicy(headers: Headers, body: unknown): Odysseus
       ? { ...(body as Record<string, unknown>) }
       : {};
   const model = typeof bodyRecord.model === "string" ? bodyRecord.model : null;
-  const decision = evaluateOdysseusPolicy(
-    parsed,
-    undefined,
-    model?.startsWith("odysseus-free-") ? null : model
-  );
+  if (!parsed.enabled) {
+    const decision = evaluateOdysseusPolicy(parsed);
+    return { decision, body: bodyRecord, response: null };
+  }
+  const registry = resolveConfiguredOdysseusApprovals();
+  const decision = !registry.available
+    ? {
+        result: "denied" as const,
+        reason: "POLICY_REGISTRY_UNAVAILABLE" as const,
+        metadata: "metadata" in parsed ? parsed.metadata : null,
+        selectedRoute: null,
+        candidates: [],
+      }
+    : evaluateOdysseusPolicy(
+        parsed,
+        registry.approvals,
+        model?.startsWith("odysseus-free-") ? null : model
+      );
   if (decision.result === "disabled") return { decision, body: bodyRecord, response: null };
   if (decision.result === "denied") {
     return {

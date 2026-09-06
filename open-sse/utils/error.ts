@@ -41,6 +41,7 @@ const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
   "unknown_role",
   "unknown_privacy_class",
   "unsupported_route",
+  "policy_registry_unavailable",
   "abort",
   "aborted",
   "account_semaphore_capacity",

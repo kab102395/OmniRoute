@@ -30,6 +30,11 @@ handler dispatch. Headers are:
 The body equivalent uses `odysseus_policy` with snake_case keys. Malformed metadata,
 unknown roles, and unknown privacy classes fail closed before model/provider resolution.
 
+Operators may provide a complete approval registry with `ODYSSEUS_APPROVALS_JSON`. It
+must be a non-empty JSON array containing the documented provider/model/role approval
+records; malformed or partial configuration is treated as
+`POLICY_REGISTRY_UNAVAILABLE` and is denied. If unset, the single built-in route is used.
+
 ## Decision flow
 
 1. Parse metadata at `/v1/chat/completions` or `/v1/responses`.

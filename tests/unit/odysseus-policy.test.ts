@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   evaluateOdysseusPolicy,
   parseOdysseusMetadata,
+  OdysseusApprovalRegistry,
   type OdysseusRouteApproval,
 } from "../../src/lib/odysseus/policy.ts";
 import { createOdysseusTelemetry, withOdysseusUsage } from "../../src/lib/odysseus/telemetry.ts";
@@ -44,6 +45,16 @@ function headers(overrides: Record<string, string> = {}) {
 test("disabled metadata preserves normal behavior", () => {
   const parsed = parseOdysseusMetadata(new Headers());
   assert.equal(evaluateOdysseusPolicy(parsed, approvals).result, "disabled");
+});
+
+test("approval registry replaces and registers exact role-scoped routes", () => {
+  const registry = new OdysseusApprovalRegistry([]);
+  registry.register({ ...base, role: "scout" });
+  registry.register({ ...base, role: "coder" });
+  assert.equal(registry.snapshot().length, 2);
+  registry.replace([{ ...base, role: "reasoner" }]);
+  assert.equal(registry.snapshot()[0]?.role, "reasoner");
+  assert.throws(() => registry.replace([{ ...base, role: "scout", pricing: "not-free" } as never]));
 });
 
 test("parses structured extension and headers", () => {

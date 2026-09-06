@@ -26,7 +26,8 @@ export type PolicyReason =
   | "MALFORMED_POLICY"
   | "UNKNOWN_ROLE"
   | "UNKNOWN_PRIVACY_CLASS"
-  | "UNSUPPORTED_ROUTE";
+  | "UNSUPPORTED_ROUTE"
+  | "POLICY_REGISTRY_UNAVAILABLE";
 
 export interface OdysseusMetadata {
   taskId: string;
@@ -91,6 +92,89 @@ export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] = [
     notes: "Operator-attested free route; verify current provider terms before production use.",
   },
 ];
+
+function isApproval(value: unknown): value is OdysseusRouteApproval {
+  const item = record(value);
+  return (
+    item !== null &&
+    typeof item.provider === "string" &&
+    typeof item.model === "string" &&
+    isRole(item.role) &&
+    typeof item.enabled === "boolean" &&
+    (item.approvalStatus === "approved" ||
+      item.approvalStatus === "rejected" ||
+      item.approvalStatus === "pending") &&
+    (item.pricing === "free_api_tier" ||
+      item.pricing === "signup_credit_only" ||
+      item.pricing === "paid" ||
+      item.pricing === "unknown") &&
+    (item.dataRetention === "known" ||
+      item.dataRetention === "unknown" ||
+      item.dataRetention === "not_retained") &&
+    (item.trainingOnInput === "allowed" ||
+      item.trainingOnInput === "unknown" ||
+      item.trainingOnInput === "forbidden") &&
+    (item.riskCategory === "low" ||
+      item.riskCategory === "medium" ||
+      item.riskCategory === "high" ||
+      item.riskCategory === "unknown")
+  );
+}
+
+/** Mutable only through explicit server configuration; callers receive snapshots. */
+export class OdysseusApprovalRegistry {
+  private approvals: OdysseusRouteApproval[];
+
+  constructor(initial: readonly OdysseusRouteApproval[] = DEFAULT_ODYSSEUS_APPROVALS) {
+    if (!initial.every(isApproval)) throw new Error("Invalid Odysseus approval registry");
+    this.approvals = initial.map((approval) => ({ ...approval }));
+  }
+
+  snapshot(): readonly OdysseusRouteApproval[] {
+    return this.approvals.map((approval) => ({ ...approval }));
+  }
+
+  replace(next: readonly OdysseusRouteApproval[]): void {
+    if (!next.every(isApproval)) throw new Error("Invalid Odysseus approval registry");
+    this.approvals = next.map((approval) => ({ ...approval }));
+  }
+
+  register(approval: OdysseusRouteApproval): void {
+    if (!isApproval(approval)) throw new Error("Invalid Odysseus approval");
+    const key = routeId(approval);
+    this.approvals = [
+      ...this.approvals.filter(
+        (candidate) => routeId(candidate) !== key || candidate.role !== approval.role
+      ),
+      { ...approval },
+    ];
+  }
+}
+
+const ODYSSEUS_APPROVAL_REGISTRY = new OdysseusApprovalRegistry();
+export function getOdysseusApprovalRegistry(): OdysseusApprovalRegistry {
+  return ODYSSEUS_APPROVAL_REGISTRY;
+}
+
+/**
+ * Load a complete operator-supplied registry. Partial or malformed JSON is
+ * unavailable, never silently merged with defaults.
+ */
+export function resolveConfiguredOdysseusApprovals():
+  { available: true; approvals: readonly OdysseusRouteApproval[] } | { available: false } {
+  const configured =
+    typeof process !== "undefined" ? process.env.ODYSSEUS_APPROVALS_JSON : undefined;
+  if (!configured) return { available: true, approvals: ODYSSEUS_APPROVAL_REGISTRY.snapshot() };
+  try {
+    const parsed: unknown = JSON.parse(configured);
+    if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isApproval)) {
+      return { available: false };
+    }
+    return { available: true, approvals: parsed };
+  } catch {
+    return { available: false };
+  }
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
