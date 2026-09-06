@@ -120,6 +120,27 @@ test("approved public route succeeds with exact provider/model attribution", () 
   assert.equal(decision.selectedRoute?.model, "test-model");
 });
 
+test("free candidate fallback remains inside the approved role-scoped registry", () => {
+  const decision = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(
+      headers({
+        "x-odysseus-allowed-routes": "test-provider/unavailable-model,test-provider/coder-model",
+      })
+    ),
+    [
+      { ...base, model: "unavailable-model", role: "scout", providerAvailable: false },
+      { ...base, model: "coder-model", role: "scout" },
+      { ...base, model: "paid-model", role: "scout", pricing: "paid" },
+    ]
+  );
+  assert.equal(decision.result, "allowed");
+  assert.equal(decision.selectedRoute?.model, "coder-model");
+  assert.deepEqual(
+    decision.candidates.map((candidate) => `${candidate.provider}/${candidate.model}`),
+    ["test-provider/coder-model"]
+  );
+});
+
 test("role approval does not cross from scout to coder", () => {
   const decision = evaluateOdysseusPolicy(
     parseOdysseusMetadata(headers({ "x-odysseus-role": "coder" })),
@@ -209,6 +230,23 @@ test("sensitive requests are rejected before a provider adapter can be invoked",
   assert.equal(result.response?.status, 403);
   assert.equal(providerCalls, 0);
   assert.match(await result.response!.text(), /PRIVACY_DENIED/);
+});
+
+test("structured policy is removed and a role pool is rewritten to an exact approved route", () => {
+  const result = enforceOdysseusPolicy(new Headers(), {
+    model: "odysseus-free-scout",
+    odysseus_policy: {
+      task_id: "task-structured",
+      role: "scout",
+      privacy_class: "public",
+      free_only: true,
+      allowed_routes: ["openrouter/nvidia/nemotron-3-super-120b-a12b:free"],
+      policy_version: "v1",
+    },
+  });
+  assert.equal(result.response, null);
+  assert.equal(result.body.model, "openrouter/nvidia/nemotron-3-super-120b-a12b:free");
+  assert.equal("odysseus_policy" in result.body, false);
 });
 
 test("malformed policy is a deterministic machine-readable denial", async () => {
