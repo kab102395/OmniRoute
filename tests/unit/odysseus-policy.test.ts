@@ -6,7 +6,10 @@ import {
   type OdysseusRouteApproval,
 } from "../../src/lib/odysseus/policy.ts";
 import { createOdysseusTelemetry, withOdysseusUsage } from "../../src/lib/odysseus/telemetry.ts";
-import { enforceOdysseusPolicy } from "../../src/lib/odysseus/routeGuard.ts";
+import {
+  addOdysseusTelemetryHeaders,
+  enforceOdysseusPolicy,
+} from "../../src/lib/odysseus/routeGuard.ts";
 
 const base = {
   provider: "test-provider",
@@ -180,4 +183,35 @@ test("malformed policy is a deterministic machine-readable denial", async () => 
   assert.equal(result.response?.status, 403);
   const body = JSON.parse(await result.response!.text()) as { error: { code: string } };
   assert.equal(body.error.code, "MALFORMED_POLICY");
+});
+
+test("non-streaming response telemetry preserves measured usage", async () => {
+  const decision = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers()),
+    approvals,
+    "test-provider/test-model"
+  );
+  const response = await addOdysseusTelemetryHeaders(
+    new Response(
+      JSON.stringify({
+        model: "test-model",
+        usage: {
+          prompt_tokens: 7,
+          prompt_tokens_details: { cached_tokens: 2 },
+          completion_tokens: 3,
+          completion_tokens_details: { reasoning_tokens: 1 },
+          total_tokens: 10,
+        },
+      }),
+      { headers: { "content-type": "application/json", "x-request-id": "req-usage" } }
+    ),
+    decision,
+    "test-provider/test-model"
+  );
+  const telemetry = JSON.parse(response.headers.get("x-odysseus-telemetry")!);
+  assert.equal(telemetry.request_id, "req-usage");
+  assert.equal(telemetry.input_tokens, 7);
+  assert.equal(telemetry.cached_input_tokens, 2);
+  assert.equal(telemetry.reasoning_tokens, 1);
+  assert.equal(telemetry.usage_source, "measured");
 });

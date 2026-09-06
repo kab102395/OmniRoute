@@ -22,10 +22,7 @@ import {
 } from "@omniroute/open-sse/utils/earlyStreamKeepalive";
 import { resolveKeepaliveThreshold } from "@omniroute/open-sse/utils/keepaliveThreshold";
 import { OPENAI_RESPONSES_IN_PROGRESS_FRAME } from "@omniroute/open-sse/utils/sseHeartbeat";
-import {
-  addOdysseusTelemetryHeaders,
-  enforceOdysseusPolicy,
-} from "@/lib/odysseus/routeGuard";
+import { addOdysseusTelemetryHeaders, enforceOdysseusPolicy } from "@/lib/odysseus/routeGuard";
 
 // NOTE: We do NOT call initTranslators() here — the translator registry is
 // bootstrapped at module level inside open-sse/translator/index.ts when it
@@ -208,11 +205,15 @@ async function postHandler(request: any) {
         errorFrame: OPENAI_RESPONSES_ERROR_FRAME,
         correlationId,
       });
-      return addOdysseusTelemetryHeaders(response, odysseus.decision, resolvedBody?.model ?? null);
+      return await addOdysseusTelemetryHeaders(
+        response,
+        odysseus.decision,
+        resolvedBody?.model ?? null
+      );
     }
 
     return finishAdmission(
-      addOdysseusTelemetryHeaders(
+      await addOdysseusTelemetryHeaders(
         await handleChat(resolved, null, resolvedBody),
         odysseus.decision,
         resolvedBody?.model ?? null
