@@ -437,6 +437,7 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
       ...(pipelinePayloads ?? {}),
       odysseus: {
         ...usageTelemetry,
+        start_time: new Date(startTime).toISOString(),
         provider: provider ?? usageTelemetry.provider,
         provider_account: finalConnectionId,
         actual_model: model ?? usageTelemetry.actual_model,
