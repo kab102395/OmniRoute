@@ -9,6 +9,12 @@ export const ODYSSEUS_ROLES = ["coder", "scout", "reasoner", "compressor"] as co
 export type OdysseusRole = (typeof ODYSSEUS_ROLES)[number];
 export const ODYSSEUS_PRIVACY_CLASSES = ["public", "private_source", "sensitive"] as const;
 export type OdysseusPrivacyClass = (typeof ODYSSEUS_PRIVACY_CLASSES)[number];
+export const ODYSSEUS_ROLE_POOLS: Readonly<Record<OdysseusRole, string>> = {
+  coder: "odysseus-free-coder",
+  scout: "odysseus-free-scout",
+  reasoner: "odysseus-free-reasoner",
+  compressor: "odysseus-free-compressor",
+};
 export type OdysseusPricing = "free_api_tier" | "signup_credit_only" | "paid" | "unknown";
 export type PolicyResult = "disabled" | "allowed" | "denied";
 export type PolicyReason =
@@ -232,9 +238,20 @@ export function evaluateOdysseusPolicy(
     const quota = approvals.some(
       (route) => routeId(route) === requestedRoute && route.quotaAvailable === false
     );
+    const unavailable = approvals.some(
+      (route) => routeId(route) === requestedRoute && route.providerAvailable === false
+    );
     return {
       result: "denied",
-      reason: quota ? "FREE_QUOTA_EXHAUSTED" : known ? "POLICY_DENIED" : "NO_APPROVED_FREE_ROUTE",
+      reason: quota
+        ? "FREE_QUOTA_EXHAUSTED"
+        : unavailable
+          ? "PROVIDER_UNAVAILABLE"
+          : known
+            ? metadata.freeOnly
+              ? "NO_APPROVED_FREE_ROUTE"
+              : "POLICY_DENIED"
+            : "NO_APPROVED_FREE_ROUTE",
       metadata,
       selectedRoute: null,
       candidates,

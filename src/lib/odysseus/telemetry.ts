@@ -1,4 +1,4 @@
-import type { OdysseusMetadata, PolicyDecision } from "./policy";
+import { ODYSSEUS_ROLE_POOLS, type OdysseusMetadata, type PolicyDecision } from "./policy";
 
 export type UsageSource = "measured" | "estimated" | "unavailable";
 
@@ -38,6 +38,15 @@ export interface OdysseusTelemetry {
   usage_source: UsageSource;
 }
 
+export interface OdysseusUsageProjection {
+  input_tokens?: number | null;
+  cached_input_tokens?: number | null;
+  output_tokens?: number | null;
+  reasoning_tokens?: number | null;
+  total_tokens?: number | null;
+  usage_source?: UsageSource;
+}
+
 export function createOdysseusTelemetry(
   decision: PolicyDecision,
   requestId: string | null = null,
@@ -55,7 +64,7 @@ export function createOdysseusTelemetry(
     provider_account: null,
     requested_model: requestedModel,
     actual_model: route?.model ?? null,
-    routing_pool: metadata ? `odysseus-free-${metadata.role}` : null,
+    routing_pool: metadata ? ODYSSEUS_ROLE_POOLS[metadata.role] : null,
     routing_reason: route ? "approved_exact_route" : decision.reason,
     free_only: metadata?.freeOnly ?? null,
     free_route_verified: route ? route.pricing === "free_api_tier" : false,
@@ -79,5 +88,21 @@ export function createOdysseusTelemetry(
     success: decision.result === "allowed" ? null : false,
     policy_result: decision.result === "allowed" ? "allowed" : (decision.reason ?? decision.result),
     usage_source: "unavailable",
+  };
+}
+
+/** Add provider-authoritative usage without converting absent fields to zero. */
+export function withOdysseusUsage(
+  telemetry: OdysseusTelemetry,
+  usage: OdysseusUsageProjection
+): OdysseusTelemetry {
+  return {
+    ...telemetry,
+    input_tokens: usage.input_tokens ?? null,
+    cached_input_tokens: usage.cached_input_tokens ?? null,
+    output_tokens: usage.output_tokens ?? null,
+    reasoning_tokens: usage.reasoning_tokens ?? null,
+    total_tokens: usage.total_tokens ?? null,
+    usage_source: usage.usage_source ?? "unavailable",
   };
 }

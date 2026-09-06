@@ -5,7 +5,7 @@ import {
   parseOdysseusMetadata,
   type OdysseusRouteApproval,
 } from "../../src/lib/odysseus/policy.ts";
-import { createOdysseusTelemetry } from "../../src/lib/odysseus/telemetry.ts";
+import { createOdysseusTelemetry, withOdysseusUsage } from "../../src/lib/odysseus/telemetry.ts";
 import { enforceOdysseusPolicy } from "../../src/lib/odysseus/routeGuard.ts";
 
 const base = {
@@ -108,7 +108,7 @@ test("role approval does not cross from scout to coder", () => {
     approvals,
     "test-provider/test-model"
   );
-  assert.equal(decision.reason, "POLICY_DENIED");
+  assert.equal(decision.reason, "NO_APPROVED_FREE_ROUTE");
 });
 
 test("free-only excludes paid, unknown pricing, and exhausted quota", () => {
@@ -117,19 +117,25 @@ test("free-only excludes paid, unknown pricing, and exhausted quota", () => {
     approvals,
     "test-provider/paid-model"
   );
-  assert.equal(paid.reason, "POLICY_DENIED");
+  assert.equal(paid.reason, "NO_APPROVED_FREE_ROUTE");
   const unknown = evaluateOdysseusPolicy(
     parseOdysseusMetadata(headers({ "x-odysseus-allowed-routes": "test-provider/unknown-price" })),
     approvals,
     "test-provider/unknown-price"
   );
-  assert.equal(unknown.reason, "POLICY_DENIED");
+  assert.equal(unknown.reason, "NO_APPROVED_FREE_ROUTE");
   const exhausted = evaluateOdysseusPolicy(
     parseOdysseusMetadata(headers()),
     [{ ...base, role: "scout", quotaAvailable: false }],
     "test-provider/test-model"
   );
   assert.equal(exhausted.reason, "FREE_QUOTA_EXHAUSTED");
+  const unavailable = evaluateOdysseusPolicy(
+    parseOdysseusMetadata(headers()),
+    [{ ...base, role: "scout", providerAvailable: false }],
+    "test-provider/test-model"
+  );
+  assert.equal(unavailable.reason, "PROVIDER_UNAVAILABLE");
 });
 
 test("telemetry keeps unavailable usage null and measured/estimated labels distinct", () => {
@@ -140,6 +146,19 @@ test("telemetry keeps unavailable usage null and measured/estimated labels disti
   assert.equal(telemetry.usage_source, "unavailable");
   assert.equal(telemetry.actual_model, "test-model");
   assert.equal(telemetry.provider, "test-provider");
+  const measured = withOdysseusUsage(telemetry, {
+    input_tokens: 10,
+    output_tokens: 4,
+    total_tokens: 14,
+    usage_source: "measured",
+  });
+  assert.equal(measured.input_tokens, 10);
+  assert.equal(measured.cached_input_tokens, null);
+  assert.equal(measured.usage_source, "measured");
+  assert.equal(
+    withOdysseusUsage(telemetry, { output_tokens: 4, usage_source: "estimated" }).usage_source,
+    "estimated"
+  );
 });
 
 test("sensitive requests are rejected before a provider adapter can be invoked", async () => {
