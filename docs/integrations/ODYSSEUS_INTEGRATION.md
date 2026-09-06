@@ -7,8 +7,8 @@ authority, workspace/file access, tool execution, validation, and final acceptan
 ## Baseline and changes
 
 - Upstream base: `release/v3.8.51` at `9d1a896c6`.
-- Integration commits include `efa69d20b`, `94ccf7096`, `b6dee480e`, `e9e56fa30`,
-  `890f82a28`, `6d68d0bfe`, and `f1af97a11`.
+- Integration commits include the policy, telemetry, persistence, documentation, and
+  regression milestones through `06db99178`.
 - Changed files: `src/lib/odysseus/policy.ts`, `src/lib/odysseus/telemetry.ts`,
   `src/lib/odysseus/routeGuard.ts`, the OpenAI chat and Responses routes, the chat
   emergency-fallback gate, durable call-log telemetry, and `tests/unit/odysseus-policy.test.ts`.
@@ -63,7 +63,7 @@ for `scout`. OpenRouter's current model catalog listed this exact `:free` ID dur
 2026-09-05 verification pass; its retention, training, and risk metadata remain `unknown`.
 This is not a claim that provider terms are unchanged. Revalidate those terms before production.
 
-## Redacted denial and telemetry examples
+## Redacted denial, live response, and telemetry examples
 
 The local preflight acceptance captured this denial before any provider adapter call:
 
@@ -82,6 +82,28 @@ X-Odysseus-Free-Route-Verified: false
   }
 }
 ```
+
+The isolated live acceptance completed against the local `POST /v1/chat/completions` route:
+
+```text
+status=200
+policy=allowed
+provider=openrouter
+actual_model=nvidia/nemotron-3-super-120b-a12b:free
+input_tokens=27
+cached_input_tokens=0
+output_tokens=16
+reasoning_tokens=14
+total_tokens=43
+usage_source=measured
+free_only=true
+free_route_verified=true
+```
+
+The redacted response body contained the OpenRouter generation envelope and the same measured
+usage fields. The model stopped at the configured 16-token output ceiling, so this acceptance
+validates transport, exact attribution, and usage evidence without depending on a particular
+completion length.
 
 An allowed terminal call-log record uses the same schema as the response telemetry; measured
 fields are populated only from provider usage:
@@ -123,7 +145,7 @@ sensitive/private-source denial, exact role approval, paid/unknown pricing exclu
 quota exhaustion, provider/model attribution, null telemetry, and measured cache/reasoning
 usage projection.
 
-Run the credential-gated live acceptance when a legitimate key is available:
+Run the live acceptance after connecting the approved provider credential:
 
 ```bash
 OMNIROUTE_API_KEY=... npm run test:odysseus-live
@@ -135,10 +157,9 @@ provider failure. The OpenRouter credential must already be configured in OmniRo
 provider connection store; the script does not accept or transmit upstream credentials.
 It does not print or persist the optional gateway key. Production Odysseus is not connected.
 
-## Remaining milestone evidence
+## Remaining work before Odysseus connection
 
-Before declaring release readiness, add an environment-gated live test using one
-operator-provided free API credential. Capture the redacted raw response, authoritative
-usage, account identity, latency, and any fallback chain from the existing call-log
-pipeline. Also add an adapter-level regression that invokes a fake provider and proves
-the sensitive branch has zero provider calls.
+Milestone-1 live evidence is complete with one operator-provided OpenRouter credential and the
+single approved free route above. Before connecting production Odysseus, the operator should
+revalidate provider terms, decide whether the unknown retention/training/risk fields are
+acceptable, and perform the separate human-owned production deployment and acceptance review.
