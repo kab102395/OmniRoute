@@ -30,6 +30,7 @@ const RPM_WINDOW_MS = 60_000;
 const RPM_LIMIT = 20;
 const DAILY_LIMIT_BASE = 50;
 const DAILY_LIMIT_PURCHASED = 1000;
+const PURCHASED_CREDITS_THRESHOLD = 10;
 
 interface AccountWindowState {
   dayKey: string;
@@ -126,6 +127,23 @@ function pruneRpmWindow(state: AccountWindowState, now: number): void {
 export function setPurchasedTier(accountKey: string, purchasedAtLeast10: boolean): void {
   const state = getOrInitState(accountKey, Date.now());
   state.purchasedAtLeast10 = purchasedAtLeast10;
+}
+
+/**
+ * Synchronize the tier from OpenRouter's account-level cumulative credit
+ * total. `total_credits` is the trustworthy lifetime top-up signal used by
+ * OpenRouter's $10 free-tier rule; `total_usage` is intentionally not used
+ * because spending credits must not revoke the permanently unlocked tier.
+ *
+ * Missing/invalid data is a no-op so the conservative 50/day fallback stays
+ * in place whenever upstream credit evidence is unavailable.
+ */
+export function syncPurchasedTierFromCredits(
+  accountKey: string,
+  totalCredits: number | null | undefined
+): void {
+  if (!Number.isFinite(totalCredits)) return;
+  setPurchasedTier(accountKey, (totalCredits as number) >= PURCHASED_CREDITS_THRESHOLD);
 }
 
 /**

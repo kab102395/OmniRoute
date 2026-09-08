@@ -40,6 +40,7 @@ import {
   getFreeWindowStatus,
   isFreeVariantModel,
   resolveAccountKey,
+  syncPurchasedTierFromCredits,
   type FreeWindowStatus,
 } from "./openrouterFreeWindow.ts";
 
@@ -344,8 +345,10 @@ export async function fetchOpenrouterQuota(
   connectionId: string,
   connection?: Record<string, unknown>
 ): Promise<QuotaInfo | null> {
+  const accountKey = resolveAccountKey(connectionId, connection);
   const cached = quotaCache.get(connectionId);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    syncPurchasedTierFromCredits(accountKey, cached.quota.totalCredits);
     return cached.quota;
   }
 
@@ -375,6 +378,9 @@ export async function fetchOpenrouterQuota(
     }
 
     const quota = mergeOpenrouterResults(keyResult, creditsResult);
+    if (quota && quota.totalCredits !== null && quota.totalUsage !== null) {
+      syncPurchasedTierFromCredits(accountKey, quota.totalCredits);
+    }
     return quota ? rememberQuota(connectionId, quota) : null;
   } catch {
     // Network error, timeout, etc. — fail open (graceful "unknown").

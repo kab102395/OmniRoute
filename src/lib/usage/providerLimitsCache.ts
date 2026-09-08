@@ -38,6 +38,13 @@ export function mergeProviderLimitsCacheEntry(
 ): ProviderLimitsCacheEntry {
   if (!previous) return next;
 
+  // OpenRouter includes locally tracked free-window rows even when both
+  // upstream credit endpoints fail. Preserve the last successful account
+  // observation instead of replacing it with those fallback-only rows.
+  if (provider === "openrouter" && next.message && hasUsableCachedData(previous)) {
+    return previous;
+  }
+
   if (!next.quotas && next.message && hasUsableCachedData(previous)) {
     return previous;
   }
