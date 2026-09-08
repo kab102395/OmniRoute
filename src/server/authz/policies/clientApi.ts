@@ -1,6 +1,10 @@
 import { isDashboardSessionAuthenticated } from "@/shared/utils/apiAuth.ts";
 import { isRequireApiKeyEnabled } from "@/shared/utils/featureFlags";
 import { extractApiKey } from "@/sse/services/auth.ts";
+import {
+  authenticateGatewayClient,
+  gatewayScopeForRequest,
+} from "@/lib/db/gatewayClientCredentials";
 import { extractGoogApiKeyHeader } from "@/sse/services/googApiKeyAuth.ts";
 import type { AuthOutcome, PolicyContext, RoutePolicy } from "../context";
 import { allow, reject } from "../context";
@@ -75,6 +79,29 @@ export const clientApiPolicy: RoutePolicy = {
       }
 
       return reject(401, "AUTH_002", "Authentication required");
+    }
+
+    // Gateway-client credentials are provider-owned caller credentials. They
+    // are accepted only for the two explicitly scoped inference operations;
+    // they never participate in upstream provider selection or tool authority.
+    if (bearer.startsWith("ogc_live_")) {
+      const required = gatewayScopeForRequest(
+        ctx.request.method,
+        ctx.classification.normalizedPath
+      );
+      if (!required)
+        return reject(403, "AUTH_SCOPE", "Gateway client is not permitted for this endpoint");
+      const verified = authenticateGatewayClient(bearer, required);
+      if (verified.kind === "invalid")
+        return reject(401, "AUTH_002", "Invalid or revoked gateway credential");
+      if (verified.kind === "insufficient")
+        return reject(403, "AUTH_SCOPE", `Gateway client scope '${required}' is not granted`);
+      return allow({
+        kind: "client_api_key",
+        id: verified.record.id,
+        label: `gateway-client:${required}`,
+        scopes: verified.record.scopes,
+      });
     }
 
     const { validateApiKey } = await import("../../../lib/db/apiKeys");
