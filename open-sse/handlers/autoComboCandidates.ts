@@ -33,6 +33,15 @@ import { parseModel } from "@omniroute/open-sse/services/model.ts";
 import type { StrictZeroCostExclusionReason } from "@omniroute/open-sse/services/autoCombo/strictZeroCostFilter.ts";
 import { getProviderConnectionById } from "@/lib/db/providers";
 import { getExcludedConnectionIds } from "@/lib/db/autoCandidateOverrides";
+import { getProviderLimitsCache, type ProviderLimitsCacheEntry } from "@/lib/db/providerLimits";
+import { isFreeModel } from "@/shared/utils/freeModels";
+
+export interface AutoComboCandidateQuota {
+  remaining: number;
+  limit: number;
+  window: "daily";
+  observedAt: string;
+}
 
 /**
  * One row of the unfiltered, reason-annotated candidate pool (#9133): every
@@ -44,6 +53,53 @@ import { getExcludedConnectionIds } from "@/lib/db/autoCandidateOverrides";
  */
 export interface AutoComboCandidateView {
   provider: string;
+  model: string;
+  modelStr: string;
+  free: boolean;
+  excluded: boolean;
+  reachable: boolean;
+  breakerState: string;
+  connectionCooldown: boolean;
+  modelLocked: boolean;
+  quota: AutoComboCandidateQuota | null;
+  /**
+   * Why STRICT_ZERO_COST would exclude this candidate from dispatch, or null
+   * when it would not — and null as well when the policy is off, which is the
+   * default. Reported, never enforced: this listing shows the candidate either
+   * way, the routing path is what acts on it.
+   */
+  freeAccessExclusion: StrictZeroCostExclusionReason | null;
+}
+
+function finiteNonNegative(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Project only the existing persisted daily free-window observation. A missing
+ * or malformed cache is deliberately unknown, never an invented zero quota.
+ */
+export function buildCandidateQuota(
+  free: boolean,
+  cache: ProviderLimitsCacheEntry | null | undefined
+): AutoComboCandidateQuota | null {
+  if (!free || !cache?.fetchedAt || !cache.quotas) return null;
+  const daily = cache.quotas.free_daily;
+  if (!daily || typeof daily !== "object" || Array.isArray(daily)) return null;
+  const quota = daily as Record<string, unknown>;
+  const remaining = finiteNonNegative(quota.remaining);
+  const limit = finiteNonNegative(quota.total);
+  if (remaining === null || limit === null || typeof quota.resetAt !== "string") return null;
+  return {
+    remaining: Math.min(remaining, limit),
+    limit,
+    window: "daily",
+    observedAt: cache.fetchedAt,
+  };
+}
+
+export function buildCandidateView(input: {
+  provider: string;
   connectionId: string;
   model: string;
   modelStr: string;
@@ -52,13 +108,23 @@ export interface AutoComboCandidateView {
   breakerState: string;
   connectionCooldown: boolean;
   modelLocked: boolean;
-  /**
-   * Why STRICT_ZERO_COST would exclude this candidate from dispatch, or null
-   * when it would not — and null as well when the policy is off, which is the
-   * default. Reported, never enforced: this listing shows the candidate either
-   * way, the routing path is what acts on it.
-   */
   freeAccessExclusion: StrictZeroCostExclusionReason | null;
+  cache: ProviderLimitsCacheEntry | null | undefined;
+}): AutoComboCandidateView {
+  const free = isFreeModel(input.provider, { id: input.model });
+  return {
+    provider: input.provider,
+    model: input.model,
+    modelStr: input.modelStr,
+    free,
+    excluded: input.excluded,
+    reachable: input.reachable,
+    breakerState: input.breakerState,
+    connectionCooldown: input.connectionCooldown,
+    modelLocked: input.modelLocked,
+    quota: buildCandidateQuota(free, input.cache),
+    freeAccessExclusion: input.freeAccessExclusion,
+  };
 }
 
 export interface AutoComboCandidatesResult {
@@ -109,8 +175,7 @@ async function decorateCandidate(candidate: {
   // key isn't family-scoped.
   const bareModel = parseModel(candidate.modelStr).model ?? candidate.model;
   const modelLocked = isModelLocked(candidate.provider, candidate.connectionId, bareModel);
-
-  return {
+  return buildCandidateView({
     provider: candidate.provider,
     connectionId: candidate.connectionId,
     model: candidate.model,
@@ -121,7 +186,8 @@ async function decorateCandidate(candidate: {
     connectionCooldown,
     modelLocked,
     freeAccessExclusion: candidate.freeAccessExclusion ?? null,
-  };
+    cache: getProviderLimitsCache(candidate.connectionId),
+  });
 }
 
 /**
