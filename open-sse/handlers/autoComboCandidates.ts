@@ -111,7 +111,8 @@ export function buildCandidateView(input: {
   freeAccessExclusion: StrictZeroCostExclusionReason | null;
   cache: ProviderLimitsCacheEntry | null | undefined;
 }): AutoComboCandidateView {
-  const free = isFreeModel(input.provider, { id: input.model });
+  const catalogModel = parseModel(input.modelStr).model ?? input.model;
+  const free = isFreeModel(input.provider, { id: catalogModel });
   return {
     provider: input.provider,
     model: input.model,

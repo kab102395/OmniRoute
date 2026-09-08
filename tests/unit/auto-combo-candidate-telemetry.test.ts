@@ -46,9 +46,21 @@ test("free candidate with unknown quota remains explicitly unknown", () => {
 });
 
 test("paid candidate is not classified as free and has no free quota", () => {
-  const view = candidate({ model: "openrouter/provider/model" });
+  const view = candidate({
+    model: "openrouter/provider/model",
+    modelStr: "openrouter/provider/model",
+  });
   assert.equal(view.free, false);
   assert.equal(view.quota, null);
+});
+
+test("catalog classification handles the OpenCode public prefix", () => {
+  const view = candidate({
+    provider: "opencode",
+    model: "oc/deepseek-v4-flash-free",
+    modelStr: "oc/deepseek-v4-flash-free",
+  });
+  assert.equal(view.free, true);
 });
 
 test("exhausted free quota is reported as zero remaining, not unknown", () => {
