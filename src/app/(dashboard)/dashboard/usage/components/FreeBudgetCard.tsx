@@ -49,6 +49,15 @@ export interface FreeBudgetData {
   noCredentialProviders?: string[];
 }
 
+interface ConnectedOpenRouterQuota {
+  dailyRemaining: number;
+  dailyTotal: number;
+  rpmRemaining: number;
+  rpmTotal: number;
+  creditsRemaining: number | null;
+  fetchedAt: string | null;
+}
+
 export type FreeBudgetSort = "tokens" | "name" | "provider";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -323,6 +332,7 @@ function FreeTypeBadge({ freeType, label }: { freeType: string; label: string })
 
 export function FreeBudgetView({
   data,
+  openRouterQuota = null,
   sort = "tokens",
   hideAvoid = false,
   search = "",
@@ -331,6 +341,7 @@ export function FreeBudgetView({
   labels = DEFAULT_LABELS,
 }: {
   data: FreeBudgetData;
+  openRouterQuota?: ConnectedOpenRouterQuota | null;
   sort?: FreeBudgetSort;
   hideAvoid?: boolean;
   search?: string;
@@ -406,6 +417,40 @@ export function FreeBudgetView({
         />
         <Kpi label={labels.usedThisMonth} value={fmt(usedThisMonth)} valueClass="text-text-muted" />
       </div>
+
+      {openRouterQuota && (
+        <div
+          data-testid="connected-openrouter-quota"
+          className="mx-3 mt-3 rounded-md border border-sky-500/30 bg-sky-500/5 px-3 py-2"
+        >
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+            <span className="material-symbols-outlined text-[14px] text-sky-500">
+              account_balance
+            </span>
+            <span className="font-semibold text-sky-600 dark:text-sky-400">
+              Your connected OpenRouter allowance
+            </span>
+            {openRouterQuota.fetchedAt && (
+              <span className="text-text-muted">· live quota synced</span>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-main">
+            <span>
+              <strong>{fmt(openRouterQuota.dailyRemaining)}</strong> /{" "}
+              {fmt(openRouterQuota.dailyTotal)} free requests today
+            </span>
+            <span>
+              <strong>{openRouterQuota.rpmRemaining}</strong> / {openRouterQuota.rpmTotal} per
+              minute
+            </span>
+            {openRouterQuota.creditsRemaining !== null && (
+              <span>
+                <strong>${openRouterQuota.creditsRemaining.toFixed(2)}</strong> credits remaining
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Stacked bar — pool-deduped; segments sum to steadyRecurringTokens */}
       {barSegments.length > 0 && (
@@ -594,6 +639,7 @@ export function FreeBudgetView({
 export default function FreeBudgetCard() {
   const t = useTranslations("freeBudget");
   const [data, setData] = useState<FreeBudgetData | null>(null);
+  const [openRouterQuota, setOpenRouterQuota] = useState<ConnectedOpenRouterQuota | null>(null);
   const [sort, setSort] = useState<FreeBudgetSort>("tokens");
   const [hideAvoid, setHideAvoid] = useState(false);
   const [search, setSearch] = useState("");
@@ -609,6 +655,44 @@ export default function FreeBudgetCard() {
       .catch(() => {
         /* best-effort */
       });
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      fetch("/api/providers/client").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/usage/provider-limits").then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([providerPayload, limitsPayload]) => {
+        if (!alive) return;
+        const connection = (providerPayload?.connections || []).find(
+          (candidate: { provider?: string }) =>
+            String(candidate.provider || "").toLowerCase() === "openrouter"
+        );
+        const cache = connection ? limitsPayload?.caches?.[connection.id] : null;
+        const quotas = cache?.quotas || {};
+        const daily = quotas.free_daily;
+        const rpm = quotas.free_rpm;
+        const credits = quotas.credits;
+        if (!daily || !rpm) return;
+        setOpenRouterQuota({
+          dailyRemaining: Number(daily.remaining ?? 0),
+          dailyTotal: Number(daily.total ?? 0),
+          rpmRemaining: Number(rpm.remaining ?? 0),
+          rpmTotal: Number(rpm.total ?? 0),
+          creditsRemaining:
+            credits && Number.isFinite(Number(credits.remaining))
+              ? Number(credits.remaining)
+              : null,
+          fetchedAt: typeof cache.fetchedAt === "string" ? cache.fetchedAt : null,
+        });
+      })
+      .catch(() => {
+        /* The generic catalog remains useful when personal quota is unavailable. */
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const providers = useMemo(() => {
@@ -679,6 +763,7 @@ export default function FreeBudgetCard() {
       </div>
       <FreeBudgetView
         data={data}
+        openRouterQuota={openRouterQuota}
         sort={sort}
         hideAvoid={hideAvoid}
         search={search}
