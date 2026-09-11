@@ -27,6 +27,7 @@ type QuotaRow = {
   unit?: unknown;
   displayName?: unknown;
   quotaSource?: unknown;
+  currency?: unknown;
 };
 
 type ProviderLimitCache = {
@@ -41,6 +42,8 @@ type HomeProviderUsageRow = {
   totalTokens: number;
   successfulRequests: number;
   quota: QuotaRow | null;
+  quotaKey: string | null;
+  creditQuota: QuotaRow | null;
 };
 
 type UsageResponse = {
@@ -84,21 +87,31 @@ function providerLabel(provider: string): string {
   return typeof definition?.name === "string" ? definition.name : provider;
 }
 
-function quotaForProvider(
+function quotasForProvider(
   provider: string,
   caches: Record<string, ProviderLimitCache>,
   connections: ProviderConnection[]
-): QuotaRow | null {
+): { quota: QuotaRow | null; quotaKey: string | null; creditQuota: QuotaRow | null } {
   const entries = connections
     .filter((connection) => connection.isActive !== false && connection.provider === provider)
     .map((connection) => (connection.id ? caches[connection.id] : undefined))
     .filter((entry): entry is ProviderLimitCache => !!entry);
   for (const entry of entries) {
     const quotas = entry.quotas || {};
-    const preferred = quotas.monthly || quotas.free_daily || quotas.credits;
-    if (preferred) return preferred;
+    if (provider === "openrouter") {
+      if (quotas.free_daily || quotas.credits) {
+        return {
+          quota: quotas.free_daily || null,
+          quotaKey: quotas.free_daily ? "free_daily" : null,
+          creditQuota: quotas.credits || null,
+        };
+      }
+    }
+    const preferredKey = quotas.monthly ? "monthly" : quotas.free_daily ? "free_daily" : "credits";
+    const preferred = quotas[preferredKey];
+    if (preferred) return { quota: preferred, quotaKey: preferredKey, creditQuota: null };
   }
-  return null;
+  return { quota: null, quotaKey: null, creditQuota: null };
 }
 
 export function buildHomeProviderUsageRows(
@@ -116,6 +129,8 @@ export function buildHomeProviderUsageRows(
       totalTokens: 0,
       successfulRequests: 0,
       quota: null,
+      quotaKey: null,
+      creditQuota: null,
     };
     current.requests += numberValue(row.requests);
     current.totalTokens += numberValue(row.totalTokens);
@@ -134,12 +149,14 @@ export function buildHomeProviderUsageRows(
         totalTokens: 0,
         successfulRequests: 0,
         quota: null,
+        quotaKey: null,
+        creditQuota: null,
       });
     }
   }
 
   return Array.from(grouped.values())
-    .map((row) => ({ ...row, quota: quotaForProvider(row.provider, caches, connections) }))
+    .map((row) => ({ ...row, ...quotasForProvider(row.provider, caches, connections) }))
     .sort((a, b) => b.totalTokens - a.totalTokens || b.requests - a.requests);
 }
 
@@ -251,10 +268,13 @@ export default function HomeUsageOverview() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {rows.map((row) => {
+              const isOpenRouter = row.provider === "openrouter";
               const total = quotaTotal(row.quota);
               const remaining = quotaRemaining(row.quota);
               const used = numberValue(row.quota?.used);
               const percentage = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+              const displayRequests = isOpenRouter && row.quota ? used : row.requests;
+              const creditBalance = numberValue(row.creditQuota?.remaining);
               return (
                 <div key={row.provider} className="rounded-xl border border-border p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -263,7 +283,7 @@ export default function HomeUsageOverview() {
                       <span className="font-semibold truncate">{row.label}</span>
                     </div>
                     <span className="text-xs text-text-muted whitespace-nowrap">
-                      {formatHomeUsageNumber(row.requests)} requests
+                      {formatHomeUsageNumber(displayRequests)} requests
                     </span>
                   </div>
                   <div className="flex items-end justify-between mt-4">
@@ -271,7 +291,17 @@ export default function HomeUsageOverview() {
                       <p className="text-2xl font-bold">{formatHomeUsageNumber(row.totalTokens)}</p>
                       <p className="text-xs text-text-muted">tokens routed</p>
                     </div>
-                    {row.quota && total > 0 ? (
+                    {isOpenRouter && row.quota && total > 0 ? (
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-green-500">
+                          {formatHomeUsageNumber(remaining)} requests left
+                        </p>
+                        <p className="text-[11px] text-text-muted">
+                          {formatHomeUsageNumber(used)} / {formatHomeUsageNumber(total)} daily free
+                          tier
+                        </p>
+                      </div>
+                    ) : row.quota && total > 0 ? (
                       <div className="text-right">
                         <p className="text-sm font-semibold text-green-500">
                           {formatHomeUsageNumber(remaining)} left
@@ -284,6 +314,14 @@ export default function HomeUsageOverview() {
                       <span className="text-[11px] text-text-muted">Allowance not reported</span>
                     )}
                   </div>
+                  {isOpenRouter && row.creditQuota && (
+                    <div className="mt-3 flex items-center justify-between rounded-lg bg-green-500/10 px-3 py-2">
+                      <span className="text-xs text-text-muted">OpenRouter credit balance</span>
+                      <span className="text-sm font-semibold text-green-500">
+                        ${creditBalance.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   {row.quota && total > 0 && (
                     <div className="mt-3 h-2 rounded-full bg-bg-subtle overflow-hidden">
                       <div
@@ -294,9 +332,11 @@ export default function HomeUsageOverview() {
                     </div>
                   )}
                   <p className="text-[11px] text-text-muted mt-3">
-                    {row.quota
-                      ? "Allowance data is shown from the latest provider sync."
-                      : "Usage is tracked locally; this provider does not expose a known allowance to OmniRoute."}
+                    {isOpenRouter
+                      ? "Requests are the OpenRouter free-tier meter; tokens are shown as secondary usage."
+                      : row.quota
+                        ? "Allowance data is shown from the latest provider sync."
+                        : "Usage is tracked locally; this provider does not expose a known allowance to OmniRoute."}
                   </p>
                 </div>
               );
