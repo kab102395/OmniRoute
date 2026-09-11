@@ -102,6 +102,36 @@ const OPENROUTER_FREE_MODELS = [
   "nvidia/nemotron-3-super-120b-a12b:free",
 ] as const;
 
+/** Exact direct-provider free routes; these providers also expose paid models. */
+const DIRECT_FREE_ROUTES = [
+  [
+    "llm7",
+    "gemini-3.1-flash-lite",
+    "LLM7 anonymous/free-token turbo route; revalidate live limits.",
+  ],
+  ["zai", "glm-4.7-flash", "Z.AI model listed as free; revalidate current limits."],
+  ["zai", "glm-4.5-flash", "Z.AI model listed as free; revalidate current limits."],
+  ["zai", "glm-4.6v-flash", "Z.AI vision model listed as free; revalidate current limits."],
+] as const;
+
+const DIRECT_FREE_APPROVALS: readonly OdysseusRouteApproval[] = DIRECT_FREE_ROUTES.flatMap(
+  ([provider, model, notes]) =>
+    ODYSSEUS_ROLES.map((role) => ({
+      provider,
+      model,
+      role,
+      enabled: true,
+      approvalStatus: "approved" as const,
+      pricing: "free_api_tier" as const,
+      signupCreditAllowed: false,
+      privateSourceApproved: false,
+      dataRetention: "unknown" as const,
+      trainingOnInput: "unknown" as const,
+      riskCategory: "unknown" as const,
+      notes,
+    }))
+);
+
 /** All verified free routes are available to each Odysseus role. */
 export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] =
   OPENROUTER_FREE_MODELS.flatMap((model) =>
@@ -120,7 +150,7 @@ export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] =
       notes:
         "Catalog-verified free route; revalidate current provider terms before production use.",
     }))
-  );
+  ).concat(DIRECT_FREE_APPROVALS);
 
 function isApproval(value: unknown): value is OdysseusRouteApproval {
   const item = record(value);

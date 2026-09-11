@@ -56,12 +56,30 @@ test("built-in registry approves the current OpenRouter free catalog for every r
   const routes = new Set(
     DEFAULT_ODYSSEUS_APPROVALS.map((route) => `${route.provider}/${route.model}`)
   );
-  assert.equal(routes.size, 19);
-  assert.equal(DEFAULT_ODYSSEUS_APPROVALS.length, 19 * 4);
+  assert.equal(routes.size, 23);
+  assert.equal(DEFAULT_ODYSSEUS_APPROVALS.length, 23 * 4);
   assert.ok(DEFAULT_ODYSSEUS_APPROVALS.every((route) => route.pricing === "free_api_tier"));
-  assert.ok(DEFAULT_ODYSSEUS_APPROVALS.every((route) => route.model.endsWith(":free")));
+  assert.ok(
+    DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.provider === "openrouter").every((route) =>
+      route.model.endsWith(":free")
+    )
+  );
   for (const role of ["coder", "scout", "reasoner", "compressor"] as const) {
-    assert.equal(DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.role === role).length, 19);
+    assert.equal(DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.role === role).length, 23);
+  }
+});
+
+test("built-in registry exposes direct LLM7 and Z.AI free routes to Odysseus", () => {
+  const routes = new Set(
+    DEFAULT_ODYSSEUS_APPROVALS.map((route) => `${route.provider}/${route.model}`)
+  );
+  for (const route of [
+    "llm7/gemini-3.1-flash-lite",
+    "zai/glm-4.7-flash",
+    "zai/glm-4.5-flash",
+    "zai/glm-4.6v-flash",
+  ]) {
+    assert.ok(routes.has(route), route);
   }
 });
 

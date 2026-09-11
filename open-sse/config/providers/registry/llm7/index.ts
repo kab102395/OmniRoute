@@ -19,6 +19,7 @@ export const llm7Provider: RegistryEntry = {
     requestJitter: 50,
   },
   models: [
+    { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash Lite (LLM7, free turbo)" },
     { id: "gpt-4o-mini-2024-07-18", name: "GPT-4o mini (LLM7)" },
     { id: "gpt-4.1-nano-2025-04-14", name: "GPT-4.1 nano (LLM7)" },
     { id: "deepseek-r1-0528", name: "DeepSeek R1 (LLM7)" },

@@ -64,10 +64,12 @@ the policy-registry-unavailable reason and is denied. If unset, the single built
    pipeline when terminal attempt logging runs. Unknown measurements are `null`, never zero.
 
 Built-in approval covers the 19 OpenRouter models advertised with the `:free` suffix during
-the 2026-09-05 verification pass, for every Odysseus role. The exact list is maintained in
-`src/lib/odysseus/policy.ts`; `openrouter/nvidia/nemotron-3-super-120b-a12b:free` remains the
-live-tested route. Retention, training, and risk metadata remain `unknown`, and this is not a
-claim that provider terms are unchanged. Revalidate those terms before production.
+the 2026-09-05 verification pass plus four exact direct-provider routes (LLM7 Gemini 3.1 Flash
+Lite and Z.AI GLM-4.7-Flash, GLM-4.5-Flash, and GLM-4.6V-Flash), for every Odysseus role. The
+exact list is maintained in `src/lib/odysseus/policy.ts`; `openrouter/nvidia/nemotron-3-super-120b-a12b:free`
+remains the live-tested route. Direct-provider routes are exact because those providers also
+expose paid or transient models. Retention, training, and risk metadata remain `unknown`, and
+this is not a claim that provider terms are unchanged. Revalidate those terms before production.
 
 ## Redacted denial, live response, and telemetry examples
 

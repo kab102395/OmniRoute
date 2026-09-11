@@ -851,11 +851,12 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     textIcon: "LM",
     website: "https://llm7.io",
     hasFree: true,
-    freeNote: "No signup required - 2 req/s, 20 RPM, 100 req/hr free tier",
+    freeNote:
+      "Anonymous/free-token turbo access is available; exact limits and model availability are live and may change.",
     authHint:
       "Use any non-empty key (for example 'unused'). If older built-in models return model_unavailable, use Available Models → Import from /models or Auto-Sync; verified live model: gemini-3.1-flash-lite.",
     apiHint:
-      "Works without API key (use 'unused' as key). Get free token at token.llm7.io for higher limits.",
+      "Use a non-empty placeholder key for anonymous access, or get a free token at token.llm7.io for higher limits. Use the live /v1/models catalog because availability changes.",
   },
   llamagate: {
     id: "llamagate",
@@ -1452,9 +1453,9 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     passthroughModels: true,
     website: "https://seekai.cc",
     hasFree: true,
-    freeNote: "Signup credit toward available models; amount and eligibility are set by SeekAi, not OmniRoute.",
-    authHint:
-      "Create an API key at https://seekai.cc, then paste it here as a Bearer token.",
+    freeNote:
+      "Signup credit toward available models; amount and eligibility are set by SeekAi, not OmniRoute.",
+    authHint: "Create an API key at https://seekai.cc, then paste it here as a Bearer token.",
     apiHint:
       "Create an API key at https://seekai.cc, then paste it here as a Bearer token. OpenAI-compatible base URL: https://seekai.cc/v1.",
   },

@@ -148,6 +148,9 @@ export const APIKEY_PROVIDERS_REGIONAL = {
     color: "#2563EB",
     textIcon: "ZA",
     website: "https://open.bigmodel.cn",
+    hasFree: true,
+    freeNote:
+      "GLM-4.7-Flash, GLM-4.5-Flash, and GLM-4.6V-Flash are listed as free; other Z.AI models may be paid or promotional.",
     apiHint: "API key from https://open.bigmodel.cn/usercenter/apikeys",
   },
   alibaba: {
