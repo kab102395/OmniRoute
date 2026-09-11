@@ -10,6 +10,30 @@
 
 import { parseResetTime, type UsageQuota } from "./quota.ts";
 
+export const MISTRAL_DOCUMENTED_MONTHLY_TOKENS = 1_000_000_000;
+
+/** Build the local estimate used when Mistral does not expose billing data. */
+export function buildMistralEstimatedMonthlyQuota(
+  usedTokens: number,
+  totalTokens: number = MISTRAL_DOCUMENTED_MONTHLY_TOKENS
+): UsageQuota {
+  const total = Math.max(0, Math.floor(totalTokens));
+  const used = Math.min(Math.max(0, Math.floor(usedTokens)), total);
+  const remaining = Math.max(total - used, 0);
+  const now = new Date();
+  const resetAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+  return {
+    used,
+    total,
+    remaining,
+    remainingPercentage: total > 0 ? Math.round((remaining / total) * 100) : 0,
+    resetAt,
+    unlimited: false,
+    quotaSource: "localUsageHistory",
+    displayName: "Mistral monthly allowance (estimated)",
+  };
+}
+
 function readHeader(headers: Headers, ...names: string[]): string | null {
   for (const name of names) {
     const value = headers.get(name);

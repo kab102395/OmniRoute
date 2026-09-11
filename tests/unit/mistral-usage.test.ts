@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseMistralRateLimitHeaders } from "../../open-sse/services/usage/mistral.ts";
+import {
+  buildMistralEstimatedMonthlyQuota,
+  parseMistralRateLimitHeaders,
+} from "../../open-sse/services/usage/mistral.ts";
 
 test("Mistral usage parser exposes request and token windows", () => {
   const result = parseMistralRateLimitHeaders(
@@ -27,4 +30,13 @@ test("Mistral usage parser does not invent quota data", () => {
   const result = parseMistralRateLimitHeaders(new Headers());
   assert.equal(result.hasHeaders, false);
   assert.deepEqual(result.quotas, {});
+});
+
+test("Mistral monthly estimate uses the documented allowance", () => {
+  const quota = buildMistralEstimatedMonthlyQuota(125_000_000);
+  assert.equal(quota.used, 125_000_000);
+  assert.equal(quota.total, 1_000_000_000);
+  assert.equal(quota.remaining, 875_000_000);
+  assert.equal(quota.quotaSource, "localUsageHistory");
+  assert.match(quota.displayName ?? "", /estimated/);
 });

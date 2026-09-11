@@ -20,6 +20,7 @@ import { supportsProviderQuota } from "@/shared/utils/providerQuotaVisibility";
 import { mergeProviderLimitsCacheEntry, toProviderLimitsCacheEntry } from "./providerLimitsCache";
 import { getCredentialRefreshExecutor } from "@omniroute/open-sse/executors/credential.ts";
 import { getUsageForProvider } from "@omniroute/open-sse/services/usage.ts";
+import { buildMistralEstimatedMonthlyQuota } from "@omniroute/open-sse/services/usage/mistral.ts";
 import { cooldownUntilMs } from "@omniroute/open-sse/services/accountFallback.ts";
 import { rotationGroupFor } from "@omniroute/open-sse/services/refreshSerializer.ts";
 import {
@@ -44,6 +45,7 @@ import {
   type CredentialRefreshOptions,
   type ProviderConnectionLike,
 } from "./providerLimits/credentialRefresh";
+import { getMonthlyProviderTokensForConnection } from "./usageStats";
 export { shouldAttemptRotatingRefresh } from "./providerLimits/credentialRefresh";
 type JsonRecord = Record<string, unknown>;
 type SyncSource = "manual" | "scheduled";
@@ -184,6 +186,27 @@ export function isSupportedUsageConnection(connection: ProviderConnectionLike | 
   if (connection.authType !== "apikey" && connection.authType !== "api_key") return false;
   if (PROVIDER_LIMITS_APIKEY_PROVIDERS.has(connection.provider)) return true;
   return supportsProviderQuota(connection.provider, connection);
+}
+
+function addMistralLocalMonthlyEstimate(
+  connection: ProviderConnectionLike,
+  usage: JsonRecord
+): JsonRecord {
+  if (connection.provider !== "mistral") return usage;
+
+  const quotas = isRecord(usage.quotas) ? usage.quotas : {};
+  const usedTokens = getMonthlyProviderTokensForConnection("mistral", connection.id);
+  return {
+    ...usage,
+    quotas: {
+      ...quotas,
+      monthly: buildMistralEstimatedMonthlyQuota(usedTokens),
+    },
+    message:
+      typeof usage.message === "string" && usage.message.trim()
+        ? `${usage.message} Monthly usage is estimated from OmniRoute-routed tokens.`
+        : "Monthly usage is estimated from OmniRoute-routed tokens; Mistral billing data is not available to this API key.",
+  };
 }
 
 function withStatus(error: Error, status: number): Error & { status: number } {
@@ -745,11 +768,14 @@ async function fetchLiveProviderLimitsWithOptions(
     // mirroring the OAuth branch below (proxyInfo?.proxy ?? null). Without this, API-key
     // usage egresses on the host IP, ignoring the connection's assigned proxy.
     const apiKeyProxy = await resolveProxyForConnection(connectionId);
-    const usage = sanitizeUsageQuotasForProvider(
-      connection.provider,
-      (await runWithProxyContext(apiKeyProxy?.proxy ?? null, () =>
-        getUsageForProvider(connection as unknown as JsonRecord, options)
-      )) as JsonRecord
+    const usage = addMistralLocalMonthlyEstimate(
+      connection,
+      sanitizeUsageQuotasForProvider(
+        connection.provider,
+        (await runWithProxyContext(apiKeyProxy?.proxy ?? null, () =>
+          getUsageForProvider(connection as unknown as JsonRecord, options)
+        )) as JsonRecord
+      )
     );
     if (isRecord(usage.quotas)) {
       setQuotaCache(connectionId, connection.provider, usage.quotas);
@@ -779,9 +805,12 @@ async function fetchLiveProviderLimitsWithOptions(
         await syncToCloudIfEnabled();
       }
 
-      let usageData = sanitizeUsageQuotasForProvider(
-        conn.provider,
-        (await getUsageForProvider(conn as unknown as JsonRecord, options)) as JsonRecord
+      let usageData = addMistralLocalMonthlyEstimate(
+        conn,
+        sanitizeUsageQuotasForProvider(
+          conn.provider,
+          (await getUsageForProvider(conn as unknown as JsonRecord, options)) as JsonRecord
+        )
       );
 
       // Reactive 401 recovery (on-demand/force path only): an unauthorized usage
@@ -797,9 +826,12 @@ async function fetchLiveProviderLimitsWithOptions(
         if (forced.refreshed) {
           conn = forced.connection;
           await syncToCloudIfEnabled();
-          usageData = sanitizeUsageQuotasForProvider(
-            conn.provider,
-            (await getUsageForProvider(conn as unknown as JsonRecord, options)) as JsonRecord
+          usageData = addMistralLocalMonthlyEstimate(
+            conn,
+            sanitizeUsageQuotasForProvider(
+              conn.provider,
+              (await getUsageForProvider(conn as unknown as JsonRecord, options)) as JsonRecord
+            )
           );
         }
       }
