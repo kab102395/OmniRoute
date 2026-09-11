@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Button, Input, Modal } from "@/shared/components";
+import { Button, Input } from "@/shared/components";
 
 export interface MitmSudoPasswordModalProps {
   isOpen: boolean;
@@ -13,8 +13,10 @@ export interface MitmSudoPasswordModalProps {
 }
 
 /**
- * Shared sudo password modal for Agent Bridge privileged actions (#7938).
- * Same UX as AgentBridgeMaintenanceCard Repair / Remove CA.
+ * Shared inline sudo password panel for Agent Bridge privileged actions (#7938).
+ * This intentionally avoids a focus-trapping modal: a browser focus/portal
+ * failure must never make the dashboard appear frozen while an admin action is
+ * waiting for credentials.
  */
 export function MitmSudoPasswordModal({
   isOpen,
@@ -46,41 +48,47 @@ export function MitmSudoPasswordModal({
 
   const displayError = error ?? localError;
 
+  if (!isOpen) return null;
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={tCli("sudoPasswordRequiredTitle")} size="sm">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-start gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
-          <span className="material-symbols-outlined text-[20px] text-yellow-500">warning</span>
-          <p className="text-xs text-text-muted">{tCli("sudoPasswordHint")}</p>
-        </div>
-
-        <Input
-          type="password"
-          placeholder={tCli("enterSudoPassword")}
-          value={sudoPassword}
-          onChange={(event) => setSudoPassword(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !busy) handleConfirm();
-          }}
-        />
-
-        {displayError && (
-          <div className="flex items-center gap-2 rounded bg-red-500/10 px-2 py-1.5 text-xs text-red-600">
-            <span className="material-symbols-outlined text-[14px]">error</span>
-            <span>{displayError}</span>
-          </div>
-        )}
-
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={handleClose} disabled={busy}>
-            {tCli("cancel")}
-          </Button>
-          <Button size="sm" onClick={handleConfirm} disabled={busy}>
-            {tCli("confirm")}
-          </Button>
-        </div>
+    <div className="rounded-xl border border-yellow-500/30 bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="material-symbols-outlined text-[20px] text-yellow-500">lock</span>
+        <h3 className="text-sm font-semibold text-text-main">
+          {tCli("sudoPasswordRequiredTitle")}
+        </h3>
       </div>
-    </Modal>
+      <div className="flex items-start gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
+        <span className="material-symbols-outlined text-[20px] text-yellow-500">warning</span>
+        <p className="text-xs text-text-muted">{tCli("sudoPasswordHint")}</p>
+      </div>
+
+      <Input
+        type="password"
+        placeholder={tCli("enterSudoPassword")}
+        value={sudoPassword}
+        onChange={(event) => setSudoPassword(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !busy) handleConfirm();
+        }}
+      />
+
+      {displayError && (
+        <div className="flex items-center gap-2 rounded bg-red-500/10 px-2 py-1.5 text-xs text-red-600">
+          <span className="material-symbols-outlined text-[14px]">error</span>
+          <span>{displayError}</span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={handleClose} disabled={busy}>
+          {tCli("cancel")}
+        </Button>
+        <Button size="sm" onClick={handleConfirm} disabled={busy}>
+          {tCli("confirm")}
+        </Button>
+      </div>
+    </div>
   );
 }
 
