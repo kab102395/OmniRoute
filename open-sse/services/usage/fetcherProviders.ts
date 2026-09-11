@@ -84,6 +84,8 @@ export const USAGE_FETCHER_PROVIDERS = [
   // AgentRouter (New-API) console balance (GET /api/user/self)
   "agentrouter",
   "kilocode",
+  // Mistral standard API keys expose live rate-limit headers on API responses.
+  "mistral",
   // Devin CLI agentic quota (Codeium seat-management GetUserStatus, protobuf)
   "devin-cli",
 ] as const;
