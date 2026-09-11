@@ -38,3 +38,11 @@ test("auto/best-coding does NOT carry a free tier spec (only auto/best-free is f
   assert.equal(state.variant, "coding");
   assert.notEqual(state.spec?.tier, "free");
 });
+
+test("friendly free aliases carry the free tier into the request routing path", async () => {
+  for (const model of ["auto/free-forever", "auto/free-coding", "auto/free-vision"]) {
+    const state = await resolveAutoRoutingState(model);
+    assert.equal(state.recognizedBuiltInAuto, true);
+    assert.equal(state.spec?.tier, "free", `${model} must enforce the free candidate filter`);
+  }
+});

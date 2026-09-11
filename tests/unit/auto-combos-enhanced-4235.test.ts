@@ -61,3 +61,25 @@ test("#4235 Phase A: each new entry materializes into a virtual auto-combo", asy
     assert.equal(combo.strategy, "auto", `${id} uses the auto strategy`);
   }
 });
+
+test("free-first aliases are advertised and materialize with the free tier", async () => {
+  for (const id of ["auto/free-forever", "auto/free-coding", "auto/free-vision"]) {
+    assert.ok(Object.hasOwn(builtinCatalog.AUTO_TEMPLATE_VARIANTS, id), `${id} is advertised`);
+    const combo = await builtinCatalog.createBuiltinAutoCombo(id, id.slice("auto/".length));
+    assert.equal(combo.id, id);
+    assert.equal(combo.strategy, "auto");
+  }
+
+  assert.deepEqual(builtinCatalog.resolveBuiltinAutoSpec("auto/free-forever", "free-forever"), {
+    category: "chat",
+    tier: "free",
+  });
+  assert.deepEqual(builtinCatalog.resolveBuiltinAutoSpec("auto/free-coding", "free-coding"), {
+    category: "coding",
+    tier: "free",
+  });
+  assert.deepEqual(builtinCatalog.resolveBuiltinAutoSpec("auto/free-vision", "free-vision"), {
+    category: "vision",
+    tier: "free",
+  });
+});

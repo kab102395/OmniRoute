@@ -61,6 +61,51 @@ test("GET /api/free-models returns 200 with models array (no auth required by de
   assert.ok(typeof first.monthlyTokens === "number", "model.monthlyTokens should be a number");
 });
 
+test("GET /api/free-models?includeLive=true merges cached OpenRouter free discoveries", async () => {
+  await settingsDb.updateSettings({ requireLogin: false });
+  const cacheDir = path.join(TEST_DATA_DIR, "cache");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(cacheDir, "openrouter-catalog.json"),
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      data: [
+        {
+          id: "new-provider/new-free-model:free",
+          name: "New Free Model",
+          pricing: { prompt: "0", completion: "0" },
+          architecture: { output_modalities: ["text"] },
+        },
+        {
+          id: "new-provider/paid-model",
+          name: "Paid Model",
+          pricing: { prompt: "1", completion: "1" },
+        },
+      ],
+    })
+  );
+
+  const res = await freeModelsRoute.GET(
+    makeRequest("http://localhost/api/free-models?includeLive=true") as never
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.meta.includeLive, true);
+  assert.equal(body.meta.stale, false);
+  assert.ok(
+    body.models.some(
+      (model: { provider: string; modelId: string; live?: boolean }) =>
+        model.provider === "openrouter" &&
+        model.modelId === "new-provider/new-free-model:free" &&
+        model.live === true
+    )
+  );
+  assert.ok(
+    !body.models.some((model: { modelId: string }) => model.modelId === "new-provider/paid-model")
+  );
+});
+
 test("GET /api/free-models returns 401/403 when auth is required and no token provided", async () => {
   await settingsDb.updateSettings({ requireLogin: true });
   process.env.INITIAL_PASSWORD = "test-password-free-models";

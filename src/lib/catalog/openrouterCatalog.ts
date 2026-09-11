@@ -28,7 +28,7 @@ function getCacheFilePath(): string {
   return path.join(cacheDir, "openrouter-catalog.json");
 }
 
-interface CatalogEntry {
+export interface OpenRouterCatalogEntry {
   id: string;
   name?: string;
   description?: string;
@@ -56,7 +56,7 @@ interface CatalogEntry {
 
 interface CacheFile {
   fetchedAt: string;
-  data: CatalogEntry[];
+  data: OpenRouterCatalogEntry[];
 }
 
 /** Read cached catalog from disk. Returns null if not found or unparseable. */
@@ -72,7 +72,7 @@ function readCache(): CacheFile | null {
 }
 
 /** Write catalog to disk cache. */
-function writeCache(data: CatalogEntry[]): void {
+function writeCache(data: OpenRouterCatalogEntry[]): void {
   const filePath = getCacheFilePath();
   const cache: CacheFile = {
     fetchedAt: new Date().toISOString(),
@@ -86,7 +86,7 @@ function writeCache(data: CatalogEntry[]): void {
 }
 
 /** Fetch fresh catalog from OpenRouter API. */
-async function fetchFromAPI(): Promise<CatalogEntry[]> {
+async function fetchFromAPI(): Promise<OpenRouterCatalogEntry[]> {
   const res = await fetch(OPENROUTER_API_URL, {
     headers: {
       "User-Agent": "OmniRoute/2.0",
@@ -99,7 +99,7 @@ async function fetchFromAPI(): Promise<CatalogEntry[]> {
     throw new Error(`OpenRouter API returned ${res.status}: ${res.statusText}`);
   }
 
-  const json = (await res.json()) as { data?: CatalogEntry[] };
+  const json = (await res.json()) as { data?: OpenRouterCatalogEntry[] };
   const models = Array.isArray(json.data) ? json.data : [];
   return models;
 }
@@ -113,7 +113,7 @@ async function fetchFromAPI(): Promise<CatalogEntry[]> {
  * - cachedAt: ISO string of when the data was cached (null if fresh fetch)
  */
 export async function getOpenRouterCatalog(): Promise<{
-  data: CatalogEntry[];
+  data: OpenRouterCatalogEntry[];
   stale: boolean;
   cachedAt: string | null;
   fromCache: boolean;
@@ -163,7 +163,7 @@ export async function getOpenRouterCatalog(): Promise<{
  * Used by admin endpoints and manual refresh actions.
  */
 export async function refreshOpenRouterCatalog(): Promise<{
-  data: CatalogEntry[];
+  data: OpenRouterCatalogEntry[];
   ok: boolean;
   error?: string;
 }> {

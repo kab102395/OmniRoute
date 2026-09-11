@@ -20,6 +20,13 @@ export { AUTO_FAMILY_IDS };
 
 export const VALID_AUTO_VARIANTS = new Set<AutoVariant>(VALID_VARIANTS);
 
+export const FREE_AUTO_IDS = new Set([
+  "auto/best-free",
+  "auto/free-forever",
+  "auto/free-coding",
+  "auto/free-vision",
+]);
+
 export const AUTO_TEMPLATE_VARIANTS: Record<string, AutoVariant | undefined> = {
   "auto/best-coding": "coding",
   "auto/best-reasoning": "smart",
@@ -44,6 +51,11 @@ export const AUTO_TEMPLATE_VARIANTS: Record<string, AutoVariant | undefined> = {
   "auto/claude-opus": "smart",
   "auto/claude-sonnet": "coding",
   "auto/best-free": "cheap",
+  // Friendly aliases for the free-first onboarding flow. These resolve through
+  // the explicit free tier overlay below and remain virtual/no-persistence ids.
+  "auto/free-forever": undefined,
+  "auto/free-coding": undefined,
+  "auto/free-vision": undefined,
   // Subscription-first routing (see `subscriptionLadder.ts`). `auto/subscription`
   // maps to no weight variant on purpose: its pool is already restricted to
   // plan-included connections, so the scorer should rank them on merit rather
@@ -81,6 +93,9 @@ export const AUTO_SUFFIX_VARIANTS: string[] = [
  */
 export const FLAT_TIER_OVERLAY_IDS: Record<string, AutoTier> = {
   "auto/best-free": "free",
+  "auto/free-forever": "free",
+  "auto/free-coding": "free",
+  "auto/free-vision": "free",
   "auto/subscription": "subscription",
   "auto/thrifty": "thrifty",
 };
@@ -161,6 +176,14 @@ const VISION_CATEGORY_AUTO_IDS: Record<string, { category: "vision"; tier?: Auto
 export function resolveBuiltinAutoSpec(modelStr: string, suffix: string): BuiltinAutoSpec {
   const visionSpec = VISION_CATEGORY_AUTO_IDS[modelStr];
   if (visionSpec) return visionSpec;
+
+  const freeAliasSpecs: Record<string, { category: AutoCategory; tier: "free" }> = {
+    "auto/free-forever": { category: "chat", tier: "free" },
+    "auto/free-coding": { category: "coding", tier: "free" },
+    "auto/free-vision": { category: "vision", tier: "free" },
+  };
+  const freeAlias = freeAliasSpecs[modelStr];
+  if (freeAlias) return freeAlias;
 
   const resolved = resolveAutoVariant(modelStr, suffix);
   if (resolved.recognized) {

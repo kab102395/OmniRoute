@@ -2,6 +2,7 @@ import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import type { AutoVariant } from "@omniroute/open-sse/services/autoCombo/autoPrefix.ts";
 import {
+  FREE_AUTO_IDS,
   AUTO_TEMPLATE_VARIANTS,
   VALID_AUTO_VARIANTS,
 } from "@omniroute/open-sse/services/autoCombo/builtinCatalog.ts";
@@ -36,7 +37,7 @@ function classifyAutoModel(
     // free-tier candidate filter (excludes paid backends). Mirrors the
     // hardcoded spec in builtinCatalog.ts:createBuiltinAutoCombo. Without this,
     // chat.ts routes auto/best-free as plain auto/cheap (no tier filter).
-    const spec = model === "auto/best-free" ? { tier: "free" as const } : undefined;
+    const spec = FREE_AUTO_IDS.has(model) ? { tier: "free" as const } : undefined;
     return { variant: AUTO_TEMPLATE_VARIANTS[model], spec, recognizedBuiltInAuto: true };
   }
   if (!model.startsWith("auto/")) return { recognizedBuiltInAuto };

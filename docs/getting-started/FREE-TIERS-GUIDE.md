@@ -13,6 +13,10 @@ credit card, KYC, or acceptance of provider-specific terms.
 
 OmniRoute **aggregates** these free tiers into one endpoint. Instead of signing up for 10 different services, you connect them all to OmniRoute and use `model: "auto"` to automatically pick the best free option for each request.
 
+For explicit free-only routing, use `auto/free-forever` for general chat,
+`auto/free-coding` for coding tasks, or `auto/free-vision` for vision requests.
+These are virtual presets and do not create persisted database combo rows.
+
 ---
 
 ## Representative Free-Access Providers
