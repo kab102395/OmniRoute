@@ -1153,6 +1153,7 @@ export function withDeterministicRouteHeaders(
     "X-OmniRoute-Provider": route.provider,
     "X-OmniRoute-Credential-Alias": route.credentialAlias,
     "X-OmniRoute-Key-Slot": route.keySlot,
+    ...(route.connectionId ? { "X-OmniRoute-Connection-Id": route.connectionId } : {}),
   };
 
   try {

@@ -1,5 +1,9 @@
 import { errorResponse } from "@omniroute/open-sse/utils/error";
 import {
+  applyDeterministicProviderRoute,
+  getDeterministicProviderRoute,
+} from "@/lib/deterministicProviderRoutes";
+import {
   evaluateOdysseusPolicy,
   parseOdysseusMetadata,
   resolveConfiguredOdysseusApprovals,
@@ -64,10 +68,16 @@ export function resolveOdysseusPolicyDecision(
  */
 export function enforceOdysseusPolicy(headers: Headers, body: unknown): OdysseusGuardResult {
   const parsed = parseOdysseusMetadata(headers, body);
+  // Model alias resolution stores deterministic route identity as a non-enumerable
+  // symbol on the request body. Preserve that identity across this defensive
+  // projection; spreading the body alone would retain the served model while
+  // silently dropping the account/key-slot binding and its response metadata.
+  const deterministicRoute = getDeterministicProviderRoute(body);
   const bodyRecord =
     body && typeof body === "object" && !Array.isArray(body)
       ? { ...(body as Record<string, unknown>) }
       : {};
+  if (deterministicRoute) applyDeterministicProviderRoute(bodyRecord, deterministicRoute);
   const model = typeof bodyRecord.model === "string" ? bodyRecord.model : null;
   if (!parsed.enabled) {
     const decision = evaluateOdysseusPolicy(parsed);

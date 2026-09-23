@@ -8,6 +8,7 @@ import {
 } from "../../src/lib/deterministicProviderRoutes.ts";
 import { resolveKeyForRequest } from "../../open-sse/services/apiKeyRotator.ts";
 import { withDeterministicRouteHeaders } from "../../src/sse/handlers/chatHelpers.ts";
+import { enforceOdysseusPolicy } from "../../src/lib/odysseus/routeGuard.ts";
 
 const CONNECTIONS = [
   {
@@ -124,9 +125,81 @@ test("route identity is non-secret and preserves streaming/tool fields", async (
   assert.equal(response.headers.get("X-OmniRoute-Served-Model"), "mistral/codestral-latest");
   assert.equal(response.headers.get("X-OmniRoute-Credential-Alias"), "codestral-account-a");
   assert.equal(response.headers.get("X-OmniRoute-Key-Slot"), "primary");
+  assert.equal(response.headers.get("X-OmniRoute-Connection-Id"), "connection-a");
   assert.equal(await response.text(), 'data: {"tool_calls":[]}\n\n');
   assert.equal(
     [...response.headers.values()].some((value) => value.includes("secret-")),
+    false
+  );
+});
+
+test("Odysseus policy projection preserves deterministic route identity", () => {
+  const route = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountB,
+    [
+      {
+        id: "connection-a",
+        apiKey: "secret-a",
+        providerSpecificData: { extraApiKeys: ["secret-b"] },
+      },
+    ]
+  );
+  assert.ok(route);
+  const body: Record<string, unknown> = { model: DETERMINISTIC_CODESRAL_ALIASES.accountB };
+  applyDeterministicProviderAlias(body, route);
+
+  const projected = enforceOdysseusPolicy(new Headers(), body);
+  const projectedRoute = getDeterministicProviderRoute(projected.body);
+  assert.equal(projectedRoute?.routeId, "mistral-codestral-account-b");
+  assert.equal(projectedRoute?.credentialAlias, "codestral-account-b");
+  assert.equal(projectedRoute?.keySlot, "extra_0");
+  assert.equal(projectedRoute?.connectionId, "connection-a");
+  assert.equal(JSON.stringify(projected.body).includes("secret-"), false);
+});
+
+test("A/B route headers preserve distinct logical and credential identities on cache paths", () => {
+  const routes = [
+    resolveDeterministicCodestralRouteFromConnections(DETERMINISTIC_CODESRAL_ALIASES.accountA, [
+      {
+        id: "connection-a",
+        apiKey: "secret-a",
+        providerSpecificData: { extraApiKeys: ["secret-b"] },
+      },
+    ]),
+    resolveDeterministicCodestralRouteFromConnections(DETERMINISTIC_CODESRAL_ALIASES.accountB, [
+      {
+        id: "connection-a",
+        apiKey: "secret-a",
+        providerSpecificData: { extraApiKeys: ["secret-b"] },
+      },
+    ]),
+  ];
+  assert.ok(routes[0]);
+  assert.ok(routes[1]);
+  const hit = withDeterministicRouteHeaders(
+    new Response("hit", { headers: { "X-OmniRoute-Cache": "HIT" } }),
+    routes[0]
+  );
+  const miss = withDeterministicRouteHeaders(
+    new Response("miss", { headers: { "X-OmniRoute-Cache": "MISS" } }),
+    routes[1]
+  );
+  assert.notEqual(
+    hit.headers.get("X-OmniRoute-Route-Id"),
+    miss.headers.get("X-OmniRoute-Route-Id")
+  );
+  assert.notEqual(
+    hit.headers.get("X-OmniRoute-Credential-Alias"),
+    miss.headers.get("X-OmniRoute-Credential-Alias")
+  );
+  assert.equal(hit.headers.get("X-OmniRoute-Cache"), "HIT");
+  assert.equal(miss.headers.get("X-OmniRoute-Cache"), "MISS");
+  assert.equal(
+    [...hit.headers.values()].some((value) => value.includes("secret-")),
+    false
+  );
+  assert.equal(
+    [...miss.headers.values()].some((value) => value.includes("secret-")),
     false
   );
 });
