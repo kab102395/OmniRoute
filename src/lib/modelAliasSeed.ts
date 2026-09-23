@@ -1,6 +1,8 @@
 import { deleteModelAlias, getModelAliases, setModelAlias } from "@/lib/db/models";
 
 export const DEFAULT_MODEL_ALIAS_SEED = Object.freeze({
+  "mistral/codestral-account-a": "mistral/codestral-latest",
+  "mistral/codestral-account-b": "mistral/codestral-latest",
   "gemini-3.1-pro": "agy/gemini-pro-agent",
   "gemini-3.1-flash-lite-preview": "gemini/gemini-3.1-flash-lite",
   "claude-sonnet-4-6": "agy/claude-sonnet-4-6",

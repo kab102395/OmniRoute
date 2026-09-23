@@ -30,7 +30,11 @@ import {
   addParamToBlocklist,
   isAutoLearnGloballyEnabled,
 } from "@/lib/db/paramFilters";
-import { applyFingerprint, isCliCompatEnabled, stripInternalBodyFields } from "../config/cliFingerprints.ts";
+import {
+  applyFingerprint,
+  isCliCompatEnabled,
+  stripInternalBodyFields,
+} from "../config/cliFingerprints.ts";
 import { supportsClaudeMaxEffort, supportsXHighEffort } from "../config/providerModels.ts";
 import { getThinkingBudgetConfig, ThinkingMode } from "../services/thinkingBudget.ts";
 import {
@@ -458,6 +462,9 @@ export class BaseExecutor {
       (credentials.providerSpecificData?.extraApiKeys as string[] | undefined) ?? [];
     const selectedKeyId = (credentials.providerSpecificData as Record<string, unknown> | undefined)
       ?.selectedKeyId as string | undefined;
+    const strictSelectedKeyId =
+      (credentials.providerSpecificData as Record<string, unknown> | undefined)
+        ?.strictSelectedKeyId === true;
     const validExtras = extraKeys.filter((k) => typeof k === "string" && k.trim().length > 0);
     let effectiveKey = credentials.apiKey;
     // Rotate whenever extras exist — including empty primary + populated extras (#8467).
@@ -467,8 +474,10 @@ export class BaseExecutor {
         credentials.connectionId,
         credentials.apiKey || "",
         validExtras,
-        selectedKeyId ?? null
+        selectedKeyId ?? null,
+        strictSelectedKeyId
       );
+      if (!resolved && strictSelectedKeyId) return undefined;
       effectiveKey = resolved?.key ?? credentials.apiKey;
       if (resolved && credentials.providerSpecificData) {
         (credentials.providerSpecificData as Record<string, unknown>).selectedKeyId =

@@ -102,7 +102,12 @@ import {
   withCorrelationId,
   withModalityBridgeHeader,
   withConversationId,
+  withDeterministicRouteHeaders,
 } from "./chatHelpers";
+import {
+  getDeterministicProviderRoute,
+  type DeterministicProviderRoute,
+} from "@/lib/deterministicProviderRoutes";
 import { buildModalityBridgeHeader } from "@/lib/guardrails/modalityBridge/bridgeStats";
 import type { VideoBridgeLogRedactionEntry } from "@/lib/guardrails/videoBridge";
 import { reanchorVideoBridgeRedaction } from "@/lib/guardrails/videoBridge";
@@ -569,6 +574,16 @@ async function handleChatImplementation(
   // resolveRoutingModel). The resolved model still passes through
   // enforceApiKeyPolicy below, so it cannot bypass per-key allowlists.
   let modelStr = resolveRoutingModel(request, body);
+  const deterministicRoute = getDeterministicProviderRoute(body);
+  if (deterministicRoute && !deterministicRoute.available) {
+    return withDeterministicRouteHeaders(
+      errorResponse(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        `Deterministic route unavailable: ${deterministicRoute.credentialAlias}`
+      ),
+      deterministicRoute
+    );
+  }
   if (typeof modelStr === "string") {
     // Preserve literal combo names such as "Claude [1m]". Context tags are
     // stripped only when the exact request does not identify a combo.
@@ -1222,6 +1237,7 @@ async function handleChatImplementation(
     // ── Global Fallback Provider (#689) ────────────────────────────────────
     // If combo exhausted all models, try the global fallback before giving up.
     if (
+      !deterministicRoute &&
       !response.ok &&
       [502, 503].includes(response.status) &&
       typeof (settings as any)?.globalFallbackModel === "string" &&
@@ -1334,7 +1350,8 @@ async function handleChatImplementation(
       sessionId,
       sessionAffinityKey,
       forceLiveComboTest: isComboLiveTest,
-      forcedConnectionId: requestedConnectionId,
+      forcedConnectionId: deterministicRoute?.connectionId ?? requestedConnectionId,
+      deterministicRoute,
       correlationId: reqId,
       conversationId,
       routingComboId,
@@ -1350,7 +1367,10 @@ async function handleChatImplementation(
   recordTelemetry(telemetry);
   return withModalityBridgeHeader(
     withConversationId(
-      withCorrelationId(withSessionHeader(response, sessionId), reqId),
+      withDeterministicRouteHeaders(
+        withCorrelationId(withSessionHeader(response, sessionId), reqId),
+        deterministicRoute
+      ),
       conversationId
     ),
     modalityBridgeHeader
@@ -1391,6 +1411,7 @@ async function handleSingleModelChat(
     reasoningRequestTags?: string[];
     reasoningTransportFallback?: "skip" | "drop";
     managedLease?: ManagedLeaseDispatchContext | null;
+    deterministicRoute?: DeterministicProviderRoute | null;
     /** #12150 P1b: video-bridge log/Memory shadow — undefined on every non-video request. */
     videoBridgeLog?: VideoBridgeLog;
     /**
@@ -1521,9 +1542,12 @@ async function handleSingleModelChat(
   })();
   const forceLiveComboTest = runtimeOptions.forceLiveComboTest === true;
   const bypassProviderQuotaPolicy = hasProviderQuotaBypassScope(apiKeyInfo?.scopes);
+  const deterministicRoute = runtimeOptions.deterministicRoute ?? null;
+  const hasDeterministicRoute = deterministicRoute !== null;
   const hasForcedConnection =
-    typeof runtimeOptions.forcedConnectionId === "string" &&
-    runtimeOptions.forcedConnectionId.trim().length > 0;
+    (typeof runtimeOptions.forcedConnectionId === "string" &&
+      runtimeOptions.forcedConnectionId.trim().length > 0) ||
+    hasDeterministicRoute;
   let effectiveAllowedConnections = intersectAllowedConnectionIds(
     apiKeyInfo?.allowedConnections ?? null,
     runtimeOptions.allowedConnectionIds ?? null
@@ -1678,6 +1702,9 @@ async function handleSingleModelChat(
                   : {}),
                 ...(runtimeOptions.managedLease
                   ? { lease: credentialLease(runtimeOptions.managedLease) }
+                  : {}),
+                ...(deterministicRoute?.keySlot
+                  ? { forcedKeySlot: deterministicRoute.keySlot }
                   : {}),
                 ...(() => {
                   const effectiveForcedId = resolveForcedConnectionForCredentialPool({
@@ -2212,7 +2239,12 @@ async function handleSingleModelChat(
       // Odysseus free-only requests are never allowed to enter OmniRoute's
       // legacy emergency fallback, which may target a non-approved route.
       const odysseusFreeOnly = request?.headers?.get?.("x-odysseus-free-only") === "true";
-      if (!odysseusFreeOnly && !runtimeOptions.emergencyFallbackTried && !comboName) {
+      if (
+        !deterministicRoute &&
+        !odysseusFreeOnly &&
+        !runtimeOptions.emergencyFallbackTried &&
+        !comboName
+      ) {
         const fallbackDecision = shouldUseFallback(
           Number(result.status || 0),
           String(result.error || ""),

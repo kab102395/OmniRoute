@@ -369,7 +369,8 @@ export function resolveKeyForRequest(
   connectionId: string,
   primaryKey: string,
   extraKeys: string[],
-  selectedKeyId: string | null
+  selectedKeyId: string | null,
+  strictSelectedKeyId = false
 ): { key: string; keyId: string } | null {
   if (selectedKeyId) {
     const health = getOrCreateHealth(connectionId, selectedKeyId);
@@ -387,7 +388,7 @@ export function resolveKeyForRequest(
     }
   }
 
-  return getValidApiKey(connectionId, primaryKey, extraKeys);
+  return strictSelectedKeyId ? null : getValidApiKey(connectionId, primaryKey, extraKeys);
 }
 
 export function removeConnectionHealth(connectionId: string): void {

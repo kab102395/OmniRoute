@@ -4,6 +4,7 @@ import {
   getModelInfoOrRetirementResponse,
 } from "../services/model";
 import { clearAccountError, markAccountUnavailable } from "../services/auth";
+import type { DeterministicProviderRoute } from "@/lib/deterministicProviderRoutes";
 import { connectionHasExtraKeys } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import { createBuiltinAutoCombo } from "@omniroute/open-sse/services/autoCombo/builtinCatalog.ts";
 import * as log from "../utils/logger";
@@ -1135,6 +1136,35 @@ export function withSelectedConnectionHeader(
       headers: response.headers,
     });
     cloned.headers.set("X-OmniRoute-Selected-Connection-Id", connectionId);
+    return inheritTrustedLocalRateLimitResponse(response, cloned);
+  }
+}
+
+export function withDeterministicRouteHeaders(
+  response: Response,
+  route: DeterministicProviderRoute | null | undefined
+): Response {
+  if (!response || !route) return response;
+
+  const headers = {
+    "X-OmniRoute-Route-Id": route.routeId,
+    "X-OmniRoute-Requested-Model": route.requestedAlias,
+    "X-OmniRoute-Served-Model": route.servedModel,
+    "X-OmniRoute-Provider": route.provider,
+    "X-OmniRoute-Credential-Alias": route.credentialAlias,
+    "X-OmniRoute-Key-Slot": route.keySlot,
+  };
+
+  try {
+    for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
+    return response;
+  } catch {
+    const cloned = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    for (const [name, value] of Object.entries(headers)) cloned.headers.set(name, value);
     return inheritTrustedLocalRateLimitResponse(response, cloned);
   }
 }

@@ -13,6 +13,10 @@ import { DEFAULT_MODEL_ALIAS_SEED } from "@/lib/modelAliasSeed";
 import { getComboByName } from "@/lib/db/combos";
 import { getModelIsHidden } from "@/lib/db/models";
 import { resolveProviderId } from "@/shared/constants/providers";
+import {
+  applyDeterministicProviderAlias,
+  resolveDeterministicProviderRoute,
+} from "@/lib/deterministicProviderRoutes";
 
 let cachedAliases: Record<string, unknown> | null = null;
 let lastFetch = 0;
@@ -109,6 +113,11 @@ export async function resolveModelAliasWithSeedFallbackOnBody(
   body: Record<string, unknown> | null | undefined
 ): Promise<void> {
   if (!body || typeof body !== "object") return;
+  const deterministicRoute = await resolveDeterministicProviderRoute(body.model);
+  if (deterministicRoute) {
+    applyDeterministicProviderAlias(body, deterministicRoute);
+    return;
+  }
   body.model = await resolveModelAliasWithSeedFallback(body.model as string | null | undefined);
 }
 
