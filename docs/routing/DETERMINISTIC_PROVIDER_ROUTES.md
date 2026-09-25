@@ -1,3 +1,7 @@
+---
+title: "Deterministic Provider Routes"
+---
+
 # Deterministic Mistral qualification routes
 
 OmniRoute keeps `mistral/codestral-latest` as the normal load-balanced Codestral route. For callers that need stable qualification attribution, these aliases are available:
