@@ -53,6 +53,14 @@ export function connectionHasExtraKeys(connectionId: string, extraKeys?: string[
   return _connectionExtraKeys.get(connectionId) ?? false;
 }
 
+/** A quota failure is connection-terminal only when there is no sibling key slot. */
+export function shouldDisableConnectionForQuotaFailure(
+  connectionId: string,
+  extraKeys?: string[]
+): boolean {
+  return !connectionHasExtraKeys(connectionId, extraKeys);
+}
+
 // In-memory health status (synced to DB on state changes)
 // Key format: "primary" | "extra_0" | "extra_1" | ...
 interface KeyHealth {

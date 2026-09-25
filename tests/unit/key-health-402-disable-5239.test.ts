@@ -23,8 +23,10 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const { recordKeyHealthStatus } = await import("../../open-sse/handlers/chatCore/keyHealth.ts");
-const { getValidApiKey, getAllKeyHealth, resetKeyStatus } =
+const { getValidApiKey, getAllKeyHealth, resetKeyStatus, shouldDisableConnectionForQuotaFailure } =
   await import("../../open-sse/services/apiKeyRotator.ts");
+const { shouldRecordStreamingKeyHealthStatus } =
+  await import("../../open-sse/handlers/chatCore/keyHealth.ts");
 
 test.after(() => {
   core.resetDbInstance();
@@ -61,6 +63,16 @@ test("#5239 402 marks the selected round-robin key invalid and the rotator skips
     "invalid",
     "402 must mark the selected key invalid in one shot"
   );
+  assert.equal(
+    getAllKeyHealth()[`${connId}:extra_1`]?.status,
+    undefined,
+    "a 402 on one slot must not terminalize its sibling"
+  );
+  assert.equal(
+    shouldDisableConnectionForQuotaFailure(connId, [K2]),
+    false,
+    "multi-key connection must stay active when one slot exhausts"
+  );
 
   // The rotator must skip the depleted extra_0 (K1) and return extra_1 (K2).
   for (let i = 0; i < 4; i++) {
@@ -72,6 +84,38 @@ test("#5239 402 marks the selected round-robin key invalid and the rotator skips
 
   resetKeyStatus(connId, "extra_0");
   resetKeyStatus(connId, "extra_1");
+});
+
+test("single-key quota failures may still terminalize the connection", () => {
+  assert.equal(shouldDisableConnectionForQuotaFailure("single-key-402", []), true);
+});
+
+test("a pinned primary 402 invalidates only primary on a shared-key connection", () => {
+  const connId = "conn-5239-primary";
+  recordKeyHealthStatus(402, {
+    connectionId: connId,
+    apiKey: "primary-key",
+    providerSpecificData: {
+      selectedKeyId: "primary",
+      extraApiKeys: ["extra-key"],
+      apiKeyHealth: {},
+    },
+  });
+
+  const health = getAllKeyHealth();
+  assert.equal(health[`${connId}:primary`]?.status, "invalid");
+  assert.notEqual(health[`${connId}:extra_0`]?.status, "invalid");
+  assert.equal(shouldDisableConnectionForQuotaFailure(connId, ["extra-key"]), false);
+  resetKeyStatus(connId, "primary");
+  resetKeyStatus(connId, "extra_0");
+});
+
+test("streaming 402 responses are recorded against their selected key slot", () => {
+  assert.equal(shouldRecordStreamingKeyHealthStatus(402), true);
+  assert.equal(shouldRecordStreamingKeyHealthStatus(200), true);
+  assert.equal(shouldRecordStreamingKeyHealthStatus(401), true);
+  assert.equal(shouldRecordStreamingKeyHealthStatus(403), true);
+  assert.equal(shouldRecordStreamingKeyHealthStatus(500), false);
 });
 
 test("#5239 inverse: a 2xx keeps the key active (no false-positive disable)", () => {

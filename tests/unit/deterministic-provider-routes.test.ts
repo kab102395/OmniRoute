@@ -7,7 +7,11 @@ import {
   getDeterministicProviderRoute,
   resolveDeterministicCodestralRouteFromConnections,
 } from "../../src/lib/deterministicProviderRoutes.ts";
-import { resolveKeyForRequest } from "../../open-sse/services/apiKeyRotator.ts";
+import {
+  resetKeyStatus,
+  resolveKeyForRequest,
+  syncHealthFromDB,
+} from "../../open-sse/services/apiKeyRotator.ts";
 import { withDeterministicRouteHeaders } from "../../src/sse/handlers/chatHelpers.ts";
 import { withEarlyStreamKeepalive } from "../../open-sse/utils/earlyStreamKeepalive.ts";
 import { enforceOdysseusPolicy } from "../../src/lib/odysseus/routeGuard.ts";
@@ -60,6 +64,83 @@ test("account B can resolve to the second key on one configured connection", () 
   assert.equal(route?.available, true);
   assert.equal(route?.connectionId, "connection-a");
   assert.equal(route?.keySlot, "extra_0");
+});
+
+test("a terminal primary slot disables A without poisoning pinned extra_0 B", () => {
+  const connections = [
+    {
+      id: "shared-connection",
+      apiKey: "secret-primary",
+      providerSpecificData: {
+        extraApiKeys: ["secret-extra"],
+        apiKeyHealth: { primary: { status: "invalid" } },
+      },
+    },
+  ];
+  const accountA = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountA,
+    connections
+  );
+  const accountB = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountB,
+    connections
+  );
+
+  assert.equal(accountA?.available, false);
+  assert.equal(accountA?.connectionId, "shared-connection");
+  assert.equal(accountA?.keySlot, "primary");
+  assert.equal(accountB?.available, true);
+  assert.equal(accountB?.connectionId, "shared-connection");
+  assert.equal(accountB?.keySlot, "extra_0");
+
+  syncHealthFromDB("shared-connection", {
+    primary: {
+      status: "invalid",
+      failures: 2,
+      lastFailure: null,
+      lastSuccess: null,
+      totalRequests: 1,
+      totalFailures: 1,
+    },
+  });
+  assert.equal(
+    resolveKeyForRequest("shared-connection", "secret-primary", ["secret-extra"], "primary", true),
+    null,
+    "pinned A must not fall back to B's extra key"
+  );
+  assert.equal(
+    resolveKeyForRequest("shared-connection", "secret-primary", ["secret-extra"], "extra_0", true)
+      ?.keyId,
+    "extra_0"
+  );
+  resetKeyStatus("shared-connection", "primary");
+  resetKeyStatus("shared-connection", "extra_0");
+});
+
+test("a terminal extra_0 slot disables B without poisoning pinned primary A", () => {
+  const connections = [
+    {
+      id: "shared-connection-inverse",
+      apiKey: "secret-primary",
+      providerSpecificData: {
+        extraApiKeys: ["secret-extra"],
+        apiKeyHealth: { extra_0: { status: "invalid" } },
+      },
+    },
+  ];
+  const accountA = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountA,
+    connections
+  );
+  const accountB = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountB,
+    connections
+  );
+
+  assert.equal(accountA?.available, true);
+  assert.equal(accountA?.keySlot, "primary");
+  assert.equal(accountB?.available, false);
+  assert.equal(accountB?.keySlot, "extra_0");
 });
 
 test("deterministic routes fail closed and never cross-fail over", () => {

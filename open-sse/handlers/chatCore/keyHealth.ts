@@ -30,6 +30,11 @@ type KeyHealthLog = {
   error?: (tag: string, message: string) => void;
 } | null;
 
+/** Streaming responses must record terminal 402s against the selected key slot. */
+export function shouldRecordStreamingKeyHealthStatus(status: number): boolean {
+  return (status >= 200 && status < 300) || status === 401 || status === 402 || status === 403;
+}
+
 const CREDENTIAL_FAILURE_PATTERNS = [
   /\b(?:invalid|incorrect|expired|missing|revoked)\s+api[\s_-]?key\b/i,
   /\bapi[\s_-]?key\s+(?:is\s+)?(?:invalid|incorrect|expired|missing|revoked|not\s+valid)\b/i,

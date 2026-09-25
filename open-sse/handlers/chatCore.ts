@@ -262,8 +262,14 @@ import {
 } from "../services/errorClassifier.ts";
 import { updateProviderConnection, getProviderConnectionById } from "@/lib/db/providers";
 import { wasRefreshTokenRotated } from "@omniroute/open-sse/services/refreshSerializer.ts";
-import { connectionHasExtraKeys } from "../services/apiKeyRotator.ts";
-import { recordKeyHealthStatus as recordKeyHealthStatusFor } from "./chatCore/keyHealth.ts";
+import {
+  connectionHasExtraKeys,
+  shouldDisableConnectionForQuotaFailure,
+} from "../services/apiKeyRotator.ts";
+import {
+  recordKeyHealthStatus as recordKeyHealthStatusFor,
+  shouldRecordStreamingKeyHealthStatus,
+} from "./chatCore/keyHealth.ts";
 import { getSkillsModelIdForFormat } from "./chatCore/skillsFormat.ts";
 import { readNonStreamingResponseBody } from "./chatCore/nonStreamingResponseBody.ts";
 import {
@@ -3258,9 +3264,7 @@ export async function handleChatCore({
 
               if (
                 stream &&
-                (res.response.ok ||
-                  res.response.status === HTTP_STATUS.UNAUTHORIZED ||
-                  res.response.status === HTTP_STATUS.FORBIDDEN) &&
+                shouldRecordStreamingKeyHealthStatus(res.response.status) &&
                 executionConnectionId &&
                 !(await shouldIsolateProbeFailures())
               ) {
@@ -4445,6 +4449,25 @@ export async function handleChatCore({
                 const quotaScope = getQuotaScopeLabelForProvider(provider, model);
                 console.warn(
                   `[provider] Node ${errorConnectionId} ${quotaScope}-only quota exhausted (${statusCode}) for ${model} - ${Math.ceil(quotaCooldownMs / 1000)}s (cooldown_scope=${quotaScope}, ttl_source=${retryAfterMs ? "upstream" : "inferred"}, connection stays active)`
+                );
+              } else if (
+                !shouldDisableConnectionForQuotaFailure(
+                  errorConnectionId,
+                  (credentials?.providerSpecificData as Record<string, unknown> | undefined)
+                    ?.extraApiKeys as string[] | undefined
+                )
+              ) {
+                // A 402 belongs to the selected API-key slot (recorded by
+                // recordKeyHealthStatus), not every sibling key on this connection.
+                // Preserve connection availability so deterministic pinned routes can
+                // independently resolve their own slot; never rotate this request to a sibling.
+                await updateProviderConnection(errorConnectionId, {
+                  lastError: persistentMessage,
+                  lastErrorType: errorType,
+                  errorCode: statusCode,
+                });
+                console.warn(
+                  `[provider] Node ${errorConnectionId} key-slot quota exhausted (${statusCode}) — sibling slots remain independently routable`
                 );
               } else {
                 await writeTerminalStatus(

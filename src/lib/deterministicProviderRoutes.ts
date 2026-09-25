@@ -35,6 +35,7 @@ export function deterministicProviderRouteHeaders(
 type RouteCandidate = {
   connectionId: string;
   keySlot: "primary" | "extra_0";
+  healthy: boolean;
 };
 
 type MistralConnectionCandidate = {
@@ -74,19 +75,39 @@ function connectionCandidates(
 
   for (const connection of sorted) {
     if (!isNonEmptyString(connection.id)) continue;
-    if (isNonEmptyString(connection.apiKey)) {
-      candidates.push({ connectionId: connection.id, keySlot: "primary" });
-    }
-
     const providerSpecificData =
       connection.providerSpecificData && typeof connection.providerSpecificData === "object"
         ? (connection.providerSpecificData as Record<string, unknown>)
         : {};
+    const apiKeyHealth =
+      providerSpecificData.apiKeyHealth && typeof providerSpecificData.apiKeyHealth === "object"
+        ? (providerSpecificData.apiKeyHealth as Record<string, unknown>)
+        : {};
+    const isHealthy = (keySlot: "primary" | "extra_0") => {
+      const health = apiKeyHealth[keySlot];
+      return (
+        !health ||
+        typeof health !== "object" ||
+        (health as { status?: unknown }).status !== "invalid"
+      );
+    };
+    if (isNonEmptyString(connection.apiKey)) {
+      candidates.push({
+        connectionId: connection.id,
+        keySlot: "primary",
+        healthy: isHealthy("primary"),
+      });
+    }
+
     const extraApiKeys = Array.isArray(providerSpecificData.extraApiKeys)
       ? providerSpecificData.extraApiKeys
       : [];
     if (isNonEmptyString(extraApiKeys[0])) {
-      candidates.push({ connectionId: connection.id, keySlot: "extra_0" });
+      candidates.push({
+        connectionId: connection.id,
+        keySlot: "extra_0",
+        healthy: isHealthy("extra_0"),
+      });
     }
   }
 
@@ -112,7 +133,7 @@ export function resolveDeterministicCodestralRouteFromConnections(
     credentialAlias: definition.credentialAlias,
     connectionId: selected?.connectionId ?? null,
     keySlot: selected?.keySlot ?? (definition.candidateIndex === 0 ? "primary" : "extra_0"),
-    available: selected !== null,
+    available: selected !== null && selected.healthy,
   };
 }
 
