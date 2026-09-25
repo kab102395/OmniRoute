@@ -16,6 +16,22 @@ export type DeterministicProviderRoute = {
   available: boolean;
 };
 
+/** Non-secret response identity for pinned deterministic routes. */
+export function deterministicProviderRouteHeaders(
+  route: DeterministicProviderRoute | null | undefined
+): Record<string, string> {
+  if (!route) return {};
+  return {
+    "X-OmniRoute-Route-Id": route.routeId,
+    "X-OmniRoute-Requested-Model": route.requestedAlias,
+    "X-OmniRoute-Served-Model": route.servedModel,
+    "X-OmniRoute-Provider": route.provider,
+    "X-OmniRoute-Credential-Alias": route.credentialAlias,
+    "X-OmniRoute-Key-Slot": route.keySlot,
+    ...(route.connectionId ? { "X-OmniRoute-Connection-Id": route.connectionId } : {}),
+  };
+}
+
 type RouteCandidate = {
   connectionId: string;
   keySlot: "primary" | "extra_0";

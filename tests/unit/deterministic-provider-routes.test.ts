@@ -3,11 +3,13 @@ import test from "node:test";
 import {
   applyDeterministicProviderAlias,
   DETERMINISTIC_CODESRAL_ALIASES,
+  deterministicProviderRouteHeaders,
   getDeterministicProviderRoute,
   resolveDeterministicCodestralRouteFromConnections,
 } from "../../src/lib/deterministicProviderRoutes.ts";
 import { resolveKeyForRequest } from "../../open-sse/services/apiKeyRotator.ts";
 import { withDeterministicRouteHeaders } from "../../src/sse/handlers/chatHelpers.ts";
+import { withEarlyStreamKeepalive } from "../../open-sse/utils/earlyStreamKeepalive.ts";
 import { enforceOdysseusPolicy } from "../../src/lib/odysseus/routeGuard.ts";
 
 const CONNECTIONS = [
@@ -127,6 +129,54 @@ test("route identity is non-secret and preserves streaming/tool fields", async (
   assert.equal(response.headers.get("X-OmniRoute-Key-Slot"), "primary");
   assert.equal(response.headers.get("X-OmniRoute-Connection-Id"), "connection-a");
   assert.equal(await response.text(), 'data: {"tool_calls":[]}\n\n');
+  assert.equal(
+    [...response.headers.values()].some((value) => value.includes("secret-")),
+    false
+  );
+});
+
+test("pinned route identity survives the slow streaming keepalive response path", async () => {
+  const route = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountB,
+    [
+      {
+        id: "shared-connection",
+        apiKey: "secret-primary",
+        providerSpecificData: { extraApiKeys: ["secret-extra"] },
+      },
+    ]
+  );
+  assert.ok(route);
+
+  const response = await withEarlyStreamKeepalive(
+    new Promise<Response>((resolve) => {
+      setTimeout(() => {
+        resolve(
+          withDeterministicRouteHeaders(
+            new Response("data: [DONE]\n\n", {
+              headers: { "content-type": "text/event-stream" },
+            }),
+            route
+          )
+        );
+      }, 20);
+    }),
+    {
+      thresholdMs: 0,
+      intervalMs: 250,
+      extraHeaders: {
+        ...deterministicProviderRouteHeaders(route),
+        "X-Correlation-Id": "correlation-test",
+      },
+    }
+  );
+
+  assert.equal(response.headers.get("X-OmniRoute-Route-Id"), "mistral-codestral-account-b");
+  assert.equal(response.headers.get("X-OmniRoute-Credential-Alias"), "codestral-account-b");
+  assert.equal(response.headers.get("X-OmniRoute-Key-Slot"), "extra_0");
+  assert.equal(response.headers.get("X-OmniRoute-Served-Model"), "mistral/codestral-latest");
+  assert.equal(response.headers.get("X-Correlation-Id"), "correlation-test");
+  assert.equal((await response.text()).includes("[DONE]"), true);
   assert.equal(
     [...response.headers.values()].some((value) => value.includes("secret-")),
     false

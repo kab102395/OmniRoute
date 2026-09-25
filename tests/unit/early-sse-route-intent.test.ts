@@ -20,6 +20,11 @@ const ROUTES = [
   },
 ] as const;
 
+const CHAT_COMPLETIONS_SOURCE = fs.readFileSync(
+  path.join("src", "app", "api", "v1", "chat", "completions", "route.ts"),
+  "utf8"
+);
+
 for (const route of ROUTES) {
   test(`${route.name} early-heartbeat gate uses the real stream resolver`, () => {
     const escapedBodyExpression = route.bodyExpression.replace(/[.?\\]/g, "\\$&");
@@ -40,3 +45,11 @@ for (const route of ROUTES) {
     assert.equal(resolveStreamFlag(undefined, "application/json", route.sourceFormat), false);
   });
 }
+
+test("chat-completions slow keepalive carries the pinned route identity", () => {
+  assert.match(CHAT_COMPLETIONS_SOURCE, /deterministicProviderRouteHeaders\(/);
+  assert.match(
+    CHAT_COMPLETIONS_SOURCE,
+    /extraHeaders:\s*\{[\s\S]*deterministicProviderRouteHeaders\(getDeterministicProviderRoute\(parsedBody\)\)/
+  );
+});

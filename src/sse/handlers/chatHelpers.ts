@@ -4,7 +4,10 @@ import {
   getModelInfoOrRetirementResponse,
 } from "../services/model";
 import { clearAccountError, markAccountUnavailable } from "../services/auth";
-import type { DeterministicProviderRoute } from "@/lib/deterministicProviderRoutes";
+import {
+  deterministicProviderRouteHeaders,
+  type DeterministicProviderRoute,
+} from "@/lib/deterministicProviderRoutes";
 import { connectionHasExtraKeys } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import { createBuiltinAutoCombo } from "@omniroute/open-sse/services/autoCombo/builtinCatalog.ts";
 import * as log from "../utils/logger";
@@ -1145,16 +1148,7 @@ export function withDeterministicRouteHeaders(
   route: DeterministicProviderRoute | null | undefined
 ): Response {
   if (!response || !route) return response;
-
-  const headers = {
-    "X-OmniRoute-Route-Id": route.routeId,
-    "X-OmniRoute-Requested-Model": route.requestedAlias,
-    "X-OmniRoute-Served-Model": route.servedModel,
-    "X-OmniRoute-Provider": route.provider,
-    "X-OmniRoute-Credential-Alias": route.credentialAlias,
-    "X-OmniRoute-Key-Slot": route.keySlot,
-    ...(route.connectionId ? { "X-OmniRoute-Connection-Id": route.connectionId } : {}),
-  };
+  const headers = deterministicProviderRouteHeaders(route);
 
   try {
     for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);

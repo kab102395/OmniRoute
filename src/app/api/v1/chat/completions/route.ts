@@ -37,6 +37,10 @@ import {
   isCommonChatGptWebRetirementError,
 } from "@/shared/constants/chatgptWebRetirement";
 import { addOdysseusTelemetryHeaders, enforceOdysseusPolicy } from "@/lib/odysseus/routeGuard";
+import {
+  deterministicProviderRouteHeaders,
+  getDeterministicProviderRoute,
+} from "@/lib/deterministicProviderRoutes";
 
 let initPromise = null;
 
@@ -270,7 +274,14 @@ export async function POST(request) {
         keepaliveFrame: OPENAI_KEEPALIVE_FRAME,
         startupFrame: OPENAI_STARTUP_FRAME,
         errorFrame: OPENAI_CHAT_ERROR_FRAME,
-        extraHeaders: { "X-Correlation-Id": reqId },
+        // The slow keepalive path commits response headers before the provider
+        // handler resolves. Carry the request's pinned, non-secret route identity
+        // into that synthetic response so streaming clients can still validate
+        // which deterministic route the handler is constrained to use.
+        extraHeaders: {
+          ...deterministicProviderRouteHeaders(getDeterministicProviderRoute(parsedBody)),
+          "X-Correlation-Id": reqId,
+        },
       });
       const response = withCompressionHeaderEcho(streamedResponse, compressionRequestHeader);
       const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
