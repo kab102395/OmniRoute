@@ -371,6 +371,16 @@ Application logs contain one successful Freebuff chat trace with model and token
 instance ID, run ID, Freebucks debit, session timestamps, or reset data. Thus the historical records
 cannot recover a timer or prove whether adjacent admissions reused an entitlement.
 
+The original live checkout also had an uncommitted Freebuff usage module absent from this clean
+audit baseline. That code posts to `/api/v1/usage`, reads
+`remainingBalance`/`balanceBreakdown.free` and `next_quota_reset`, then maps the result into generic
+quota snapshots. It synthesizes a total of at least 100 when computing percent remaining and labels
+the quota “Freebucks (daily)”; those choices are OmniRoute-side assumptions, not a verified upstream
+daily allowance. The live snapshot's zero percent is consistent with a zero remaining balance under
+that mapper, but the persisted generic row omits the raw balance. Its October 23 reset date also does
+not establish a daily reset and conflicts with treating the local “daily” label as authoritative.
+That uncommitted module was not edited or copied into this audit branch.
+
 ### Additional safe session calls from credential health checks
 
 There is an important path outside `FreebuffExecutor`: `src/lib/providers/validation.ts` implements
