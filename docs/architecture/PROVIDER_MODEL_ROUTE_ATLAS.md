@@ -344,6 +344,125 @@ The provider registry count and nine static Freebuff model declarations are sour
 baseline SHA; provider connections and active routability are runtime facts requiring a safe
 read-only snapshot.
 
+## Follow-up: upstream contract and live read-only observations
+
+This follow-up was performed on 2026-09-26. The running local OmniRoute process was observed from
+the original checkout at Git HEAD `6e1a2144d18f136c0a48f7f2e392ee19bb62042d`, with unrelated
+uncommitted working-tree changes present. The listening API returned healthy status. The
+`omniroute.service` systemd unit itself was inactive; the serving Node process was not restarted or
+modified. Because the checkout was dirty and the exact loaded Next build artifact could not be tied
+to a source tree, the complete runtime code revision is **not proven**.
+
+Read-only queries selected no credential/token columns. The DB showed one active Freebuff connection
+(`auth_type=apikey`, `test_status=active`, no default model, no per-connection health interval). Its
+connection ID is intentionally not recorded in this tracked document. Runtime records showed:
+
+- 61 `connection-test` rows, all HTTP 200, between 2026-09-23 22:23Z and 2026-09-26 01:58Z;
+- one successful `deepseek/deepseek-v4-flash` chat at 2026-09-23 22:23Z (HTTP 200, 388 input,
+  27 output tokens, 128 cached-read tokens, 24 reasoning tokens);
+- one successful `model-sync` row; and
+- 38 `freebucks` quota snapshots, all storing 0% remaining / exhausted and a reset instant of
+  2026-10-23 22:11:59Z. The latest snapshot was 2026-09-25 22:32Z. The rows had no raw response
+  payload, balance amount, admission price, or session identifier. These are historical persisted
+  observations, not a live balance measurement; `next_reset_at` does not establish which upstream
+  quota window it represents.
+
+Application logs contain one successful Freebuff chat trace with model and token usage, but no
+instance ID, run ID, Freebucks debit, session timestamps, or reset data. Thus the historical records
+cannot recover a timer or prove whether adjacent admissions reused an entitlement.
+
+### Additional safe session calls from credential health checks
+
+There is an important path outside `FreebuffExecutor`: `src/lib/providers/validation.ts` implements
+`validateFreebuffProvider()` by issuing `POST https://www.codebuff.com/api/v1/freebuff/session`
+with the first catalog model. The credential-health scheduler calls `testSingleConnection()` and
+defaults to a 60-minute sweep when there is no connection override. Its test route writes
+`connection-test` call-log rows. The 61 hourly-looking successful rows are consistent with this
+scheduler and its implementation. This means OmniRoute can POST to the session endpoint without a
+chat completion. Whether such a POST reuses, extends, replaces, queues, or charges an entitlement is
+not established by the test row; the response body is discarded by the validator. Treat this as a
+potential capacity-affecting probe until backend behavior is proven. No probe or live request was
+added in this audit.
+
+### Official public client contract
+
+The upstream public `CodebuffAI/freebuff` repository at audit time
+([commit `a0d884274c18a40f83092f018e715e262c448802`](https://github.com/CodebuffAI/freebuff/commit/a0d884274c18a40f83092f018e715e262c448802))
+contains a shared wire type at
+[`common/src/types/freebuff-session.ts`](https://github.com/CodebuffAI/freebuff/blob/a0d884274c18a40f83092f018e715e262c448802/common/src/types/freebuff-session.ts)
+and its CLI caller at
+[`cli/src/utils/freebuff-session-api.ts`](https://github.com/CodebuffAI/freebuff/blob/a0d884274c18a40f83092f018e715e262c448802/cli/src/utils/freebuff-session-api.ts).
+The shared type is described as the wire-level shape deserialized by the client and serialized by
+the server. It establishes a richer **declared response contract** than OmniRoute currently reads:
+
+- Active admission: `status`, `instanceId`, `accessTier`, `model`, `admittedAt`, `expiresAt`,
+  `remainingMs`, optional quota/rate-limit data, and optional Freebucks data.
+- No current session: `status: none`, optional model quota and Freebucks data.
+- Ended session: may carry `instanceId`, `admittedAt`, `expiresAt`, grace-period timestamps, and
+  refund receipt fields.
+- Admission may also produce queued/rate-limited/locked/consent/country/access states; the current
+  executor does not decode these typed state bodies on a successful HTTP status.
+- Freebucks metadata can declare a total spendable `balance`, daily `limit/spent/remaining/resetAt`
+  (and optional timezone), wallet balance, and per-model `prices`. The type says spendable balance is
+  daily remaining plus wallet balance. These are declared fields, not values observed in OmniRoute's
+  live session response.
+
+The official CLI treats the instance as a live slot: it polls session state with GET, carries
+instance identity on requests, and releases a held slot with DELETE. The contract says active
+sessions are model-bound and exposes admitted/expiry timestamps and a remaining-duration value.
+This strongly supports a wall-clock window anchored at server admission and a model-specific active
+slot. The exact backend transition implementation is not in the public repository, so timer start
+internals, server persistence across backend restart, idle charging details, expiry grace duration,
+and billing effects of POST retries remain **strongly supported or unknown**, not source-proven
+backend facts. The current OmniRoute executor does not poll, DELETE, preserve an instance between
+requests, or send the documented CLI multi-session/heartbeat headers.
+
+### Resource identity and answers from available evidence
+
+The evidence supports this separation, but not every relationship is server-proven:
+
+```text
+OmniRoute provider connection (credential record)
+  └── upstream account (credential identity; likely account-wide entitlements)
+       └── Freebuff session/slot (model-bound; `instanceId`, admission and expiry fields)
+            └── Codebuff run (`runId`, created per OmniRoute execution)
+                 └── OmniRoute chat request / completion
+```
+
+The account/credential identity is not the session ID. The session `instanceId` is not the run ID.
+The run is started and finished separately by OmniRoute, and a fresh random client ID is sent for
+each execution. The exact server-side billing key (account, instance, admission attempt or another
+ledger key), whether two posts with the same model reuse the slot, and whether concurrent instances
+are allowed on this specific access tier cannot be proven from the public client type or historical
+records.
+
+| Question                      | Finding                                                                                                                                                                                             | Evidence class                                     |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Timer start                   | `admittedAt` is the typed start marker; the server's internal start event is unavailable.                                                                                                           | Declared contract; strongly supported.             |
+| Duration                      | A current active response supplies absolute `expiresAt` and `remainingMs`; current live value was not observed. One hour is not hard-coded in OmniRoute.                                            | Declared contract; exact current duration unknown. |
+| Expiry                        | Contract has `active` → `ended`, expiry and grace-period fields; exact grace/cleanup implementation unknown.                                                                                        | Declared contract.                                 |
+| Idle time                     | Absolute expiry suggests elapsed wall time; whether the server pauses/reset on idle is unknown.                                                                                                     | Strongly supported / unknown.                      |
+| OmniRoute restart             | OmniRoute stores no Freebuff session. Upstream client polls server state and can release by DELETE; whether session survives Codebuff backend restart is unknown.                                   | Source-code fact / unknown.                        |
+| Reconnect                     | Official CLI reconnects by retaining and polling the instance ID. OmniRoute does not retain it, so its own requests cannot prove reuse.                                                             | Source-code fact.                                  |
+| Model switch                  | Active response is bound to one model; client workflow deletes the current slot before requesting a different model.                                                                                | Declared upstream behavior.                        |
+| Multiple sessions             | The current CLI has explicit multi-session/desktop semantics and server-reported session counts. Availability for this API-key account/mode is unknown.                                             | Declared upstream client contract.                 |
+| Each POST / charge            | POST is the admission/join operation in the CLI; admission pricing is per model. Whether each OmniRoute POST charges anew is unknown.                                                               | Declared client contract / unknown debit rule.     |
+| Failed START/completion/retry | OmniRoute ignores non-OK START and still sends completion; it does not retry explicitly. Whether either consumes Freebucks is unknown.                                                              | OmniRoute source fact / upstream debit unknown.    |
+| Daily reset / balance         | Official session contract includes daily reset and Freebucks balances, but no actual response values were captured. Persisted OmniRoute reset snapshots are stale and window semantics are unknown. | Declared contract / stale runtime observation.     |
+
+### Implementation decision
+
+No live request was made: the historical snapshots reported exhausted capacity, and no request is
+needed to establish the safe upstream field names. The complete session-admission response schema
+could not be verified against a response from this account, and the server implementation that
+defines charge/reuse behavior is not public. Do not persist a guessed ledger or route observation
+until one safe admission response is captured with explicit provenance and its entitlement semantics
+are confirmed. A future instrumented contract should parse only allowlisted fields (`status`,
+`model`, `admittedAt`, `expiresAt`, `remainingMs`, daily/wallet numeric fields and prices), classify
+those as observed, keep `instanceId`/`runId` private unless a reviewed need exists, and derive
+remaining time from expiry. Freebucks sessions-remaining should be derived only when both observed
+balance and declared/observed admission price refer to the same applicable pool.
+
 ## Hardening finding
 
 The session-admission error path previously returned the upstream response body verbatim, and the
