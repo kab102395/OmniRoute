@@ -1,0 +1,3 @@
+ALTER TABLE call_logs ADD COLUMN served_provider TEXT DEFAULT NULL;
+ALTER TABLE call_logs ADD COLUMN served_model TEXT DEFAULT NULL;
+ALTER TABLE call_logs ADD COLUMN accounting_json TEXT DEFAULT NULL;

@@ -214,6 +214,9 @@ export type PersistAttemptLogsArgs = {
   claudeCacheMeta?: Record<string, unknown>;
   claudeCacheUsageMeta?: Record<string, unknown>;
   cacheSource?: "upstream" | "semantic";
+  servedProvider?: string | null;
+  servedModel?: string | null;
+  accounting?: import("@/lib/usage/costAccounting").CostAccountingFacts | null;
 };
 
 export type PersistAttemptLogsContext = {
@@ -520,6 +523,9 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
     model,
     requestedModel,
     provider,
+    servedProvider: args.servedProvider || null,
+    servedModel: args.servedModel || null,
+    accounting: args.accounting || null,
     connectionId: finalConnectionId || undefined,
     duration: Date.now() - startTime,
     tokens: tokens || {},

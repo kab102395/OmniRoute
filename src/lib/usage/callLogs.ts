@@ -116,6 +116,9 @@ type CallLogSummaryRow = {
   correlation_id?: string | null;
   model_pinned?: number | null;
   session_tag?: string | null;
+  served_provider?: string | null;
+  served_model?: string | null;
+  accounting_json?: string | null;
 };
 
 const RESOLVED_ACCOUNT_SQL = "COALESCE(NULLIF(pc.name, ''), NULLIF(pc.email, ''), cl.account)";
@@ -383,6 +386,9 @@ function mapSummaryRow(row: CallLogSummaryRow) {
     model: row.model,
     requestedModel: applyNodePrefix(row.requested_model, provider, nodePrefix),
     provider,
+    servedProvider: row.served_provider || null,
+    servedModel: row.served_model || null,
+    accounting: parseAccountingJson(row.accounting_json),
     providerDisplay: resolveProviderDisplay(provider, nodeName, nodePrefix),
     account: row.resolved_account || row.account,
     connectionId: row.connection_id,
@@ -418,6 +424,54 @@ function mapSummaryRow(row: CallLogSummaryRow) {
     modelPinned: toNumber(row.model_pinned) === 1,
     sessionTag: row.session_tag || null,
   };
+}
+
+function parseAccountingJson(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+const COST_ACCOUNTING_KINDS = new Set([
+  "provider_reported_billed_cost",
+  "estimated_cost",
+  "usage_only",
+  "unknown",
+  "zero_cost",
+]);
+
+function serializeAccounting(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const accounting = value as Record<string, unknown>;
+  if (typeof accounting.kind !== "string" || !COST_ACCOUNTING_KINDS.has(accounting.kind)) {
+    return null;
+  }
+  const amountUsd =
+    typeof accounting.amountUsd === "number" && Number.isFinite(accounting.amountUsd)
+      ? accounting.amountUsd
+      : null;
+  const optionalString = (key: string) =>
+    typeof accounting[key] === "string" ? (accounting[key] as string).slice(0, 256) : null;
+  return JSON.stringify({
+    kind: accounting.kind,
+    amountUsd,
+    currency: accounting.currency === "USD" ? "USD" : null,
+    source: optionalString("source"),
+    pricingProvider: optionalString("pricingProvider"),
+    pricingModel: optionalString("pricingModel"),
+    pricingVersion: null,
+    pricingEffectiveAt: null,
+    usageKind:
+      accounting.usageKind === "provider_reported_usage" ||
+      accounting.usageKind === "estimated_usage"
+        ? accounting.usageKind
+        : "unknown",
+  });
 }
 
 function buildLegacyPipelinePayloads(id: string) {
@@ -500,6 +554,10 @@ async function saveCallLogOperation(entry: any): Promise<void> {
       status: entry.status || 0,
       errorType,
       model: entry.model || "-",
+      servedProvider:
+        typeof entry.servedProvider === "string" ? entry.servedProvider.slice(0, 256) : null,
+      servedModel: typeof entry.servedModel === "string" ? entry.servedModel.slice(0, 512) : null,
+      accountingJson: serializeAccounting(entry.accounting),
       requestedModel: resolvedRequestedModel,
       provider: rawProvider,
       account,
@@ -587,6 +645,7 @@ async function saveCallLogOperation(entry: any): Promise<void> {
         artifact_relpath, artifact_size_bytes, artifact_sha256,
         has_request_body, has_response_body, has_pipeline_details, request_summary,
         correlation_id, model_pinned, session_tag, response_id, error_type,
+        served_provider, served_model, accounting_json,
         video_content_removed
       )
       VALUES (
@@ -600,6 +659,7 @@ async function saveCallLogOperation(entry: any): Promise<void> {
         @artifactRelPath, @artifactSizeBytes, @artifactSha256,
         @hasRequestBody, @hasResponseBody, @hasPipelineDetails, @requestSummary,
         @correlationId, @modelPinned, @sessionTag, @responseId, @errorType,
+        @servedProvider, @servedModel, @accountingJson,
         @videoContentRemoved
       )
     `

@@ -19,6 +19,14 @@ export function buildNonStreamingResponseHeaders(
     responseUsage: Record<string, unknown> | null | undefined;
     estimatedCost: number;
     requestId: string | null | undefined;
+    servedProvider?: string | null;
+    servedModel?: string | null;
+    accounting?: {
+      kind: string;
+      source?: string | null;
+      currency?: string | null;
+      usageKind?: string | null;
+    } | null;
     compressionResponseMeta?: string | null | undefined;
     comboStrategy?: string | null | undefined;
   },
@@ -39,6 +47,9 @@ export function buildNonStreamingResponseHeaders(
     usage: args.responseUsage,
     costUsd: args.estimatedCost,
     requestId: args.requestId,
+    servedProvider: args.servedProvider,
+    servedModel: args.servedModel,
+    accounting: args.accounting,
     strategy: args.comboStrategy ?? "single",
   });
   if (args.compressionResponseMeta) {

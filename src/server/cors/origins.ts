@@ -184,6 +184,21 @@ export function applyCorsHeaders(
   }
   if (allowed !== null) {
     response.headers.set("Access-Control-Allow-Origin", allowed);
+    response.headers.set(
+      "Access-Control-Expose-Headers",
+      [
+        "X-OmniRoute-Request-Id",
+        "X-OmniRoute-Served-Provider",
+        "X-OmniRoute-Served-Model",
+        "X-OmniRoute-Accounting-Kind",
+        "X-OmniRoute-Cost-Currency",
+        "X-OmniRoute-Cost-Source",
+        "X-OmniRoute-Usage-Kind",
+        "X-OmniRoute-Response-Cost",
+        "X-OmniRoute-Tokens-In",
+        "X-OmniRoute-Tokens-Out",
+      ].join(", ")
+    );
     response.headers.append("Vary", "Origin");
   }
   // RFC 9110 §12.5.5 (issue #6737): the token-authenticated /v1*/v1beta* surface
