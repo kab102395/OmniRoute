@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
+import { sanitizeErrorMessage } from "../utils/error.ts";
 
 const MODEL_TO_AGENT: Record<string, string> = {
   "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
@@ -83,7 +84,9 @@ export class FreebuffExecutor extends BaseExecutor {
           response: new Response(
             JSON.stringify({
               error: {
-                message: `Freebuff session failed (${sessionRes.status}): ${errText}`,
+                message: sanitizeErrorMessage(
+                  `Freebuff session failed (${sessionRes.status}): ${errText.slice(0, 500)}`
+                ),
                 type: "upstream_error",
               },
             }),
@@ -96,7 +99,10 @@ export class FreebuffExecutor extends BaseExecutor {
       return {
         response: new Response(
           JSON.stringify({
-            error: { message: `Freebuff session network error: ${msg}`, type: "upstream_error" },
+            error: {
+              message: sanitizeErrorMessage(`Freebuff session network error: ${msg}`),
+              type: "upstream_error",
+            },
           }),
           { status: 502, headers: { "Content-Type": "application/json" } }
         ),
