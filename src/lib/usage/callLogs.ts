@@ -97,6 +97,7 @@ type CallLogSummaryRow = {
   target_format: string | null;
   api_key_id: string | null;
   api_key_name: string | null;
+  provider_key_slot: string | null;
   combo_name: string | null;
   combo_step_id: string | null;
   combo_execution_key: string | null;
@@ -218,6 +219,7 @@ function buildArtifact(
     targetFormat: string | null;
     apiKeyId: string | null;
     apiKeyName: string | null;
+    providerKeySlot: string | null;
     comboName: string | null;
     comboStepId: string | null;
     comboExecutionKey: string | null;
@@ -254,6 +256,7 @@ function buildArtifact(
       targetFormat: logEntry.targetFormat,
       apiKeyId: logEntry.apiKeyId,
       apiKeyName: logEntry.apiKeyName,
+      providerKeySlot: logEntry.providerKeySlot,
       comboName: logEntry.comboName,
       comboStepId: logEntry.comboStepId,
       comboExecutionKey: logEntry.comboExecutionKey,
@@ -398,6 +401,7 @@ function mapSummaryRow(row: CallLogSummaryRow) {
     targetFormat: row.target_format,
     apiKeyId: row.api_key_id,
     apiKeyName: row.api_key_name,
+    providerKeySlot: row.provider_key_slot,
     comboName: row.combo_name,
     comboStepId: row.combo_step_id,
     comboExecutionKey: row.combo_execution_key,
@@ -452,6 +456,11 @@ async function saveCallLogOperation(entry: any): Promise<void> {
     // nor block the request-scoped context.
     const apiKeyId = entry.apiKeyId || apiKeyContext?.apiKeyId || null;
     const apiKeyName = entry.apiKeyName || apiKeyContext?.apiKeyName || null;
+    const providerKeySlot =
+      typeof entry.providerKeySlot === "string" &&
+      /^(?:primary|extra_[0-9]+)$/.test(entry.providerKeySlot)
+        ? entry.providerKeySlot
+        : null;
     const noLogEnabled = Boolean(entry.noLog) || (apiKeyId ? isNoLog(apiKeyId) : false);
 
     const protectedRequestBody = noLogEnabled ? null : protectPayloadForLog(entry.requestBody);
@@ -510,6 +519,7 @@ async function saveCallLogOperation(entry: any): Promise<void> {
       targetFormat: entry.targetFormat || null,
       apiKeyId,
       apiKeyName,
+      providerKeySlot,
       comboName: entry.comboName || null,
       comboStepId: toStringOrNull(entry.comboStepId),
       comboExecutionKey:
@@ -572,6 +582,7 @@ async function saveCallLogOperation(entry: any): Promise<void> {
         tokens_cache_read, tokens_cache_creation, tokens_reasoning, tokens_compressed,
         reasoning_source, reasoning_chars,
         cache_source, request_type, source_format, target_format, api_key_id, api_key_name,
+        provider_key_slot,
         combo_name, combo_step_id, combo_execution_key, error_summary, detail_state,
         artifact_relpath, artifact_size_bytes, artifact_sha256,
         has_request_body, has_response_body, has_pipeline_details, request_summary,
@@ -584,6 +595,7 @@ async function saveCallLogOperation(entry: any): Promise<void> {
         @tokensCacheRead, @tokensCacheCreation, @tokensReasoning, @tokensCompressed,
         @reasoningSource, @reasoningChars,
         @cacheSource, @requestType, @sourceFormat, @targetFormat, @apiKeyId, @apiKeyName,
+        @providerKeySlot,
         @comboName, @comboStepId, @comboExecutionKey, @errorSummary, @detailState,
         @artifactRelPath, @artifactSizeBytes, @artifactSha256,
         @hasRequestBody, @hasResponseBody, @hasPipelineDetails, @requestSummary,

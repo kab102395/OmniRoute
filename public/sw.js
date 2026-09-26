@@ -1,10 +1,7 @@
-const CACHE_NAME = "omniroute-pwa-v2";
-const APP_SHELL = [
-  "/",
-  "/manifest.webmanifest",
-  "/icon-512.png",
-  "/apple-touch-icon.png",
-];
+// Bump when the dashboard shell/client behavior changes so an older tab cannot
+// keep controlling the same cache generation after a runtime rebuild.
+const CACHE_NAME = "omniroute-pwa-v3";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-512.png", "/apple-touch-icon.png"];
 const EXCLUDED_PATH_PREFIXES = ["/api/", "/a2a", "/dashboard/endpoint"];
 
 self.addEventListener("install", (event) => {

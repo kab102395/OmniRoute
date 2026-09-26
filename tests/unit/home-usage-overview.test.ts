@@ -34,3 +34,20 @@ test("formats routed token totals compactly", () => {
   assert.equal(formatHomeUsageNumber(12_345_678), "12.3M");
   assert.equal(formatHomeUsageNumber(1_234_567_890), "1.2B");
 });
+
+test("labels a Mistral connection with rotating extra keys", () => {
+  const rows = buildHomeProviderUsageRows(
+    [{ provider: "mistral", requests: 1, totalTokens: 100, successfulRequests: 1 }],
+    {},
+    [
+      {
+        id: "mistral-main",
+        provider: "mistral",
+        isActive: true,
+        providerSpecificData: { extraApiKeys: ["redacted-extra-key"] },
+      },
+    ]
+  );
+
+  assert.equal(rows[0].label, "Mistral (2 keys)");
+});

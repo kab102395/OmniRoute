@@ -74,7 +74,47 @@ interface KeyHealth {
 
 const _keyHealth = new Map<string, KeyHealth>();
 
+export interface KeySelectionStats {
+  totalSelections: number;
+  byKeyId: Record<string, number>;
+  lastKeyId: string | null;
+  lastSelectedAt: string | null;
+}
+
+const _keySelectionStats = new Map<string, KeySelectionStats>();
+
 const FAILURE_THRESHOLD = 2; // Mark as invalid after 2 consecutive failures
+
+function recordKeySelection(connectionId: string, keyId: string): void {
+  const current = _keySelectionStats.get(connectionId) || {
+    totalSelections: 0,
+    byKeyId: {},
+    lastKeyId: null,
+    lastSelectedAt: null,
+  };
+  current.totalSelections += 1;
+  current.byKeyId[keyId] = (current.byKeyId[keyId] || 0) + 1;
+  current.lastKeyId = keyId;
+  current.lastSelectedAt = new Date().toISOString();
+  _keySelectionStats.set(connectionId, current);
+  console.info(
+    `[KEY_ROTATION] connection=${connectionId.slice(0, 8)} slot=${keyId} total=${current.totalSelections}`
+  );
+}
+
+/** Return redacted per-slot selection counts for runtime observability. */
+export function getKeySelectionStats(connectionId: string): KeySelectionStats {
+  const stats = _keySelectionStats.get(connectionId);
+  if (!stats) {
+    return { totalSelections: 0, byKeyId: {}, lastKeyId: null, lastSelectedAt: null };
+  }
+  return {
+    totalSelections: stats.totalSelections,
+    byKeyId: { ...stats.byKeyId },
+    lastKeyId: stats.lastKeyId,
+    lastSelectedAt: stats.lastSelectedAt,
+  };
+}
 
 /**
  * Get or create health status for a specific key within a connection scope.
@@ -142,6 +182,7 @@ export function getValidApiKey(
 
   if (allKeys.length === 0) return null;
   if (allKeys.length === 1) {
+    recordKeySelection(connectionId, allKeys[0].keyId);
     return { key: allKeys[0].key, keyId: allKeys[0].keyId };
   }
 
@@ -149,6 +190,8 @@ export function getValidApiKey(
   const current = _keyIndexes.get(connectionId) ?? 0;
   const idx = current % allKeys.length;
   _keyIndexes.set(connectionId, current + 1);
+
+  recordKeySelection(connectionId, allKeys[idx].keyId);
 
   return { key: allKeys[idx].key, keyId: allKeys[idx].keyId };
 }
@@ -410,6 +453,7 @@ export function removeConnectionHealth(connectionId: string): void {
 export function removeConnectionIndex(connectionId: string): void {
   _keyIndexes.delete(connectionId);
   _connectionExtraKeys.delete(connectionId);
+  _keySelectionStats.delete(connectionId);
   for (const key of _keyHealth.keys()) {
     if (key.startsWith(`${connectionId}:`)) {
       _keyHealth.delete(key);

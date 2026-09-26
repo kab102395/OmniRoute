@@ -229,7 +229,16 @@ export type PersistAttemptLogsContext = {
   pendingRequestId: unknown;
   clientRawRequest: { endpoint?: string; headers?: unknown } | null | undefined;
   requestedModel: unknown;
-  credentials: { connectionId?: string } | null | undefined;
+  credentials:
+    | {
+        connectionId?: string;
+        providerSpecificData?: { selectedKeyId?: unknown } | null;
+      }
+    | null
+    | undefined;
+  executionCredentials?: () => {
+    providerSpecificData?: { selectedKeyId?: unknown } | null;
+  } | null;
   startTime: number;
   body: unknown;
   sourceFormat: unknown;
@@ -269,6 +278,18 @@ export type PersistAttemptLogsContext = {
 
 function toConnectionId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getProviderKeySlot(ctx: {
+  credentials: PersistAttemptLogsContext["credentials"];
+  executionCredentials?: PersistAttemptLogsContext["executionCredentials"];
+}): string | null {
+  const selectedKeyId =
+    ctx.executionCredentials?.()?.providerSpecificData?.selectedKeyId ??
+    ctx.credentials?.providerSpecificData?.selectedKeyId;
+  return typeof selectedKeyId === "string" && /^(?:primary|extra_[0-9]+)$/.test(selectedKeyId)
+    ? selectedKeyId
+    : null;
 }
 
 function buildAccountRotationMeta(
@@ -369,6 +390,7 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
     clientRawRequest,
     requestedModel,
     credentials,
+    executionCredentials,
     startTime,
     body,
     sourceFormat,
@@ -535,6 +557,7 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
     cacheSource: cacheSource === "semantic" ? "semantic" : "upstream",
     apiKeyId: apiKeyInfo?.id || null,
     apiKeyName: apiKeyInfo?.name || null,
+    providerKeySlot: getProviderKeySlot({ credentials, executionCredentials }),
     noLog: noLogEnabled,
     pipelinePayloads,
     correlationId,

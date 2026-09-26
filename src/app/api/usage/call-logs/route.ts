@@ -44,7 +44,10 @@ export function rowMatchesFilter(row: any, filter: Record<string, any>): boolean
     if (!(Number(row?.status) >= 400 || Boolean(row?.error))) return false;
   } else if (filter.status === "ok") {
     if (!(Number(row?.status) >= 200 && Number(row?.status) < 300)) return false;
-  } else if (typeof filter.status === "number" || (typeof filter.status === "string" && !isNaN(Number(filter.status)))) {
+  } else if (
+    typeof filter.status === "number" ||
+    (typeof filter.status === "string" && !isNaN(Number(filter.status)))
+  ) {
     if (Number(row?.status) !== Number(filter.status)) return false;
   }
 
@@ -63,7 +66,10 @@ export function rowMatchesFilter(row: any, filter: Record<string, any>): boolean
   if (filter.combo && !matchesSearch(row?.comboName || "", String(filter.combo))) {
     return false;
   }
-  if (filter.correlationId && !matchesSearch(row?.correlationId || "", String(filter.correlationId))) {
+  if (
+    filter.correlationId &&
+    !matchesSearch(row?.correlationId || "", String(filter.correlationId))
+  ) {
     return false;
   }
   if (filter.search) {
@@ -131,6 +137,7 @@ export function buildCallLogListRows({
       targetFormat: null,
       apiKeyId: null,
       apiKeyName: null,
+      providerKeySlot: null,
       comboName: null,
       error: null,
       correlationId: detail.correlationId || null,
@@ -166,6 +173,7 @@ export function buildCallLogListRows({
       targetFormat: null,
       apiKeyId: null,
       apiKeyName: null,
+      providerKeySlot: null,
       comboName: null,
       error: detail.error || null,
       correlationId: detail.correlationId || null,

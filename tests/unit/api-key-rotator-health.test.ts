@@ -16,6 +16,7 @@ import {
   resetKeyStatus,
   getAllKeyHealth,
   syncHealthFromDB,
+  getKeySelectionStats,
   type KeyHealth,
 } from "../../open-sse/services/apiKeyRotator.ts";
 
@@ -121,6 +122,18 @@ describe("apiKeyRotator Health Tracking", () => {
       const result = getValidApiKey(connectionId, primaryKey, extraKeys);
       assert.ok(result, "should have a result");
       assert.ok(["primary", "extra_0", "extra_1"].includes(result!.keyId), "keyId should be valid");
+    });
+
+    it("should count selections by redacted key slot", () => {
+      const connectionId = "selection-stats-test";
+      getValidApiKey(connectionId, "primary-key", ["extra-key"]);
+      getValidApiKey(connectionId, "primary-key", ["extra-key"]);
+      const stats = getKeySelectionStats(connectionId);
+
+      assert.equal(stats.totalSelections, 2);
+      assert.equal(stats.byKeyId.primary, 1);
+      assert.equal(stats.byKeyId.extra_0, 1);
+      assert.equal(stats.lastKeyId, "extra_0");
     });
 
     it("should round-robin among valid keys only (skipping invalid)", () => {

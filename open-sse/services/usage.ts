@@ -78,6 +78,7 @@ import { getConolUsage } from "./conolUsage.ts";
 import { getAgentrouterUsage } from "./usage/agentrouter.ts";
 import { getKilocodeUsage } from "./usage/kilocode.ts";
 import { getMistralUsage } from "./usage/mistral.ts";
+import { getFreebuffUsage } from "./usage/freebuff.ts";
 
 type JsonRecord = Record<string, unknown>;
 type UsageProviderConnection = JsonRecord & {
@@ -180,6 +181,8 @@ export async function getUsageForProvider(
       return await getMoonshotOpenPlatformUsage(connection);
     case "openrouter":
       return await getOpenrouterUsage(id || "", apiKey || "", providerSpecificData);
+    case "freebuff":
+      return await getFreebuffUsage(apiKey || accessToken || "");
     case "opencode":
     case "opencode-zen":
       return await getOpencodeUsage(id || "", apiKey || "");

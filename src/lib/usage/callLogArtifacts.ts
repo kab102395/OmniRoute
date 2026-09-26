@@ -43,7 +43,7 @@ function preserveErrorForSizeLimit(error: unknown): unknown {
   if (error === null || error === undefined) return null;
   let serialized: string;
   try {
-    serialized = typeof error === "string" ? error : JSON.stringify(error) ?? String(error);
+    serialized = typeof error === "string" ? error : (JSON.stringify(error) ?? String(error));
   } catch {
     // A circular or unserializable error must not take the whole artifact down.
     serialized = String(error);
@@ -81,6 +81,7 @@ export type CallLogArtifact = {
     targetFormat: string | null;
     apiKeyId: string | null;
     apiKeyName: string | null;
+    providerKeySlot?: string | null;
     comboName: string | null;
     comboStepId: string | null;
     comboExecutionKey: string | null;

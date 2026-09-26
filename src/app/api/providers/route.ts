@@ -59,6 +59,7 @@ import {
 import { isAutoFetchModelsEnabled } from "@/lib/providerModels/modelDiscovery";
 import { testSingleConnection } from "./[id]/test/route";
 import { rejectRetiredCommonChatGptWebProvider } from "@/lib/providers/chatgptWebRetirementResponse";
+import { getKeySelectionStats } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 
 function projectCodexAccountPoolWithRoutingQuota(
   connection: Parameters<typeof projectCodexAccountPool>[0],
@@ -136,6 +137,7 @@ export async function GET(request: Request) {
         refreshToken: undefined,
         idToken: undefined,
         providerSpecificData,
+        keyRotation: getKeySelectionStats(c.id),
         ...(c.provider === "codex"
           ? {
               codexAccountPool: projectCodexAccountPoolWithRoutingQuota(

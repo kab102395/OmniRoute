@@ -668,6 +668,7 @@ export async function handleChatCore({
     };
   };
   let tokensCompressed: number | null = null;
+  let lastExecutionCredentials: Record<string, unknown> | null = null;
   body = injectSystemPrompt(body);
   // ── Per-endpoint custom system prompt (port of upstream #2063) ──
   // Reads from cachedSettings if available (passed in from combo/chat layer)
@@ -1098,6 +1099,7 @@ export async function handleChatCore({
       clientRawRequest,
       requestedModel,
       credentials,
+      executionCredentials: () => lastExecutionCredentials,
       startTime,
       body,
       sourceFormat,
@@ -3792,6 +3794,7 @@ export async function handleChatCore({
 
   try {
     const result = await executeProviderRequest(effectiveModel, true);
+    lastExecutionCredentials = result._executionCredentials ?? null;
 
     providerResponse = result.response;
     providerUrl = result.url;

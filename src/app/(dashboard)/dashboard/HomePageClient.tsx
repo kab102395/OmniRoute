@@ -229,9 +229,9 @@ export default function HomePageClient({ machineId: _machineId }: HomePageClient
   const fetchData = useCallback(async () => {
     try {
       const [provRes, modelsRes, versionRes] = await Promise.all([
-        fetch("/api/providers"),
-        fetch("/api/models"),
-        fetch("/api/system/version"),
+        fetch("/api/providers", { cache: "no-store" }),
+        fetch("/api/models", { cache: "no-store" }),
+        fetch("/api/system/version", { cache: "no-store" }),
       ]);
       if (provRes.ok) {
         const provData = await provRes.json();
@@ -256,6 +256,23 @@ export default function HomePageClient({ machineId: _machineId }: HomePageClient
     void (async () => {
       await fetchData();
     })();
+  }, [fetchData]);
+
+  // Keep a long-lived dashboard tab current without requiring a manual reload.
+  // Focus/visibility refreshes handle returning to the tab, while the interval
+  // keeps provider and model state current during an active session.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void fetchData();
+    };
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [fetchData]);
 
   // Fetch provider nodes for display labels (compat providers)

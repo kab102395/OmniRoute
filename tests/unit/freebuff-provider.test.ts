@@ -6,6 +6,7 @@ import type { ExecuteInput } from "../../open-sse/executors/base.ts";
 import { freebuffProvider } from "../../open-sse/config/providers/registry/freebuff/index.ts";
 import { APIKEY_PROVIDERS_GATEWAYS } from "../../src/shared/constants/providers/apikey/gateways.ts";
 import { validateFreebuffProvider } from "../../src/lib/providers/validation.ts";
+import { buildFreebucksQuota } from "../../open-sse/services/usage/freebuff.ts";
 
 test("FreebuffExecutor: constructor initializes provider name correctly", () => {
   const executor = new FreebuffExecutor();
@@ -56,4 +57,23 @@ test("validateFreebuffProvider: returns invalid when apiKey is empty", async () 
   const res = await validateFreebuffProvider({ apiKey: "" });
   assert.equal(res.valid, false);
   assert.match(res.error || "", /Freebuff Auth Token required/i);
+});
+
+test("Freebuff usage maps the account balance and reset without exposing credentials", () => {
+  const quota = buildFreebucksQuota({
+    usage: 25,
+    remainingBalance: 75,
+    balanceBreakdown: { free: 75, referral: 5 },
+    next_quota_reset: "2026-09-24T07:00:00.000Z",
+  });
+
+  assert.deepEqual(quota, {
+    used: 25,
+    total: 100,
+    remaining: 75,
+    remainingPercentage: 75,
+    resetAt: "2026-09-24T07:00:00.000Z",
+    unlimited: false,
+    displayName: "Freebucks (daily)",
+  });
 });

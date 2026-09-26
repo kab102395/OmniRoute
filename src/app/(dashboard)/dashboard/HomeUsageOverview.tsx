@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import Card from "@/shared/components/Card";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { NOAUTH_PROVIDERS } from "@/shared/constants/providers/noauth";
 
 type AnalyticsProviderRow = {
   provider?: unknown;
@@ -17,7 +18,18 @@ type AnalyticsProviderRow = {
 type ProviderConnection = {
   id?: string;
   provider?: string;
+  name?: string;
+  displayName?: string;
+  email?: string;
   isActive?: boolean;
+  providerSpecificData?: {
+    extraApiKeys?: unknown;
+  };
+  keyRotation?: {
+    totalSelections?: unknown;
+    byKeyId?: Record<string, unknown>;
+    lastKeyId?: unknown;
+  };
 };
 
 type QuotaRow = {
@@ -48,6 +60,40 @@ type HomeProviderUsageRow = {
 
 type UsageResponse = {
   byProvider?: AnalyticsProviderRow[];
+  byMistralKeySlot?: Array<{
+    provider?: unknown;
+    connectionId?: unknown;
+    keySlot?: unknown;
+    requests?: unknown;
+    successfulRequests?: unknown;
+    totalTokens?: unknown;
+  }>;
+};
+
+const FREE_ROUTE_IDS = [
+  "freebuff",
+  "openrouter",
+  "opencode",
+  "duckduckgo-web",
+  "cloudflare-playground",
+  "chipotle",
+  "veoaifree-web",
+  "uncloseai",
+  "aihorde",
+  "pollinations",
+] as const;
+
+const FREE_ROUTE_NOTES: Record<string, string> = {
+  freebuff: "Account Freebucks balance",
+  openrouter: "Free-model daily meter + credit balance",
+  opencode: "No key; public free endpoint",
+  "duckduckgo-web": "No key; anonymous access",
+  "cloudflare-playground": "No key; IP-limited browser route",
+  chipotle: "No key; anonymous support-chat route",
+  "veoaifree-web": "No key; 6 video requests/hour per IP",
+  uncloseai: "No key; public OpenAI-compatible route",
+  aihorde: "No key; volunteer queue",
+  pollinations: "Keyless best-effort free models",
 };
 
 const numberValue = (value: unknown): number => {
@@ -82,9 +128,23 @@ function providerIdForRow(value: unknown, connections: ProviderConnection[]): st
   return known?.[0] || raw.replace(/\s+/g, "-");
 }
 
-function providerLabel(provider: string): string {
+function providerLabel(provider: string, connections: ProviderConnection[]): string {
   const definition = AI_PROVIDERS[provider];
-  return typeof definition?.name === "string" ? definition.name : provider;
+  const label = typeof definition?.name === "string" ? definition.name : provider;
+  if (provider !== "mistral") return label;
+
+  const keyCount = connections
+    .filter((connection) => connection.isActive !== false && connection.provider === provider)
+    .reduce((count, connection) => {
+      const extraKeys = Array.isArray(connection.providerSpecificData?.extraApiKeys)
+        ? connection.providerSpecificData.extraApiKeys.filter(
+            (key) => typeof key === "string" && key.trim().length > 0
+          ).length
+        : 0;
+      return count + 1 + extraKeys;
+    }, 0);
+
+  return keyCount > 1 ? `${label} (${keyCount} keys)` : label;
 }
 
 function quotasForProvider(
@@ -114,6 +174,19 @@ function quotasForProvider(
   return { quota: null, quotaKey: null, creditQuota: null };
 }
 
+function rotationSummary(provider: string, connections: ProviderConnection[]): string | null {
+  if (provider !== "mistral") return null;
+  const connection = connections.find(
+    (candidate) => candidate.isActive !== false && candidate.provider === provider
+  );
+  const stats = connection?.keyRotation;
+  if (!stats || !stats.byKeyId) return null;
+  const slots = Object.entries(stats.byKeyId)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([keyId, count]) => `${keyId}: ${Number(count)}`);
+  return slots.length > 0 ? `Key rotation · ${slots.join(" · ")}` : null;
+}
+
 export function buildHomeProviderUsageRows(
   analyticsRows: AnalyticsProviderRow[],
   caches: Record<string, ProviderLimitCache>,
@@ -124,7 +197,7 @@ export function buildHomeProviderUsageRows(
     const provider = providerIdForRow(row.provider, connections);
     const current = grouped.get(provider) || {
       provider,
-      label: providerLabel(provider),
+      label: providerLabel(provider, connections),
       requests: 0,
       totalTokens: 0,
       successfulRequests: 0,
@@ -144,7 +217,7 @@ export function buildHomeProviderUsageRows(
     if (!grouped.has(provider)) {
       grouped.set(provider, {
         provider,
-        label: providerLabel(provider),
+        label: providerLabel(provider, connections),
         requests: 0,
         totalTokens: 0,
         successfulRequests: 0,
@@ -170,6 +243,13 @@ function quotaRemaining(quota: QuotaRow | null): number {
   return Math.max(0, quotaTotal(quota) - numberValue(quota.used));
 }
 
+function freeRouteLabel(provider: string): string {
+  if (provider === "freebuff") return "Freebuff";
+  if (provider === "openrouter") return "OpenRouter free pool";
+  const noAuth = NOAUTH_PROVIDERS[provider as keyof typeof NOAUTH_PROVIDERS];
+  return typeof noAuth?.name === "string" ? noAuth.name : provider;
+}
+
 export default function HomeUsageOverview() {
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [caches, setCaches] = useState<Record<string, ProviderLimitCache>>({});
@@ -178,31 +258,48 @@ export default function HomeUsageOverview() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetch("/api/usage/analytics?range=30d").then((response) =>
-        response.ok ? (response.json() as Promise<UsageResponse>) : null
-      ),
-      fetch("/api/usage/provider-limits").then((response) =>
-        response.ok
-          ? (response.json() as Promise<{ caches?: Record<string, ProviderLimitCache> }>)
-          : null
-      ),
-      fetch("/api/providers").then((response) =>
-        response.ok ? (response.json() as Promise<{ connections?: ProviderConnection[] }>) : null
-      ),
-    ])
-      .then(([usageResponse, limitsResponse, providerResponse]) => {
+
+    const load = async (showLoading = false) => {
+      if (showLoading) setLoading(true);
+      try {
+        const [usageResponse, limitsResponse, providerResponse] = await Promise.all([
+          fetch("/api/usage/analytics?range=30d", { cache: "no-store" }).then((response) =>
+            response.ok ? (response.json() as Promise<UsageResponse>) : null
+          ),
+          fetch("/api/usage/provider-limits", { cache: "no-store" }).then((response) =>
+            response.ok
+              ? (response.json() as Promise<{ caches?: Record<string, ProviderLimitCache> }>)
+              : null
+          ),
+          fetch("/api/providers", { cache: "no-store" }).then((response) =>
+            response.ok
+              ? (response.json() as Promise<{ connections?: ProviderConnection[] }>)
+              : null
+          ),
+        ]);
         if (cancelled) return;
         setUsage(usageResponse);
         setCaches(limitsResponse?.caches || {});
         setConnections(providerResponse?.connections || []);
-      })
-      .catch(() => {})
-      .finally(() => {
+      } catch {
+        // Keep the last successful snapshot visible during a transient refresh failure.
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    void load(true);
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, []);
 
@@ -221,6 +318,64 @@ export default function HomeUsageOverview() {
       ),
     [rows]
   );
+  const freeRoutes = useMemo(
+    () =>
+      FREE_ROUTE_IDS.map((provider) => {
+        const row = rows.find((candidate) => candidate.provider === provider);
+        const quota = row?.quota || null;
+        const remaining = quotaRemaining(quota);
+        let status = "Available";
+        if (provider === "freebuff") {
+          status = quota ? `${formatHomeUsageNumber(remaining)} Freebucks left` : "Connect account";
+        } else if (provider === "openrouter") {
+          status = quota
+            ? `${formatHomeUsageNumber(remaining)} free requests left`
+            : "Connect account";
+        } else if (row && row.requests > 0) {
+          status = `${formatHomeUsageNumber(row.requests)} requests routed`;
+        }
+        return {
+          provider,
+          label: freeRouteLabel(provider),
+          note: FREE_ROUTE_NOTES[provider],
+          status,
+        };
+      }),
+    [rows]
+  );
+  const mistralKeyUsage = useMemo(() => {
+    const accountLabels = new Map(
+      connections
+        .filter((connection) => connection.provider === "mistral" && connection.id)
+        .map((connection, index) => [
+          connection.id as string,
+          connection.displayName ||
+            connection.name ||
+            connection.email ||
+            `Mistral account ${index + 1}`,
+        ])
+    );
+    return (usage?.byMistralKeySlot || [])
+      .filter((entry) => entry.provider === "mistral")
+      .map((entry) => {
+        const slot = typeof entry.keySlot === "string" ? entry.keySlot : "unattributed";
+        const keyName =
+          slot === "primary"
+            ? "Primary key"
+            : /^extra_\d+$/.test(slot)
+              ? `Additional key ${Number(slot.slice(6)) + 1}`
+              : "Older requests (key not recorded)";
+        const connectionId = typeof entry.connectionId === "string" ? entry.connectionId : "";
+        return {
+          id: `${connectionId}:${slot}`,
+          label: accountLabels.get(connectionId) || "Mistral account",
+          keyName,
+          requests: numberValue(entry.requests),
+          successfulRequests: numberValue(entry.successfulRequests),
+          totalTokens: numberValue(entry.totalTokens),
+        };
+      });
+  }, [usage?.byMistralKeySlot, connections]);
 
   if (loading) return <Card className="min-h-[220px] animate-pulse" />;
 
@@ -261,6 +416,39 @@ export default function HomeUsageOverview() {
           </div>
         </div>
 
+        <details className="rounded-xl border border-border bg-bg-subtle p-3">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Free routes at a glance{" "}
+            <span className="text-xs font-normal text-text-muted">
+              · {freeRoutes.length} routes
+            </span>
+          </summary>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
+            {freeRoutes.map((route) => (
+              <div
+                key={route.provider}
+                className="rounded-lg border border-border/70 bg-surface px-3 py-2"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <ProviderIcon providerId={route.provider} size={20} type="color" />
+                  <span className="text-xs font-semibold truncate">{route.label}</span>
+                </div>
+                <p className="text-xs font-medium text-green-500 mt-2">{route.status}</p>
+                <p className="text-[10px] text-text-muted mt-1 truncate" title={route.note}>
+                  {route.note}
+                </p>
+              </div>
+            ))}
+          </div>
+          <Link
+            href="/dashboard/providers"
+            prefetch={false}
+            className="mt-3 inline-block text-xs text-primary hover:underline"
+          >
+            Manage routes →
+          </Link>
+        </details>
+
         {rows.length === 0 ? (
           <p className="text-sm text-text-muted rounded-xl border border-dashed border-border p-5">
             Provider usage will appear here after your first routed request.
@@ -269,6 +457,7 @@ export default function HomeUsageOverview() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {rows.map((row) => {
               const isOpenRouter = row.provider === "openrouter";
+              const isFreebuff = row.provider === "freebuff";
               const total = quotaTotal(row.quota);
               const remaining = quotaRemaining(row.quota);
               const used = numberValue(row.quota?.used);
@@ -286,6 +475,43 @@ export default function HomeUsageOverview() {
                       {formatHomeUsageNumber(displayRequests)} requests
                     </span>
                   </div>
+                  {rotationSummary(row.provider, connections) && (
+                    <p className="text-[11px] text-text-muted mt-2">
+                      {rotationSummary(row.provider, connections)}
+                    </p>
+                  )}
+                  {row.provider === "mistral" && (
+                    <div className="mt-3 rounded-lg border border-border/70 bg-bg-subtle p-3">
+                      <p className="text-xs font-semibold mb-2">
+                        Usage by Mistral API key · last 30 days
+                      </p>
+                      {mistralKeyUsage.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {mistralKeyUsage.map((keyUsage) => (
+                            <div key={keyUsage.id} className="rounded-md bg-surface px-3 py-2">
+                              <p className="text-xs font-medium truncate">
+                                {keyUsage.label} · {keyUsage.keyName}
+                              </p>
+                              <p className="mt-1 text-sm font-semibold">
+                                {formatHomeUsageNumber(keyUsage.totalTokens)} tokens
+                                <span className="ml-2 text-xs font-normal text-text-muted">
+                                  {formatHomeUsageNumber(keyUsage.requests)} requests
+                                </span>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-text-muted">
+                          Per-key usage will appear after requests are logged with a key slot.
+                        </p>
+                      )}
+                      <p className="text-[10px] text-text-muted mt-2">
+                        Based on recorded request logs; historical requests without key-slot
+                        metadata are listed separately.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex items-end justify-between mt-4">
                     <div>
                       <p className="text-2xl font-bold">{formatHomeUsageNumber(row.totalTokens)}</p>
@@ -299,6 +525,15 @@ export default function HomeUsageOverview() {
                         <p className="text-[11px] text-text-muted">
                           {formatHomeUsageNumber(used)} / {formatHomeUsageNumber(total)} daily free
                           tier
+                        </p>
+                      </div>
+                    ) : isFreebuff && row.quota && total > 0 ? (
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-green-500">
+                          {formatHomeUsageNumber(remaining)} Freebucks left
+                        </p>
+                        <p className="text-[11px] text-text-muted">
+                          {formatHomeUsageNumber(used)} / {formatHomeUsageNumber(total)} daily
                         </p>
                       </div>
                     ) : row.quota && total > 0 ? (
@@ -334,9 +569,11 @@ export default function HomeUsageOverview() {
                   <p className="text-[11px] text-text-muted mt-3">
                     {isOpenRouter
                       ? "Requests are the OpenRouter free-tier meter; tokens are shown as secondary usage."
-                      : row.quota
-                        ? "Allowance data is shown from the latest provider sync."
-                        : "Usage is tracked locally; this provider does not expose a known allowance to OmniRoute."}
+                      : isFreebuff
+                        ? "Freebucks balance and reset are read from Freebuff; tokens are OmniRoute-local usage."
+                        : row.quota
+                          ? "Allowance data is shown from the latest provider sync."
+                          : "Usage is tracked locally; this provider does not expose a known allowance to OmniRoute."}
                   </p>
                 </div>
               );

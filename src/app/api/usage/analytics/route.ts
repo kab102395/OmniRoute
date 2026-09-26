@@ -23,6 +23,7 @@ import {
   getPresetCostModelRows,
 } from "@/lib/db/usageAnalytics";
 import { getFallbackStats, getErrorTypeBreakdown } from "@/lib/db/callLogStats";
+import { getMistralKeySlotUsage } from "@/lib/db/callLogStats";
 import { buildByProviderRows } from "@/lib/usage/providerDisplayNames";
 import { isFlatRateProvider } from "@/lib/usage/flatRateProviders";
 import { toNumber } from "@/shared/utils/numeric";
@@ -472,6 +473,7 @@ export async function GET(request: Request) {
     const providerCostRows = getProviderCostRows(unifiedSource, unifiedParams) as UsageRows;
 
     const providerRows = getProviderUsageRows(unifiedSource, unifiedParams) as UsageRows;
+    const mistralKeySlotRows = getMistralKeySlotUsage(sinceIso);
 
     const accountCostWhereClause = whereClause
       .replace(/timestamp/g, "usage_history.timestamp")
@@ -896,6 +898,7 @@ export async function GET(request: Request) {
       activityMap,
       byModel,
       byProvider,
+      byMistralKeySlot: mistralKeySlotRows,
       byApiKey,
       byAccount,
       byServiceTier,

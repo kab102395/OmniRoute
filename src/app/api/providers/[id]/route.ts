@@ -35,6 +35,7 @@ import {
   encodeChatGptWebCodexSecrets,
 } from "@omniroute/open-sse/services/chatgptWebCodexAdmin.ts";
 import { rejectRetiredCommonChatGptWebProvider } from "@/lib/providers/chatgptWebRetirementResponse";
+import { getKeySelectionStats } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 
 function normalizeCodexLimitPolicy(
   incoming: unknown,
@@ -83,6 +84,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     delete result.accessToken;
     delete result.refreshToken;
     delete result.idToken;
+    result.keyRotation = getKeySelectionStats(String(result.id));
     if (result.providerSpecificData) {
       result.providerSpecificData = sanitizeProviderSpecificDataForResponse(
         result.providerSpecificData
@@ -215,7 +217,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // the override (connection follows the global default); 0-1440 = explicit
     // per-connection minutes (0 opts this connection out of the sweep).
     if (healthCheckInterval === null) updateData.healthCheckInterval = null;
-    else if (healthCheckInterval !== undefined) updateData.healthCheckInterval = healthCheckInterval;
+    else if (healthCheckInterval !== undefined)
+      updateData.healthCheckInterval = healthCheckInterval;
     if (group !== undefined) updateData.group = group;
     if (maxConcurrent !== undefined) updateData.maxConcurrent = maxConcurrent;
     if (incomingWindowThresholds !== undefined) {

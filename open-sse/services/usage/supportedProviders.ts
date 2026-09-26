@@ -83,6 +83,8 @@ export const USAGE_SUPPORTED_PROVIDERS: readonly string[] = [
   "mistral",
   // OpenRouter key limits + account credits (GET /api/v1/key + /api/v1/credits)
   "openrouter",
+  // Official Freebuff client usage endpoint: account-wide Freebucks balance and reset.
+  "freebuff",
   // Devin CLI agentic quota (Codeium seat-management GetUserStatus, protobuf)
   "devin-cli",
 ];

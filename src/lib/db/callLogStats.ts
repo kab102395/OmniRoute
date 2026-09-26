@@ -34,6 +34,15 @@ export interface ProviderUsageRow {
   lastRequestAt: string | null;
 }
 
+export interface ProviderKeySlotUsageRow {
+  provider: string;
+  connectionId: string;
+  keySlot: string;
+  requests: number;
+  successfulRequests: number;
+  totalTokens: number;
+}
+
 export interface SearchProviderStatRow {
   provider: string;
   requests: number;
@@ -151,6 +160,56 @@ export function getProviderUsageSince(since: string): ProviderUsageRow[] {
         GROUP BY c.provider`
     )
     .all({ since }) as ProviderUsageRow[];
+}
+
+/** Per-credential-slot usage for Mistral's primary and extra API keys. */
+export function getMistralKeySlotUsage(since: string | null): ProviderKeySlotUsageRow[] {
+  const db = getDbInstance();
+  return db
+    .prepare(
+      `SELECT
+          LOWER(provider) AS provider,
+          connection_id AS connectionId,
+          COALESCE(NULLIF(provider_key_slot, ''), 'unattributed') AS keySlot,
+          COUNT(*) AS requests,
+          SUM(CASE WHEN status >= 200 AND status < 400 THEN 1 ELSE 0 END) AS successfulRequests,
+          COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS totalTokens
+        FROM call_logs
+        WHERE LOWER(provider) = 'mistral'
+          AND connection_id IS NOT NULL AND connection_id != ''
+          AND (@since IS NULL OR timestamp >= @since)
+        GROUP BY LOWER(provider), connection_id, COALESCE(NULLIF(provider_key_slot, ''), 'unattributed')
+        ORDER BY connection_id, keySlot`
+    )
+    .all({ since }) as ProviderKeySlotUsageRow[];
+}
+
+/**
+ * Count persisted OpenRouter free-variant requests for one connection in the
+ * current UTC day. This is the durable dashboard source of truth; the
+ * dispatch-time free-window tracker remains useful for preflight/RPM gating,
+ * but is intentionally in-memory and cannot survive a runtime restart.
+ */
+export function getOpenrouterFreeRequestsToday(connectionId: string): number {
+  if (!connectionId) return 0;
+
+  const dayStart = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const db = getDbInstance();
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS requests
+         FROM call_logs
+        WHERE provider = 'openrouter'
+          AND connection_id = ?
+          AND timestamp >= ?
+          AND (
+            LOWER(COALESCE(model, '')) LIKE '%:free'
+            OR LOWER(COALESCE(requested_model, '')) LIKE '%:free'
+          )`
+    )
+    .get(connectionId, dayStart) as { requests?: number } | undefined;
+
+  return Number.isFinite(Number(row?.requests)) ? Number(row?.requests) : 0;
 }
 
 // ---------------------------------------------------------------------------

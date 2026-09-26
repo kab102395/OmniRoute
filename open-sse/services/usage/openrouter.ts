@@ -8,6 +8,7 @@
 
 import { fetchOpenrouterQuota, type OpenrouterQuota } from "../openrouterQuotaFetcher.ts";
 import { getFreeWindowStatus, resolveAccountKey } from "../openrouterFreeWindow.ts";
+import { getOpenrouterFreeRequestsToday } from "@/lib/db/callLogStats";
 import { type UsageQuota } from "./quota.ts";
 
 function buildCreditsQuota(quota: OpenrouterQuota): UsageQuota | null {
@@ -26,11 +27,18 @@ function buildCreditsQuota(quota: OpenrouterQuota): UsageQuota | null {
 function buildFreeWindowQuota(connectionId: string, connection?: Record<string, unknown>) {
   const accountKey = resolveAccountKey(connectionId, connection);
   const status = getFreeWindowStatus(accountKey);
+  // The in-memory tracker is used for dispatch-time enforcement, but the
+  // dashboard must remain accurate after refreshes and runtime restarts.
+  // call_logs is durable and records the actual routed request once completed.
+  const persistedDailyUsed = getOpenrouterFreeRequestsToday(connectionId);
+  const dailyUsed = Math.max(status.dailyUsed, persistedDailyUsed);
   const dailyQuota: UsageQuota = {
-    used: status.dailyUsed,
+    used: dailyUsed,
     total: status.dailyLimit,
-    remaining: status.dailyRemaining,
-    remainingPercentage: Math.round((status.dailyRemaining / status.dailyLimit) * 100),
+    remaining: Math.max(0, status.dailyLimit - dailyUsed),
+    remainingPercentage: Math.round(
+      (Math.max(0, status.dailyLimit - dailyUsed) / status.dailyLimit) * 100
+    ),
     resetAt: status.dailyResetAt,
     unlimited: false,
     displayName: "Free-tier requests (daily)",

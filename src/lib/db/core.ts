@@ -384,6 +384,7 @@ const SCHEMA_SQL = `
     target_format TEXT,
     api_key_id TEXT,
     api_key_name TEXT,
+    provider_key_slot TEXT,
     combo_name TEXT,
     combo_step_id TEXT,
     combo_execution_key TEXT,

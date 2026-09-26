@@ -46,6 +46,7 @@ import {
   type ProviderConnectionLike,
 } from "./providerLimits/credentialRefresh";
 import { getMonthlyProviderTokensForConnection } from "./usageStats";
+import { getOpenrouterFreeRequestsToday } from "@/lib/db/callLogStats";
 export { shouldAttemptRotatingRefresh } from "./providerLimits/credentialRefresh";
 type JsonRecord = Record<string, unknown>;
 type SyncSource = "manual" | "scheduled";
@@ -93,6 +94,8 @@ const PROVIDER_LIMITS_APIKEY_PROVIDERS = new Set([
   "agentrouter",
   // OpenRouter API key → /key limits + /credits account balance
   "openrouter",
+  // Freebuff account-wide Freebucks usage via the official client endpoint.
+  "freebuff",
   // Standard Mistral keys can be probed for live rate-limit headers.
   "mistral",
 ]);
@@ -702,18 +705,37 @@ export async function getSanitizedCachedProviderLimitsMap(): Promise<
   Record<string, ProviderLimitsCacheEntry>
 > {
   const caches = getAllProviderLimitsCache();
-  // Sanitization only rewrites Antigravity/agy quota keys; every other provider's cache
-  // entry is returned untouched (see sanitizeProviderLimitsCacheForConnection). The
-  // dashboard polls this on an auto-refresh interval, so avoid the unconditional
-  // `SELECT * FROM provider_connections` + per-row credential decryption that the
-  // previous implementation paid on every poll: skip the scan entirely when nothing is
-  // cached, and otherwise fetch ONLY the Antigravity/agy connections. For any other
-  // provider, byId.get(id) is undefined and the entry is returned verbatim — identical
-  // output to scanning every active connection, but without decrypting unrelated keys.
-  // (LEDGER-2 / #3821-review)
   const connectionIds = Object.keys(caches);
   if (connectionIds.length === 0) return {};
 
+  const activeOpenrouterConnections = (await getProviderConnections({
+    isActive: true,
+    provider: "openrouter",
+  })) as unknown as ProviderConnectionLike[];
+  for (const connection of activeOpenrouterConnections) {
+    const entry = caches[connection.id];
+    const freeDaily = entry?.quotas?.free_daily;
+    if (!entry || !isRecord(freeDaily)) continue;
+
+    const total = Number(freeDaily.total);
+    if (!Number.isFinite(total) || total <= 0) continue;
+    const used = Math.min(total, getOpenrouterFreeRequestsToday(connection.id));
+    entry.quotas = {
+      ...entry.quotas,
+      free_daily: {
+        ...freeDaily,
+        used,
+        remaining: Math.max(0, total - used),
+        remainingPercentage: Math.round((Math.max(0, total - used) / total) * 100),
+      },
+    };
+  }
+  // Sanitization only rewrites Antigravity/agy quota keys; every other provider's cache
+  // entry is returned untouched (see sanitizeProviderLimitsCacheForConnection), apart
+  // from the local OpenRouter free-request overlay above. The dashboard polls this on
+  // an auto-refresh interval, so skip all connection scans when nothing is cached. For
+  // any other provider, byId.get(id) is undefined and the entry is returned verbatim.
+  // (LEDGER-2 / #3821-review)
   const sanitizableConnections = [
     ...((await getProviderConnections({
       isActive: true,

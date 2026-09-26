@@ -131,6 +131,7 @@ const RequestLoggerV2 = forwardRef<RequestLoggerV2Handle, { initialSelectedId?: 
         { key: "protocol", label: t("columns.protocol") },
         { key: "account", label: t("columns.account") },
         { key: "apiKey", label: t("columns.apiKey") },
+        { key: "providerKey", label: t("columns.providerKey") },
         { key: "combo", label: t("columns.combo") },
         { key: "tokens", label: t("columns.tokens") },
         { key: "tps", label: t("columns.tps") },
@@ -1253,6 +1254,9 @@ const RequestLoggerV2 = forwardRef<RequestLoggerV2Handle, { initialSelectedId?: 
                     {visibleColumns.apiKey && (
                       <th className={LOG_TABLE_HEADER_CELL_CLASS}>{t("columns.apiKey")}</th>
                     )}
+                    {visibleColumns.providerKey && (
+                      <th className={LOG_TABLE_HEADER_CELL_CLASS}>{t("columns.providerKey")}</th>
+                    )}
                     {visibleColumns.combo && (
                       <th className={LOG_TABLE_HEADER_CELL_CLASS}>{t("columns.combo")}</th>
                     )}
@@ -1538,6 +1542,20 @@ const RequestLoggerV2 = forwardRef<RequestLoggerV2Handle, { initialSelectedId?: 
                               <span className="text-text-muted text-[10px]">—</span>
                             ) : (
                               formatApiKeyLabel(log.apiKeyName, log.apiKeyId)
+                            )}
+                          </td>
+                        )}
+                        {visibleColumns.providerKey && (
+                          <td
+                            className="px-3 py-2 text-text-muted truncate max-w-[120px]"
+                            title={log.providerKeySlot || "—"}
+                          >
+                            {isActive || !log.providerKeySlot ? (
+                              <span className="text-text-muted text-[10px]">—</span>
+                            ) : (
+                              <span className="font-mono text-[10px] text-cyan-300">
+                                {log.providerKeySlot}
+                              </span>
                             )}
                           </td>
                         )}
