@@ -1560,7 +1560,42 @@ paths:
             X-OmniRoute-Response-Cost:
               schema:
                 type: string
-              description: Request cost in USD, fixed 10 decimals (e.g. `0.0001234500`; `0.0000000000` for free/unpriced).
+              description: USD amount, fixed 10 decimals. Interpret with Accounting-Kind and Cost-Source; zero alone does not mean free.
+            X-OmniRoute-Accounting-Kind:
+              schema:
+                type: string
+                enum:
+                  [
+                    provider_reported_billed_cost,
+                    estimated_cost,
+                    usage_only,
+                    unknown,
+                    zero_cost,
+                    pending,
+                  ]
+              description: Accounting semantics. Streaming begins as pending because final usage and route are not yet known.
+            X-OmniRoute-Cost-Currency:
+              schema:
+                type: string
+                enum: [USD]
+              description: Currency of Response-Cost when an amount is available.
+            X-OmniRoute-Cost-Source:
+              schema:
+                type: string
+              description: Provider-reported field or OmniRoute local pricing table used for the amount.
+            X-OmniRoute-Usage-Kind:
+              schema:
+                type: string
+                enum: [provider_reported_usage, estimated_usage, unknown]
+              description: Whether usage counters came from the provider or were estimated.
+            X-OmniRoute-Served-Provider:
+              schema:
+                type: string
+              description: Final provider that produced a successful non-streaming completion; omitted before success is known.
+            X-OmniRoute-Served-Model:
+              schema:
+                type: string
+              description: Concrete model in the final captured outbound provider request; omitted if unavailable.
             X-OmniRoute-Tokens-In:
               schema:
                 type: string
@@ -1600,7 +1635,7 @@ paths:
             X-OmniRoute-Request-Id:
               schema:
                 type: string
-              description: Request correlation id (present when known).
+              description: Successful attempt's call-log ID on non-streaming responses; initial stream correlation ID on streaming responses.
             X-OmniRoute-Version:
               schema:
                 type: string
