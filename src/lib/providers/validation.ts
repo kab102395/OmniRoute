@@ -145,33 +145,51 @@ export async function validateFreebuffProvider({ apiKey }: { apiKey: string }) {
     return { valid: false, error: "Freebuff Auth Token required", unsupported: false };
   }
   try {
+    // GET is the upstream session-state read. A missing session (404) is a
+    // healthy credential state; validation must never request admission.
     const res = await fetch("https://www.codebuff.com/api/v1/freebuff/session", {
-      method: "POST",
+      method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
         "User-Agent": "codebuff/0.1.0 (darwin-arm64)",
-        "x-freebuff-model": "deepseek/deepseek-v4-flash",
       },
-      body: JSON.stringify({}),
       signal: AbortSignal.timeout(15000),
     });
 
-    if (res.ok || res.status === 409) {
+    if (res.status === 404 || res.ok) {
       return { valid: true, error: null };
     }
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       return { valid: false, error: "Invalid or expired Freebuff Auth Token", unsupported: false };
     }
-    const errText = await res.text().catch(() => "");
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { status?: unknown } | null;
+      if (body?.status === "banned" || body?.status === "country_blocked") {
+        return {
+          valid: true,
+          error: null,
+          warning: `Freebuff credential is valid; account state is ${body.status}`,
+          statusCode: res.status,
+        };
+      }
+      return {
+        valid: false,
+        error: "Freebuff rejected the credential (HTTP 403)",
+        unsupported: false,
+      };
+    }
     return {
-      valid: false,
-      error: `Freebuff validation returned ${res.status}: ${errText.slice(0, 100)}`,
+      valid: true,
+      warning: `Freebuff credential validity is inconclusive: session-state endpoint returned ${res.status}`,
+      statusCode: res.status,
       unsupported: false,
     };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { valid: false, error: `Freebuff validation network error: ${msg}`, unsupported: false };
+  } catch {
+    return {
+      valid: true,
+      warning: "Freebuff credential validity is inconclusive: session-state endpoint unavailable",
+      unsupported: false,
+    };
   }
 }
 

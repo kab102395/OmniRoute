@@ -1,4 +1,4 @@
-import { randomInt } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
@@ -23,6 +23,82 @@ function generateClientSessionId(): string {
     out += alphabet[randomInt(alphabet.length)];
   }
   return out;
+}
+
+function logSessionObservation(
+  log: ExecuteInput["log"],
+  connectionId: string | undefined,
+  value: unknown
+): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const session = value as Record<string, unknown>;
+  if (session.status !== "active") return;
+  const finiteNumber = (candidate: unknown) =>
+    typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+  const isoTimestamp = (candidate: unknown) => {
+    if (typeof candidate !== "string") return null;
+    const parsed = Date.parse(candidate);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+  };
+  const model =
+    typeof session.model === "string" && /^[\w./-]{1,160}$/.test(session.model)
+      ? session.model
+      : null;
+  const freebucks =
+    session.freebucks && typeof session.freebucks === "object"
+      ? (session.freebucks as Record<string, unknown>)
+      : null;
+  const daily =
+    freebucks?.daily && typeof freebucks.daily === "object"
+      ? (freebucks.daily as Record<string, unknown>)
+      : null;
+  const wallet =
+    freebucks?.wallet && typeof freebucks.wallet === "object"
+      ? (freebucks.wallet as Record<string, unknown>)
+      : null;
+  const prices =
+    freebucks?.prices && typeof freebucks.prices === "object"
+      ? (freebucks.prices as Record<string, unknown>)
+      : null;
+  const instanceId = typeof session.instanceId === "string" ? session.instanceId : null;
+  log?.info?.(
+    "freebuff-session-observation",
+    JSON.stringify({
+      provider: "freebuff",
+      connectionId:
+        typeof connectionId === "string" && /^[\w-]{1,128}$/.test(connectionId)
+          ? connectionId
+          : null,
+      model,
+      instanceRef: instanceId
+        ? createHash("sha256").update(instanceId).digest("hex").slice(0, 16)
+        : null,
+      admittedAt: isoTimestamp(session.admittedAt),
+      expiresAt: isoTimestamp(session.expiresAt),
+      remainingMs: finiteNumber(session.remainingMs),
+      freebucks: freebucks
+        ? {
+            balance: finiteNumber(freebucks.balance),
+            daily: daily
+              ? {
+                  limit: finiteNumber(daily.limit),
+                  spent: finiteNumber(daily.spent),
+                  remaining: finiteNumber(daily.remaining),
+                  resetAt: isoTimestamp(daily.resetAt),
+                  resetTimeZone:
+                    typeof daily.resetTimeZone === "string" &&
+                    /^[A-Za-z_+-]{1,64}(\/[A-Za-z0-9_+-]{1,64})?$/.test(daily.resetTimeZone)
+                      ? daily.resetTimeZone
+                      : null,
+                }
+              : undefined,
+            walletBalance: finiteNumber(wallet?.balance),
+            modelPrice: model ? finiteNumber(prices?.[model]) : null,
+          }
+        : null,
+      provenance: "OBSERVED_UPSTREAM",
+    })
+  );
 }
 
 export class FreebuffExecutor extends BaseExecutor {
@@ -66,7 +142,7 @@ export class FreebuffExecutor extends BaseExecutor {
 
     // 1. Session acquisition
     try {
-      const sessionRes = await fetch("https://www.codebuff.com/api/v1/freebuff/session", {
+      const sessionRes = await fetch("https://www.codebuff.com/api/v1/freebuff/session/admission", {
         method: "POST",
         headers: {
           ...authHeaders,
@@ -78,6 +154,7 @@ export class FreebuffExecutor extends BaseExecutor {
       if (sessionRes.ok) {
         const data = (await sessionRes.json()) as { instanceId?: string };
         instanceId = data.instanceId || "";
+        logSessionObservation(input.log, credentials?.connectionId, data);
       } else {
         const errText = await sessionRes.text();
         return {

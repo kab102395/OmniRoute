@@ -480,3 +480,118 @@ network-error branch returned the raw exception message. This crossed OmniRoute'
 boundary and could expose credential-like text echoed by the upstream or transport. The audit change
 now bounds the upstream text to 500 characters and runs both error paths through
 `sanitizeErrorMessage`; a mocked test pins redaction and the existing HTTP status behavior.
+
+## Freebuff contract refresh and health-check hardening (2026-09-25)
+
+The current upstream public default branch was verified at
+[`1a433f9418b23828d9c0b9b72fcaa55907d8be34`](https://github.com/CodebuffAI/freebuff/commit/1a433f9418b23828d9c0b9b72fcaa55907d8be34).
+The evidence is the shared
+[`FreebuffSessionServerResponse` type](https://github.com/CodebuffAI/freebuff/blob/1a433f9418b23828d9c0b9b72fcaa55907d8be34/common/src/types/freebuff-session.ts),
+[`session API client`](https://github.com/CodebuffAI/freebuff/blob/1a433f9418b23828d9c0b9b72fcaa55907d8be34/cli/src/utils/freebuff-session-api.ts),
+and [`model catalog/constants`](https://github.com/CodebuffAI/freebuff/blob/1a433f9418b23828d9c0b9b72fcaa55907d8be34/common/src/constants/freebuff-models.ts).
+The public repository contains shared client/types/catalog but not the backend route implementation.
+
+### OmniRoute call graph and probe safety
+
+| Source / symbol                                                                               | Caller / purpose                                 | Method and path                           | Inputs                                                                  | Response handling / side effect                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/credentialHealth/scheduler.ts` → `testSingleConnection` → `validateFreebuffProvider` | scheduled sweep (default 60 min) and manual test | `GET /api/v1/freebuff/session`            | Bearer auth, User-Agent; no model, body, instance, or admission headers | Official state read. 404 (`none`) and 2xx are valid auth; 401 invalid/expired; typed `banned` or `country_blocked` 403 is valid auth with account warning. Other status/network errors are inconclusive. No response state is persisted. |
+| `open-sse/executors/freebuff.ts::FreebuffExecutor.execute`                                    | real inference                                   | `POST /api/v1/freebuff/session/admission` | Bearer auth, model header                                               | Official admission path; obtains instance before completion; logs allowlisted observation fields and hashed instance reference. Admission may acquire a model-bound session.                                                             |
+| same                                                                                          | run start                                        | `POST /api/v1/agent-runs`                 | `action: START`, agent ID, Bearer auth                                  | Reads optional run ID in memory; mutates run state.                                                                                                                                                                                      |
+| same                                                                                          | inference                                        | `POST /api/v1/chat/completions`           | model, instance ID, optional run ID, agent ID, Bearer auth              | Completion response passed to normal handler; ordinary token usage only, no Freebucks ledger.                                                                                                                                            |
+| same                                                                                          | run finish                                       | `POST /api/v1/agent-runs`                 | `action: FINISH`, run ID, summary, Bearer auth                          | Fire-and-forget; result ignored.                                                                                                                                                                                                         |
+
+No other Freebuff-specific network call exists in this branch for `/api/v1/usage` or session reuse.
+The original dirty checkout's usage mapper was inspected read-only and not copied. Historical 61
+HTTP-200 connection-test rows are consistent with the former hourly POST probe, but do not prove
+that those requests admitted sessions or debited Freebucks.
+
+The current official client defines admission as `POST /api/v1/freebuff/session/admission`, state
+read/delete as GET/DELETE `/api/v1/freebuff/session`, and reuse as
+`POST /api/v1/freebuff/session/reuse`. The public client history uses that split in its Sep 19 and
+Sep 25 snapshots. The backend route and server tests are absent from the public repo, so the legacy
+`POST /api/v1/freebuff/session` behavior (alias, redirect, compatibility, deprecated, distinct, or
+unsupported) remains **UNKNOWN**. Consequently mutation and Freebucks debit from those historical
+checks are possible but not proven or excluded. The prior validator used an undocumented POST with
+a model; it now uses the official GET state read. The actual executor now uses the canonical
+admission path. Routing preferences and fallback policy are unchanged.
+
+Authentication health remains separate from capacity/account state. A no-session 404 is valid auth;
+zero Freebucks is valid auth with exhausted capacity; `banned` and `country_blocked` are valid auth
+with an account restriction; 401 is invalid or revoked/expired auth. Other HTTP/network failures
+carry the warning marker `credential validity is inconclusive`, so the health scheduler does not
+paint an outage as invalid credentials.
+
+### Complete current session response status matrix
+
+This is the distinct status set in the current `FreebuffSessionServerResponse` union. The response
+types do not imply that every non-success is an authentication failure.
+
+| Status                       | Classification                       | Contract meaning                                                                                |
+| ---------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `first_tab_discount_changed` | payment/entitlement, transient quote | Discount changed; refresh quote.                                                                |
+| `consent_required`           | payment/entitlement                  | Wallet spend consent required.                                                                  |
+| `none`                       | session                              | No active session; pre-admission state.                                                         |
+| `active`                     | session/model                        | Has instance, model, `admittedAt`, `expiresAt`, `remainingMs`; model cannot change mid-session. |
+| `ended`                      | session/payment                      | Ended, possibly in grace; optional final Freebucks refund receipt/pending state.                |
+| `country_blocked`            | account/terminal restriction         | Free mode unavailable for account/location.                                                     |
+| `model_locked`               | model/session                        | Current active session is bound to another model.                                               |
+| `model_unavailable`          | model/capacity/entitlement           | Closed, withdrawn, gated, or temporarily unavailable model.                                     |
+| `banned`                     | account/terminal failure             | Account banned.                                                                                 |
+| `ip_capped`                  | capacity/transient                   | Distinct users on egress IP exceed cap; retry delay supplied.                                   |
+| `rate_limited`               | capacity/queue/transient             | Shared session quota exhausted for stated pool/window and reset time.                           |
+| `spend_limited`              | capacity/payment/transient           | Spend budget blocks fresh admission; running/reused sessions continue.                          |
+| `purchase_claim_released`    | payment/entitlement/session          | Retired single-use desktop claim; new claim required.                                           |
+| `purchase_in_use`            | payment/capacity/session             | Requested purchased session already in use.                                                     |
+| `purchase_capacity`          | payment/capacity/session             | Purchased-session concurrency limit reached.                                                    |
+| `premium_slot_taken`         | capacity/session/model               | Desktop premium slot occupied.                                                                  |
+| `superseded`                 | session                              | Another CLI rotated the instance.                                                               |
+
+### Freebucks values and mapper audit
+
+Current `FreebuffFreebucksInfo` includes absolute `balance`; `daily.limit/spent/remaining/resetAt`
+and optional timezone; `wallet.balance/monthlyBonus/nextBonusAt`; nullable `planId`; per-model
+`prices`; and optional `listPrices`, first-tab discount, plan-required model IDs, price notices,
+off-peak prices, scheduled changes and upgrade metadata. Legacy optional fields include `spend`,
+`monthly`, and `peak`; these are deprecated. `balance` is daily remaining plus wallet balance,
+except quota-exempt status separately allows admission at zero. Keep absolute upstream values. Derive
+a percent only from matching `daily.remaining / daily.limit`, with a positive finite limit.
+
+The dirty original mapper's `total = max(100, usage + remaining)` is **unsupported/wrong**; its
+`usage` input is also **legacy/unknown** against the current session response contract;
+“Freebucks (daily)” based on the usage endpoint is **ambiguous**; `remainingBalance` and
+`balanceBreakdown.free` are **legacy/unknown** against the current session wire schema;
+`next_quota_reset` mapping to `daily.resetAt` is **unknown**; the synthetic percentage is **lossy**.
+Do not create a denominator when only an absolute balance is available.
+
+### Current nine-model compatibility snapshot
+
+The official catalog's wire ID, physical route/model, and OmniRoute wire are separate. Prices are
+account/session response values rather than static model metadata. Access tier is account-resolved;
+pool is summarized by the official `premium`/entitlement declarations where available.
+
+| OmniRoute wire ID                 | Current official wire/display                           | Physical upstream as declared                | Price            | Availability / pool/access                           | Reasoning; multimodal; data use | Status                                         |
+| --------------------------------- | ------------------------------------------------------- | -------------------------------------------- | ---------------- | ---------------------------------------------------- | ------------------------------- | ---------------------------------------------- |
+| `deepseek/deepseek-v4-flash`      | same / DeepSeek V4.1 Flash                              | Luminal route                                | session response | always / premium / account-tier dependent            | high; no; training              | current, stable historical wire                |
+| `deepseek/deepseek-v4-pro`        | same / DeepSeek V4 Pro                                  | CrofAI lane                                  | session response | always / premium / gated; withdrawn from free        | high; no; training              | retired, compatibility-served                  |
+| `openai/gpt-5.6-luna`             | same / GPT-5.6 Luna                                     | OpenRouter                                   | session response | withdrawn from free                                  | high; yes; service              | retired, compatibility-served                  |
+| `minimax/minimax-m3`              | same / MiniMax M3                                       | Fireworks                                    | session response | paused/withdrawn / premium                           | no effort; yes; service         | retired, compatibility-served                  |
+| `mimo/mimo-v2.5`                  | same / MiMo 2.6 Flash                                   | Xiaomi model; route provider not declared    | session response | always / standard unmetered                          | provider default; yes; service  | current, stable historical wire                |
+| `z-ai/glm-5.2`                    | same / GLM 5.2                                          | CrofAI native `glm-5.2`                      | session response | referral-earned daily pool                           | provider default; no; training  | current, entitlement-gated                     |
+| `crof/kimi-k3-eco`                | absent from current supported catalog                   | historical CrofAI                            | unknown          | unknown                                              | unknown                         | obsolete; server compatibility unknown         |
+| `anthropic/claude-fable-5`        | current `anthropic/claude-fable-5.1` / Claude Fable 5.1 | Anthropic model; route provider not declared | session response | limited-offer pool                                   | high; yes; training             | superseded; old wire support unknown           |
+| `meta/muse-spark-1.2-contributor` | same / Muse Spark 1.2                                   | Meta API                                     | session response | retired from pickers; existing Web sessions retained | xhigh; no; training             | retired; Web compatibility-served, CLI unknown |
+
+No OmniRoute model was renamed. Current source explicitly keeps MiMo 2.6 Flash under the MiMo 2.5
+wire ID and DeepSeek V4.1 Flash under the undated Flash ID. Old Kimi and Fable IDs need upstream
+compatibility confirmation; the public catalog does not establish their current serving behavior.
+
+### Timer and instance invariants
+
+Proven by the current public client/types: active state includes `admittedAt`, `expiresAt`, and
+`remainingMs`; one active instance is model-bound; GET polls state; `/session/reuse` is a separate
+operation intended to reuse the exact instance without buying/taking over; DELETE releases; an
+`ended` instance can remain in a grace period, with refund receipt fields. Shared constants declare
+45-second heartbeat and 30-minute grace, but client/shared constants alone do not prove backend
+enforcement. Nominal session duration, billing-start event, idle charging, model-specific duration,
+concurrency for this account, service restart survival, and old-path POST behavior remain **UNKNOWN**.

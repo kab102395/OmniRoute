@@ -52,11 +52,25 @@ test("FreebuffExecutor: sanitizes and bounds session-admission error text", asyn
 test("FreebuffExecutor: acquires an instance and dispatches one completion without live calls", async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const observations: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    if (url.endsWith("/freebuff/session")) {
-      return Response.json({ instanceId: "test-instance" });
+    if (url.endsWith("/freebuff/session/admission")) {
+      return Response.json({
+        status: "active",
+        instanceId: "test-instance",
+        model: "deepseek/deepseek-v4-flash",
+        admittedAt: "2026-09-25T10:00:00Z",
+        expiresAt: "2026-09-25T11:00:00Z",
+        remainingMs: 3_600_000,
+        freebucks: {
+          balance: 20,
+          daily: { limit: 10, spent: 2, remaining: 8, resetAt: "2026-09-26T07:00:00Z" },
+          wallet: { balance: 10 },
+          prices: { "deepseek/deepseek-v4-flash": 3 },
+        },
+      });
     }
     if (url.endsWith("/agent-runs")) {
       return Response.json({ runId: "test-run" });
@@ -74,13 +88,15 @@ test("FreebuffExecutor: acquires an instance and dispatches one completion witho
       body: { messages: [{ role: "user", content: "mocked request" }] },
       stream: false,
       credentials: { apiKey: "test-token" },
+      log: { info: (_tag, message) => observations.push(message) },
     } as unknown as ExecuteInput);
 
     assert.equal(result.response.status, 200);
     assert.deepEqual(
       calls.map(({ url }) => url.split("/api/v1")[1]),
-      ["/freebuff/session", "/agent-runs", "/chat/completions", "/agent-runs"]
+      ["/freebuff/session/admission", "/agent-runs", "/chat/completions", "/agent-runs"]
     );
+    assert.equal(calls[0]?.init?.method, "POST");
     const sessionHeaders = new Headers(calls[0]?.init?.headers);
     assert.equal(sessionHeaders.get("x-freebuff-model"), "deepseek/deepseek-v4-flash");
     const completionHeaders = new Headers(calls[2]?.init?.headers);
@@ -95,6 +111,10 @@ test("FreebuffExecutor: acquires an instance and dispatches one completion witho
     assert.equal(completionBody.stream, false);
     assert.equal(completionBody.codebuff_metadata.freebuff_instance_id, "test-instance");
     assert.equal(completionBody.codebuff_metadata.run_id, "test-run");
+    assert.equal(observations.length, 1);
+    assert.match(observations[0] || "", /OBSERVED_UPSTREAM/);
+    assert.match(observations[0] || "", /"daily"/);
+    assert.doesNotMatch(observations[0] || "", /test-instance|test-token/);
     const finishBody = JSON.parse(String(calls[3]?.init?.body)) as Record<string, unknown>;
     assert.equal(finishBody.action, "FINISH");
     assert.equal(finishBody.runId, "test-run");
@@ -109,7 +129,8 @@ test("FreebuffExecutor: agent-run start failure does not prevent the completion 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     calls.push(url);
-    if (url.endsWith("/freebuff/session")) return Response.json({ instanceId: "instance" });
+    if (url.endsWith("/freebuff/session/admission"))
+      return Response.json({ instanceId: "instance" });
     if (url.endsWith("/agent-runs")) return new Response("unavailable", { status: 503 });
     if (url.endsWith("/chat/completions")) return new Response("{}", { status: 200 });
     throw new Error(`Unexpected Freebuff URL: ${url}`);
@@ -161,4 +182,71 @@ test("validateFreebuffProvider: returns invalid when apiKey is empty", async () 
   const res = await validateFreebuffProvider({ apiKey: "" });
   assert.equal(res.valid, false);
   assert.match(res.error || "", /Freebuff Auth Token required/i);
+});
+
+test("validateFreebuffProvider: uses read-only GET and accepts no-session state", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: { url: string; init?: RequestInit } | null = null;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    request = { url: String(input), init };
+    return new Response(null, { status: 404 });
+  }) as typeof fetch;
+  try {
+    const result = await validateFreebuffProvider({ apiKey: "test-token" });
+    assert.equal(result.valid, true);
+    assert.equal(request?.url, "https://www.codebuff.com/api/v1/freebuff/session");
+    assert.equal(request?.init?.method, "GET");
+    assert.equal(new Headers(request?.init?.headers).has("x-freebuff-model"), false);
+    assert.equal(request?.init?.body, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("validateFreebuffProvider: accepts valid auth even when capacity is exhausted", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    Response.json({
+      status: "none",
+      freebucks: { balance: 0, daily: { limit: 10, remaining: 0 } },
+    })) as typeof fetch;
+  try {
+    assert.equal((await validateFreebuffProvider({ apiKey: "test-token" })).valid, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("validateFreebuffProvider: distinguishes rejected auth and account restrictions", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("unauthorized", { status: 401 })) as typeof fetch;
+    assert.equal((await validateFreebuffProvider({ apiKey: "test-token" })).valid, false);
+    for (const status of ["banned", "country_blocked"]) {
+      globalThis.fetch = (async () => Response.json({ status }, { status: 403 })) as typeof fetch;
+      const result = await validateFreebuffProvider({ apiKey: "test-token" });
+      assert.equal(result.valid, true);
+      assert.match(result.warning || "", new RegExp(status));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("validateFreebuffProvider: treats upstream and network failures as inconclusive", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("unavailable", { status: 503 })) as typeof fetch;
+    let result = await validateFreebuffProvider({ apiKey: "test-token" });
+    assert.equal(result.valid, true);
+    assert.match(result.warning || "", /inconclusive/i);
+    globalThis.fetch = (async () => {
+      throw new Error("network down");
+    }) as typeof fetch;
+    result = await validateFreebuffProvider({ apiKey: "test-token" });
+    assert.equal(result.valid, true);
+    assert.match(result.warning || "", /inconclusive/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
