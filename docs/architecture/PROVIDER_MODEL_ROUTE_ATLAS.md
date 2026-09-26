@@ -595,3 +595,73 @@ operation intended to reuse the exact instance without buying/taking over; DELET
 45-second heartbeat and 30-minute grace, but client/shared constants alone do not prove backend
 enforcement. Nominal session duration, billing-start event, idle charging, model-specific duration,
 concurrency for this account, service restart survival, and old-path POST behavior remain **UNKNOWN**.
+
+## Follow-up: read-only health and admission hardening
+
+This implementation follow-up starts from audit commit `8c1b4a99f925d0f2985ced66301a871881ea34d`.
+The official `CodebuffAI/freebuff` `main` head was rechecked as
+`1a433f9418b23828d9c0b9b72fcaa55907d8be34`. No live Freebuff request or live database operation was
+performed.
+
+### Admission request contract
+
+Execution posts an empty-body request to `https://codebuff.com/api/v1/freebuff/session/admission`
+with `Authorization: Bearer …`, `x-freebuff-model`, `x-freebuff-first-tab-discount: 0`, and
+`x-freebuff-wallet-spend-limit: 0`. The latter means no wallet spending is authorized by this
+non-interactive integration; the server may therefore return `consent_required` if a fresh
+admission needs wallet consent. The first-tab discount is explicitly declined. No timezone is sent
+because this server-side proxy has no trustworthy client timezone. Desktop multi-session,
+purchase-continuity, attempt, instance and takeover identity headers are omitted because OmniRoute
+does not implement the corresponding cross-request identity/session manager. Agent-run and
+completion requests retain their existing separate contract.
+
+Admission responses are retained as a safe classification and whitelisted upstream status, never
+treated as “any 2xx means admitted.” `active` requires a non-empty instance ID. Capacity states map
+to **NO_CAPACITY**; banned/country blocked to **ACCOUNT_RESTRICTED**; unavailable models to
+**MODEL_RESTRICTED**; consent to **CONSENT_REQUIRED**; model/session conflicts to **SESSION_CONFLICT**;
+transport/408/5xx to **TRANSIENT_PROVIDER_FAILURE**; unrecognized states remain **UNKNOWN**. Refusals
+stop before run or completion dispatch.
+
+### Health, account and capacity
+
+`validateFreebuffProvider()` performs only `GET /api/v1/freebuff/session`. HTTP 404/no-session is a
+valid credential state; 401 is invalid; network and upstream failures are inconclusive and do not
+clear or poison connection health. Banned/country-blocked responses preserve valid authentication,
+surface a warning and account state, and persist the restriction as a terminal routing status while
+leaving scheduled rechecks enabled. A successful session observation does not make zero balance
+invalid authentication. `country_blocked` is included in the existing terminal connection filter.
+
+Current session resource observations use `quota_snapshots` with provider `freebuff` and the
+namespaced window key `freebuff:resource:session`. Raw data carries OBSERVED_UPSTREAM provenance;
+retain any returned daily limit/spent/remaining/reset/timezone, wallet, prices, session model,
+admission/expiry, observed remaining milliseconds and a hashed instance reference. No token or raw
+instance ID is stored. Derived remaining milliseconds are `max(0, expiresAt - observed_at)` and
+daily percentage is produced only for a positive daily limit, each labeled DERIVED. A missing,
+ended or otherwise non-active session may still carry authoritative Freebucks resource values.
+Per-model capacity hints are separately labeled DERIVED: daily balance covering a listed price is
+available, wallet-only coverage is `consent_required` under the zero wallet-spend limit, an
+insufficient observed balance is exhausted, and incomplete inputs remain unknown.
+These namespaced snapshots are deliberately excluded from generic routing quota-cache hydration;
+capacity is visible without inventing a generic quota exhaustion state.
+
+No fixed one-hour duration or daily denominator is introduced. Legacy `/api/v1/usage` fields and the
+previous `max(100, …)` percentage assumption are not used by this observation path.
+
+### Static model compatibility
+
+`FREEBUFF_MODEL_COMPATIBILITY` assigns every declared OmniRoute model ID exactly one deterministic
+state: CURRENT, STABLE_LEGACY_WIRE, RETIRED_COMPATIBILITY, SUPERSEDED, or
+UNKNOWN_COMPATIBILITY. This metadata does not remove entries, alter picker behavior or rewrite
+wire IDs; in particular it preserves existing route compatibility while marking uncertainty.
+
+### Behavior delta for deployment review
+
+Compared with audit baseline `6e1a2144d18f136c0a48f7f2e392ee19bb62042d`, documentation and tests
+describe the contract; production changes affect credential validation, execution admission, and
+resource observation. Health validation changes from an admission-like probe to a read-only session
+GET, which avoids consuming session/capacity and distinguishes 401 from inconclusive failures.
+Execution changes the admission URL to the official admission path, adds safe opt-out/default
+headers, stops dispatch on typed refusal, and exposes sanitized classification. Successful admission
+observations and read-only health observations are stored in existing quota snapshot rows. Restricted
+accounts are left valid for authentication but skipped by routing using existing terminal-status
+eligibility. No automatic provider scoring or live deployment is part of this change.

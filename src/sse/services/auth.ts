@@ -302,9 +302,17 @@ function applyCodexWindowPolicy(rawWindows: string[], providerSpecificData: Json
 function normalizeStatus(value: string | null): string {
   return (value || "").trim().toLowerCase();
 }
+export function isTerminalConnectionStatusValue(value: string | null): boolean {
+  const status = normalizeStatus(value);
+  return (
+    status === "credits_exhausted" ||
+    status === "banned" ||
+    status === "expired" ||
+    status === "country_blocked"
+  );
+}
 function isTerminalConnectionStatus(connection: ProviderConnectionView): boolean {
-  const status = normalizeStatus(connection.testStatus);
-  return status === "credits_exhausted" || status === "banned" || status === "expired";
+  return isTerminalConnectionStatusValue(connection.testStatus);
 }
 
 // OpenRouter's paid balance and its `:free`-suffixed models are billed

@@ -18,6 +18,8 @@ export interface CredentialHealthStatus {
   lastError?: string;
   lastErrorType?: string;
   lastErrorSource?: string;
+  /** Auth may be valid while account or provider availability is restricted/inconclusive. */
+  warning?: string;
   /** Consecutive failures since last success */
   consecutiveFailures: number;
   /** Response time of the last test in ms */
@@ -115,7 +117,8 @@ export function setCredentialHealth(
   lastError?: string,
   lastErrorType?: string,
   lastErrorSource?: string,
-  responseTimeMs?: number
+  responseTimeMs?: number,
+  warning?: string
 ): void {
   const state = getCacheState();
 
@@ -142,6 +145,7 @@ export function setCredentialHealth(
       lastError,
       lastErrorType,
       lastErrorSource,
+      warning,
       consecutiveFailures,
       responseTimeMs,
     },

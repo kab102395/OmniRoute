@@ -848,6 +848,7 @@ async function testApiKeyConnection(connection: any) {
       provider: connection.provider,
       apiKey: connection.apiKey,
       providerSpecificData: connection.providerSpecificData,
+      connectionId: connection.id,
     })
   );
 
@@ -1001,6 +1002,9 @@ export async function testSingleConnection(connectionId: string, validationModel
     (result.valid
       ? makeDiagnosis("ok", "local", null, null)
       : classifyFailure({ error: result.error, statusCode: result.statusCode, provider }));
+  const freebuffAccountRestricted =
+    provider === "freebuff" &&
+    (result.accountState === "banned" || result.accountState === "country_blocked");
 
   // #9623: a failed connection test must not paint the connection permanently red.
   // Previously a non-terminal failure wrote `testStatus: "error"` with
@@ -1023,14 +1027,22 @@ export async function testSingleConnection(connectionId: string, validationModel
   // maybeClearRecoveredQuotaState: a future rateLimitedUntil is the 429 handler's
   // hard statement and no poller may overrule it. Once it elapses, the next probe
   // clears it normally.
-  const clearErrorState = shouldClearErrorStateOnValidProbe(
-    connection as { rateLimitedUntil?: string | null },
-    result.valid
-  );
+  const clearErrorState =
+    !freebuffAccountRestricted &&
+    shouldClearErrorStateOnValidProbe(
+      connection as { rateLimitedUntil?: string | null },
+      result.valid
+    );
   const lastErrorType = result.valid ? connection.lastErrorType : diagnosis.type;
 
   const updateData: Record<string, any> = {
-    testStatus: clearErrorState ? "active" : result.valid ? connection.testStatus : "error",
+    testStatus: freebuffAccountRestricted
+      ? result.accountState
+      : clearErrorState
+        ? "active"
+        : result.valid
+          ? connection.testStatus
+          : "error",
     // A passing test is the sole activation signal under the "only advertise
     // tested-working connections" default — see POST /api/providers, which
     // now creates connections isActive:false. Only ever flips ON here: a
@@ -1039,20 +1051,38 @@ export async function testSingleConnection(connectionId: string, validationModel
     // it out of rotation — that's what the cooldown/rateLimitedUntil below is
     // for), so this never deactivates anything.
     ...(result.valid ? { isActive: true } : {}),
-    lastError: clearErrorState ? null : result.valid ? connection.lastError : result.error,
-    lastErrorAt: clearErrorState ? null : result.valid ? connection.lastErrorAt : now,
+    lastError: freebuffAccountRestricted
+      ? result.warning || "Freebuff account is restricted"
+      : clearErrorState
+        ? null
+        : result.valid
+          ? connection.lastError
+          : result.error,
+    lastErrorAt: freebuffAccountRestricted
+      ? now
+      : clearErrorState
+        ? null
+        : result.valid
+          ? connection.lastErrorAt
+          : now,
     lastTested: now,
-    lastErrorType: clearErrorState ? null : lastErrorType,
+    lastErrorType: freebuffAccountRestricted
+      ? "account_restricted"
+      : clearErrorState
+        ? null
+        : lastErrorType,
     lastErrorSource: clearErrorState
       ? null
       : result.valid
         ? connection.lastErrorSource
         : diagnosis.source,
-    errorCode: clearErrorState
-      ? null
-      : result.valid
-        ? connection.errorCode
-        : diagnosis.code || result.statusCode || null,
+    errorCode: freebuffAccountRestricted
+      ? `freebuff_${result.accountState}`
+      : clearErrorState
+        ? null
+        : result.valid
+          ? connection.errorCode
+          : diagnosis.code || result.statusCode || null,
     rateLimitedUntil: clearErrorState
       ? null
       : isTerminalFailure
@@ -1134,6 +1164,7 @@ export async function testSingleConnection(connectionId: string, validationModel
     diagnosis,
     latencyMs,
     statusCode: result.statusCode || null,
+    accountState: result.accountState || null,
     runtime: publicRuntime,
     testedAt: now,
   };

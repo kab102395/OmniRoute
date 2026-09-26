@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 
 import { FreebuffExecutor } from "../../open-sse/executors/freebuff.ts";
 import type { ExecuteInput } from "../../open-sse/executors/base.ts";
-import { freebuffProvider } from "../../open-sse/config/providers/registry/freebuff/index.ts";
+import {
+  FREEBUFF_MODEL_COMPATIBILITY,
+  freebuffProvider,
+} from "../../open-sse/config/providers/registry/freebuff/index.ts";
 import { APIKEY_PROVIDERS_GATEWAYS } from "../../src/shared/constants/providers/apikey/gateways.ts";
 import { validateFreebuffProvider } from "../../src/lib/providers/validation.ts";
 
@@ -44,6 +47,45 @@ test("FreebuffExecutor: sanitizes and bounds session-admission error text", asyn
     assert.equal(result.response.status, 402);
     assert.ok(body.error.message.length < 700);
     assert.doesNotMatch(body.error.message, /secret-token|local-test-credential/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("FreebuffExecutor: classifies typed admission refusals and never dispatches inference", async () => {
+  const originalFetch = globalThis.fetch;
+  const cases = [
+    ["rate_limited", 429, "NO_CAPACITY"],
+    ["spend_limited", 403, "NO_CAPACITY"],
+    ["ip_capped", 429, "NO_CAPACITY"],
+    ["purchase_capacity", 409, "NO_CAPACITY"],
+    ["premium_slot_taken", 409, "NO_CAPACITY"],
+    ["banned", 403, "ACCOUNT_RESTRICTED"],
+    ["country_blocked", 403, "ACCOUNT_RESTRICTED"],
+    ["model_unavailable", 409, "MODEL_RESTRICTED"],
+    ["consent_required", 409, "CONSENT_REQUIRED"],
+    ["model_locked", 409, "SESSION_CONFLICT"],
+    ["purchase_in_use", 409, "SESSION_CONFLICT"],
+    ["first_tab_discount_changed", 200, "UNKNOWN"],
+  ] as const;
+  try {
+    for (const [upstreamStatus, httpStatus, classification] of cases) {
+      const calls: string[] = [];
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return Response.json({ status: upstreamStatus }, { status: httpStatus });
+      }) as typeof fetch;
+      const result = await new FreebuffExecutor().execute({
+        model: "deepseek/deepseek-v4-flash",
+        body: { messages: [] },
+        credentials: { apiKey: "test-token" },
+      } as unknown as ExecuteInput);
+      assert.equal(result.response.status, httpStatus === 200 ? 502 : httpStatus, upstreamStatus);
+      const body = (await result.response.json()) as { error: { code: string; type: string } };
+      assert.equal(body.error.code, upstreamStatus);
+      assert.equal(body.error.type, `freebuff_admission_${classification.toLowerCase()}`);
+      assert.equal(calls.length, 1, `${upstreamStatus} must stop before agent/completion calls`);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -99,6 +141,11 @@ test("FreebuffExecutor: acquires an instance and dispatches one completion witho
     assert.equal(calls[0]?.init?.method, "POST");
     const sessionHeaders = new Headers(calls[0]?.init?.headers);
     assert.equal(sessionHeaders.get("x-freebuff-model"), "deepseek/deepseek-v4-flash");
+    assert.equal(sessionHeaders.get("x-freebuff-first-tab-discount"), "0");
+    assert.equal(sessionHeaders.get("x-freebuff-wallet-spend-limit"), "0");
+    assert.equal(sessionHeaders.has("x-freebuff-multi-session"), false);
+    assert.equal(sessionHeaders.has("x-freebuff-desktop-attempt-id"), false);
+    assert.equal(calls[0]?.init?.body, undefined);
     const completionHeaders = new Headers(calls[2]?.init?.headers);
     assert.equal(completionHeaders.get("x-freebuff-instance-id"), "test-instance");
     assert.equal(completionHeaders.get("x-codebuff-run-id"), "test-run");
@@ -111,10 +158,10 @@ test("FreebuffExecutor: acquires an instance and dispatches one completion witho
     assert.equal(completionBody.stream, false);
     assert.equal(completionBody.codebuff_metadata.freebuff_instance_id, "test-instance");
     assert.equal(completionBody.codebuff_metadata.run_id, "test-run");
-    assert.equal(observations.length, 1);
-    assert.match(observations[0] || "", /OBSERVED_UPSTREAM/);
-    assert.match(observations[0] || "", /"daily"/);
-    assert.doesNotMatch(observations[0] || "", /test-instance|test-token/);
+    const observation = observations.find((message) => message.includes("OBSERVED_UPSTREAM")) || "";
+    assert.ok(observation);
+    assert.match(observation, /"daily"/);
+    assert.doesNotMatch(observation, /test-instance|test-token/);
     const finishBody = JSON.parse(String(calls[3]?.init?.body)) as Record<string, unknown>;
     assert.equal(finishBody.action, "FINISH");
     assert.equal(finishBody.runId, "test-run");
@@ -130,7 +177,7 @@ test("FreebuffExecutor: agent-run start failure does not prevent the completion 
     const url = String(input);
     calls.push(url);
     if (url.endsWith("/freebuff/session/admission"))
-      return Response.json({ instanceId: "instance" });
+      return Response.json({ status: "active", instanceId: "instance" });
     if (url.endsWith("/agent-runs")) return new Response("unavailable", { status: 503 });
     if (url.endsWith("/chat/completions")) return new Response("{}", { status: 200 });
     throw new Error(`Unexpected Freebuff URL: ${url}`);
@@ -167,6 +214,12 @@ test("freebuffProvider: registry entry has valid structure and catalog", () => {
   const minimax = freebuffProvider.models.find((m) => m.id === "minimax/minimax-m3");
   assert.ok(minimax, "minimax/minimax-m3 must exist in freebuff models");
   assert.equal(minimax?.supportsVision, true);
+  assert.deepEqual(
+    Object.keys(FREEBUFF_MODEL_COMPATIBILITY).sort(),
+    freebuffProvider.models.map((model) => model.id).sort()
+  );
+  assert.equal(FREEBUFF_MODEL_COMPATIBILITY["mimo/mimo-v2.5"], "STABLE_LEGACY_WIRE");
+  assert.equal(FREEBUFF_MODEL_COMPATIBILITY["crof/kimi-k3-eco"], "UNKNOWN_COMPATIBILITY");
 });
 
 test("APIKEY_PROVIDERS_GATEWAYS: freebuff gateway metadata is defined", () => {
@@ -194,7 +247,7 @@ test("validateFreebuffProvider: uses read-only GET and accepts no-session state"
   try {
     const result = await validateFreebuffProvider({ apiKey: "test-token" });
     assert.equal(result.valid, true);
-    assert.equal(request?.url, "https://www.codebuff.com/api/v1/freebuff/session");
+    assert.equal(request?.url, "https://codebuff.com/api/v1/freebuff/session");
     assert.equal(request?.init?.method, "GET");
     assert.equal(new Headers(request?.init?.headers).has("x-freebuff-model"), false);
     assert.equal(request?.init?.body, undefined);

@@ -1,8 +1,15 @@
-import { createHash, randomInt } from "node:crypto";
+import { randomInt } from "node:crypto";
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
+import { persistFreebuffResourceObservation } from "@/domain/freebuffObservations";
+import {
+  buildFreebuffAdmissionHeaders,
+  classifyFreebuffAdmission,
+  isFreebuffActiveAdmission,
+  stableFreebuffInstanceRef,
+} from "./freebuffProtocol.ts";
 
 const MODEL_TO_AGENT: Record<string, string> = {
   "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
@@ -60,7 +67,7 @@ function logSessionObservation(
     freebucks?.prices && typeof freebucks.prices === "object"
       ? (freebucks.prices as Record<string, unknown>)
       : null;
-  const instanceId = typeof session.instanceId === "string" ? session.instanceId : null;
+  const instanceRef = stableFreebuffInstanceRef(session.instanceId);
   log?.info?.(
     "freebuff-session-observation",
     JSON.stringify({
@@ -70,9 +77,7 @@ function logSessionObservation(
           ? connectionId
           : null,
       model,
-      instanceRef: instanceId
-        ? createHash("sha256").update(instanceId).digest("hex").slice(0, 16)
-        : null,
+      instanceRef,
       admittedAt: isoTimestamp(session.admittedAt),
       expiresAt: isoTimestamp(session.expiresAt),
       remainingMs: finiteNumber(session.remainingMs),
@@ -142,32 +147,45 @@ export class FreebuffExecutor extends BaseExecutor {
 
     // 1. Session acquisition
     try {
-      const sessionRes = await fetch("https://www.codebuff.com/api/v1/freebuff/session/admission", {
+      const sessionRes = await fetch("https://codebuff.com/api/v1/freebuff/session/admission", {
         method: "POST",
-        headers: {
-          ...authHeaders,
-          "x-freebuff-model": requestedModel,
-        },
-        body: JSON.stringify({}),
+        headers: buildFreebuffAdmissionHeaders(token, requestedModel),
         signal,
       });
-      if (sessionRes.ok) {
-        const data = (await sessionRes.json()) as { instanceId?: string };
-        instanceId = data.instanceId || "";
+      const data = await sessionRes.json().catch(() => null);
+      const sessionStatus =
+        data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>).status
+          : null;
+      const classification = classifyFreebuffAdmission(sessionStatus, sessionRes.status);
+      input.log?.info?.(
+        "freebuff-admission-classification",
+        JSON.stringify({
+          classification,
+          status: typeof sessionStatus === "string" ? sessionStatus : null,
+          httpStatus: sessionRes.status,
+        })
+      );
+      if (sessionRes.ok && classification === "ADMITTED" && isFreebuffActiveAdmission(data)) {
+        instanceId = typeof data.instanceId === "string" ? data.instanceId : "";
+        if (!instanceId) {
+          return this.admissionError(
+            502,
+            "UNKNOWN",
+            "Freebuff returned an active session without an instance ID"
+          );
+        }
         logSessionObservation(input.log, credentials?.connectionId, data);
+        persistFreebuffResourceObservation({
+          connectionId: credentials?.connectionId,
+          response: data,
+        });
       } else {
-        const errText = await sessionRes.text();
         return {
-          response: new Response(
-            JSON.stringify({
-              error: {
-                message: sanitizeErrorMessage(
-                  `Freebuff session failed (${sessionRes.status}): ${errText.slice(0, 500)}`
-                ),
-                type: "upstream_error",
-              },
-            }),
-            { status: sessionRes.status, headers: { "Content-Type": "application/json" } }
+          response: this.admissionError(
+            sessionRes.ok ? 502 : sessionRes.status,
+            classification,
+            typeof sessionStatus === "string" ? sessionStatus : undefined
           ),
         };
       }
@@ -178,7 +196,8 @@ export class FreebuffExecutor extends BaseExecutor {
           JSON.stringify({
             error: {
               message: sanitizeErrorMessage(`Freebuff session network error: ${msg}`),
-              type: "upstream_error",
+              type: "freebuff_admission_transient_provider_failure",
+              code: "TRANSIENT_PROVIDER_FAILURE",
             },
           }),
           { status: 502, headers: { "Content-Type": "application/json" } }
@@ -278,5 +297,38 @@ export class FreebuffExecutor extends BaseExecutor {
     }
 
     return { response };
+  }
+
+  private admissionError(
+    status: number,
+    classification: string,
+    upstreamStatus?: string
+  ): Response {
+    const safeClassification =
+      /^(ADMITTED|NO_CAPACITY|ACCOUNT_RESTRICTED|MODEL_RESTRICTED|CONSENT_REQUIRED|TRANSIENT_PROVIDER_FAILURE|SESSION_CONFLICT|UNKNOWN)$/.test(
+        classification
+      )
+        ? classification
+        : "UNKNOWN";
+    const safeUpstreamStatus =
+      upstreamStatus &&
+      /^(none|active|ended|country_blocked|model_locked|model_unavailable|banned|ip_capped|rate_limited|spend_limited|purchase_claim_released|purchase_in_use|purchase_capacity|premium_slot_taken|superseded|first_tab_discount_changed|consent_required)$/.test(
+        upstreamStatus
+      )
+        ? upstreamStatus
+        : undefined;
+    const message = safeUpstreamStatus
+      ? `Freebuff admission was not granted (${safeUpstreamStatus})`
+      : `Freebuff admission failed (${safeClassification})`;
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: sanitizeErrorMessage(message),
+          type: `freebuff_admission_${safeClassification.toLowerCase()}`,
+          code: safeUpstreamStatus || safeClassification,
+        },
+      }),
+      { status, headers: { "Content-Type": "application/json" } }
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { getEmbeddingProvider } from "@omniroute/open-sse/config/embeddingRegistry.ts";
+import { persistFreebuffResourceObservation } from "@/domain/freebuffObservations";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
 import {
   isClaudeCodeCompatibleProvider,
@@ -140,14 +141,20 @@ export { validateWebCookieProvider, bytezValidationResultFromStatus };
 // validateKiroApiKeyRuntimeProbe now live in ./validation/webCookie and ./validation/kiro.
 // They are re-exported above to preserve the historical public surface.
 
-export async function validateFreebuffProvider({ apiKey }: { apiKey: string }) {
+export async function validateFreebuffProvider({
+  apiKey,
+  connectionId,
+}: {
+  apiKey: string;
+  connectionId?: string;
+}) {
   if (!apiKey) {
     return { valid: false, error: "Freebuff Auth Token required", unsupported: false };
   }
   try {
     // GET is the upstream session-state read. A missing session (404) is a
     // healthy credential state; validation must never request admission.
-    const res = await fetch("https://www.codebuff.com/api/v1/freebuff/session", {
+    const res = await fetch("https://codebuff.com/api/v1/freebuff/session", {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -156,25 +163,34 @@ export async function validateFreebuffProvider({ apiKey }: { apiKey: string }) {
       signal: AbortSignal.timeout(15000),
     });
 
-    if (res.status === 404 || res.ok) {
+    if (res.status === 404) {
       return { valid: true, error: null };
     }
     if (res.status === 401) {
       return { valid: false, error: "Invalid or expired Freebuff Auth Token", unsupported: false };
     }
-    if (res.status === 403) {
+    if (res.status === 403 || res.ok) {
       const body = (await res.json().catch(() => null)) as { status?: unknown } | null;
+      if (body) {
+        persistFreebuffResourceObservation({ connectionId, response: body });
+      }
       if (body?.status === "banned" || body?.status === "country_blocked") {
         return {
           valid: true,
           error: null,
           warning: `Freebuff credential is valid; account state is ${body.status}`,
+          accountState: body.status,
           statusCode: res.status,
         };
       }
+      if (res.ok && body && ["active", "none", "ended"].includes(String(body.status))) {
+        return { valid: true, error: null };
+      }
       return {
-        valid: false,
-        error: "Freebuff rejected the credential (HTTP 403)",
+        valid: true,
+        warning:
+          "Freebuff credential validity is inconclusive: session-state response was unrecognized",
+        accountState: "unknown",
         unsupported: false,
       };
     }
@@ -193,7 +209,12 @@ export async function validateFreebuffProvider({ apiKey }: { apiKey: string }) {
   }
 }
 
-export async function validateProviderApiKey({ provider, apiKey, providerSpecificData = {} }: any) {
+export async function validateProviderApiKey({
+  provider,
+  apiKey,
+  providerSpecificData = {},
+  connectionId,
+}: any) {
   provider = typeof provider === "string" ? resolveProviderId(provider) : provider;
   const requiresApiKey = !providerAllowsOptionalApiKey(provider);
   const isLocal = isLocalProvider(provider);
@@ -386,7 +407,7 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
 
   if (SPECIALTY_VALIDATORS[provider]) {
     try {
-      return await SPECIALTY_VALIDATORS[provider]({ apiKey, providerSpecificData });
+      return await SPECIALTY_VALIDATORS[provider]({ apiKey, providerSpecificData, connectionId });
     } catch (error: any) {
       return toValidationErrorResult(error);
     }

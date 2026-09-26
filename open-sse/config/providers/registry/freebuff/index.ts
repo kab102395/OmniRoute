@@ -1,5 +1,24 @@
 import type { RegistryEntry } from "../../shared.ts";
 
+export const FREEBUFF_MODEL_COMPATIBILITY = {
+  "deepseek/deepseek-v4-flash": "STABLE_LEGACY_WIRE",
+  "deepseek/deepseek-v4-pro": "RETIRED_COMPATIBILITY",
+  "openai/gpt-5.6-luna": "RETIRED_COMPATIBILITY",
+  "minimax/minimax-m3": "RETIRED_COMPATIBILITY",
+  "mimo/mimo-v2.5": "STABLE_LEGACY_WIRE",
+  "z-ai/glm-5.2": "CURRENT",
+  "crof/kimi-k3-eco": "UNKNOWN_COMPATIBILITY",
+  "anthropic/claude-fable-5": "SUPERSEDED",
+  "meta/muse-spark-1.2-contributor": "RETIRED_COMPATIBILITY",
+} as const satisfies Record<
+  string,
+  | "CURRENT"
+  | "STABLE_LEGACY_WIRE"
+  | "RETIRED_COMPATIBILITY"
+  | "SUPERSEDED"
+  | "UNKNOWN_COMPATIBILITY"
+>;
+
 export const freebuffProvider: RegistryEntry = {
   id: "freebuff",
   alias: "fb",

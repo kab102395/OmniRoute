@@ -535,6 +535,14 @@ function hydrateQuotaCacheFromSnapshots(connectionId: string): QuotaCacheEntry |
     };
     const windowKey = camelSnapshot.windowKey ?? snapshot.window_key;
     if (!windowKey) continue;
+    // Freebuff resource rows carry model-bound balance/session observations in
+    // raw_data. They are historical telemetry, not generic provider quota
+    // windows and must never block connection selection.
+    if (
+      (snapshot.provider || provider) === "freebuff" &&
+      windowKey.startsWith("freebuff:resource:")
+    )
+      continue;
     provider = provider || snapshot.provider || "";
     quotas[windowKey] = {
       remainingPercentage: clampPercent(

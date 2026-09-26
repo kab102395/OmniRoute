@@ -232,7 +232,8 @@ async function testConnection(
         undefined,
         undefined,
         undefined,
-        latencyMs
+        latencyMs,
+        result.warning
       );
       emit("credential.health.changed", {
         connectionId,
