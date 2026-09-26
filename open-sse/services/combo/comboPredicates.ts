@@ -294,11 +294,12 @@ export function isInputBoundRequestFailure(error?: {
 /**
  * #7177: whether handleSingleModelChat should skip the connection-level cooldown
  * (markAccountUnavailable) for a failed attempt — client disconnects, a 401 when the
- * connection has extra keys to rotate through, a known request-scoped upstream failure
- * (e.g. context overflow — not a connection health signal), a plugin refusing the
- * request (our own policy, not a provider fault — see below), or our own
- * self-inflicted timeout all mean the connection itself is healthy and should not be
- * cooled down.
+ * connection has extra keys to rotate through, a 402 when sibling key slots exist
+ * (the payment-required failure belongs to the selected slot, not the connection),
+ * a known request-scoped upstream failure (e.g. context overflow — not a connection
+ * health signal), a plugin refusing the request (our own policy, not a provider
+ * fault — see below), or our own self-inflicted timeout all mean the connection
+ * itself is healthy and should not be cooled down.
  *
  * A plugin block (`plugin_block`) is our own policy decision, not the provider
  * rejecting us. Banning the account here would let a working security plugin destroy
@@ -330,6 +331,18 @@ export function shouldSkipConnDisable(
     result.errorCode === "plugin_block" ||
     result.errorType === "plugin_block" ||
     (is401 && hasExtraKeys) ||
+    // #5239 follow-up: a 402 ("payment required") belongs to the SELECTED API-key
+    // slot, not to every sibling key on the connection. The per-key health path
+    // (recordKeyHealthStatus → recordKeyTerminal) already terminalizes only that
+    // slot, and chatCore's quota branch keeps the connection active when sibling
+    // slots exist (shouldDisableConnectionForQuotaFailure). This outer cooldown
+    // path must agree: without this guard markAccountUnavailable persists
+    // testStatus=credits_exhausted on the whole shared connection, which removes
+    // every sibling slot from credential selection — including deterministic
+    // pinned routes (forcedKeySlot) resolving a healthy sibling slot. Skip only
+    // when another key slot remains, mirroring the 401 guard above; single-key
+    // connections keep the connection-wide credits_exhausted state.
+    (result.status === 402 && hasExtraKeys) ||
     isRequestScopedUpstreamFailure({ code: result.errorCode, type: result.errorType }) ||
     isSelfInflictedUpstreamTimeout(result.status, result.errorType, provider)
   );

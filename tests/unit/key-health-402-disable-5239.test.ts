@@ -27,6 +27,7 @@ const { getValidApiKey, getAllKeyHealth, resetKeyStatus, shouldDisableConnection
   await import("../../open-sse/services/apiKeyRotator.ts");
 const { shouldRecordStreamingKeyHealthStatus } =
   await import("../../open-sse/handlers/chatCore/keyHealth.ts");
+const { shouldSkipConnDisable } = await import("../../open-sse/services/combo/comboPredicates.ts");
 
 test.after(() => {
   core.resetDbInstance();
@@ -116,6 +117,45 @@ test("streaming 402 responses are recorded against their selected key slot", () 
   assert.equal(shouldRecordStreamingKeyHealthStatus(401), true);
   assert.equal(shouldRecordStreamingKeyHealthStatus(403), true);
   assert.equal(shouldRecordStreamingKeyHealthStatus(500), false);
+});
+
+test("a 402 with sibling key slots never reaches connection-level disable (state 1: primary exhausted / extra healthy)", () => {
+  const connId = "conn-5239-outer-primary";
+  // The selected slot terminalizes in-memory only (as the streaming path records it).
+  recordKeyHealthStatus(402, buildCreds(connId, "primary"));
+  assert.equal(getAllKeyHealth()[`${connId}:primary`]?.status, "invalid");
+  assert.equal(getAllKeyHealth()[`${connId}:extra_0`]?.status, undefined);
+
+  // The OUTER connection cooldown layer must agree: skip markAccountUnavailable so
+  // testStatus=credits_exhausted is never persisted over healthy sibling slots.
+  assert.equal(
+    shouldSkipConnDisable({ status: 402 }, false, true, "mistral"),
+    true,
+    "sibling slots exist — the outer path must not disable the shared connection"
+  );
+  // The inner quota branch agrees (connection stays active when extras exist).
+  assert.equal(shouldDisableConnectionForQuotaFailure(connId, ["sk-extra"]), false);
+  resetKeyStatus(connId, "primary");
+  resetKeyStatus(connId, "extra_0");
+});
+
+test("a 402 on extra_0 keeps the shared connection routable (state 2: extra exhausted / primary healthy)", () => {
+  const connId = "conn-5239-outer-extra";
+  recordKeyHealthStatus(402, buildCreds(connId, "extra_0"));
+  assert.equal(getAllKeyHealth()[`${connId}:extra_0`]?.status, "invalid");
+  assert.notEqual(getAllKeyHealth()[`${connId}:primary`]?.status, "invalid");
+
+  assert.equal(shouldSkipConnDisable({ status: 402 }, false, true, "mistral"), true);
+  assert.equal(shouldDisableConnectionForQuotaFailure(connId, [K2]), false);
+  resetKeyStatus(connId, "primary");
+  resetKeyStatus(connId, "extra_0");
+});
+
+test("a single-key 402 still disables the connection at both layers (no sibling slots)", () => {
+  // Outer: no extra keys → the connection-wide credits_exhausted state is correct.
+  assert.equal(shouldSkipConnDisable({ status: 402 }, false, false, "mistral"), false);
+  // Inner: no extra keys → connection-terminal (unchanged from 3a1cb03).
+  assert.equal(shouldDisableConnectionForQuotaFailure("conn-5239-single", []), true);
 });
 
 test("#5239 inverse: a 2xx keeps the key active (no false-positive disable)", () => {

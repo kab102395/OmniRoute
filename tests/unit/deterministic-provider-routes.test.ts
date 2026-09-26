@@ -8,6 +8,7 @@ import {
   resolveDeterministicCodestralRouteFromConnections,
 } from "../../src/lib/deterministicProviderRoutes.ts";
 import {
+  getValidApiKey,
   resetKeyStatus,
   resolveKeyForRequest,
   syncHealthFromDB,
@@ -141,6 +142,171 @@ test("a terminal extra_0 slot disables B without poisoning pinned primary A", ()
   assert.equal(accountA?.keySlot, "primary");
   assert.equal(accountB?.available, false);
   assert.equal(accountB?.keySlot, "extra_0");
+});
+
+test("both terminal slots leave both deterministic routes unavailable (no cross-failover)", () => {
+  const connections = [
+    {
+      id: "shared-connection-both-dead",
+      apiKey: "secret-primary",
+      providerSpecificData: {
+        extraApiKeys: ["secret-extra"],
+        apiKeyHealth: {
+          primary: { status: "invalid" },
+          extra_0: { status: "invalid" },
+        },
+      },
+    },
+  ];
+  const accountA = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountA,
+    connections
+  );
+  const accountB = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountB,
+    connections
+  );
+
+  assert.equal(accountA?.available, false);
+  assert.equal(accountA?.keySlot, "primary");
+  assert.equal(accountB?.available, false);
+  assert.equal(accountB?.keySlot, "extra_0");
+
+  // The rotator must agree that NO usable credential remains for this
+  // connection in either slot (strict, pinned, and unpinned alike).
+  syncHealthFromDB("shared-connection-both-dead", {
+    primary: {
+      status: "invalid",
+      failures: 2,
+      lastFailure: null,
+      lastSuccess: null,
+      totalRequests: 1,
+      totalFailures: 1,
+    },
+    extra_0: {
+      status: "invalid",
+      failures: 2,
+      lastFailure: null,
+      lastSuccess: null,
+      totalRequests: 1,
+      totalFailures: 1,
+    },
+  });
+  assert.equal(
+    getValidApiKey("shared-connection-both-dead", "secret-primary", ["secret-extra"]),
+    null,
+    "a fully exhausted connection has no usable credential"
+  );
+  assert.equal(
+    resolveKeyForRequest(
+      "shared-connection-both-dead",
+      "secret-primary",
+      ["secret-extra"],
+      "primary",
+      true
+    ),
+    null,
+    "pinned A must not fall back to B's extra key"
+  );
+  assert.equal(
+    resolveKeyForRequest(
+      "shared-connection-both-dead",
+      "secret-primary",
+      ["secret-extra"],
+      "extra_0",
+      true
+    ),
+    null,
+    "pinned B must not fall back to A's primary key"
+  );
+  resetKeyStatus("shared-connection-both-dead", "primary");
+  resetKeyStatus("shared-connection-both-dead", "extra_0");
+});
+
+test("neither slot exhausted keeps both deterministic routes available", () => {
+  const connections = [
+    {
+      id: "shared-connection-healthy",
+      apiKey: "secret-primary",
+      providerSpecificData: {
+        extraApiKeys: ["secret-extra"],
+        apiKeyHealth: {
+          primary: {
+            status: "active",
+            failures: 0,
+            lastFailure: null,
+            lastSuccess: null,
+            totalRequests: 3,
+            totalFailures: 0,
+          },
+          extra_0: {
+            status: "active",
+            failures: 0,
+            lastFailure: null,
+            lastSuccess: null,
+            totalRequests: 2,
+            totalFailures: 0,
+          },
+        },
+      },
+    },
+  ];
+  const accountA = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountA,
+    connections
+  );
+  const accountB = resolveDeterministicCodestralRouteFromConnections(
+    DETERMINISTIC_CODESRAL_ALIASES.accountB,
+    connections
+  );
+
+  assert.equal(accountA?.available, true);
+  assert.equal(accountA?.connectionId, "shared-connection-healthy");
+  assert.equal(accountA?.keySlot, "primary");
+  assert.equal(accountB?.available, true);
+  assert.equal(accountB?.connectionId, "shared-connection-healthy");
+  assert.equal(accountB?.keySlot, "extra_0");
+
+  syncHealthFromDB("shared-connection-healthy", {
+    primary: {
+      status: "active",
+      failures: 0,
+      lastFailure: null,
+      lastSuccess: null,
+      totalRequests: 3,
+      totalFailures: 0,
+    },
+    extra_0: {
+      status: "active",
+      failures: 0,
+      lastFailure: null,
+      lastSuccess: null,
+      totalRequests: 2,
+      totalFailures: 0,
+    },
+  });
+  assert.equal(
+    resolveKeyForRequest(
+      "shared-connection-healthy",
+      "secret-primary",
+      ["secret-extra"],
+      "primary",
+      true
+    )?.keyId,
+    "primary"
+  );
+  assert.equal(
+    resolveKeyForRequest(
+      "shared-connection-healthy",
+      "secret-primary",
+      ["secret-extra"],
+      "extra_0",
+      true
+    )?.keyId,
+    "extra_0"
+  );
+  resetKeyStatus("shared-connection-healthy", "primary");
+  resetKeyStatus("shared-connection-healthy", "extra_0");
 });
 
 test("deterministic routes fail closed and never cross-fail over", () => {
