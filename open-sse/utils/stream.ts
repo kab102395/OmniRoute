@@ -28,6 +28,7 @@ import {
 } from "./streamHelpers.ts";
 import { rejectEmptyChoicesStream, buildEmptyChoicesStreamError } from "./streamEmptyChoices.ts";
 import { calculateCost } from "@/lib/usage/costCalculator";
+import { classifyCostAccounting } from "@/lib/usage/costAccounting";
 import { buildOmniRouteSseMetadataComment } from "@/domain/omnirouteResponseMeta";
 import { sseCommentsEnabled } from "./sseHeartbeat.ts";
 import {
@@ -1074,13 +1075,31 @@ export function createSSEStream(options: StreamOptions = {}) {
     const costUsd = finalUsage
       ? await calculateCost(provider, model, normalizeTokenUsage(finalUsage))
       : 0;
+    const normalizedUsage = normalizeTokenUsage(finalUsage);
+    const usageForAccounting =
+      normalizedUsage &&
+      typeof finalUsage === "object" &&
+      !Array.isArray(finalUsage) &&
+      (finalUsage as Record<string, unknown>).estimated === true
+        ? { ...normalizedUsage, estimated: true }
+        : normalizedUsage;
+    const accounting = classifyCostAccounting({
+      provider,
+      model,
+      usage: usageForAccounting,
+      calculatedCostUsd: costUsd,
+    });
     const comment = buildOmniRouteSseMetadataComment({
       provider,
       model,
+      servedProvider: provider,
+      servedModel: model,
       cacheHit: false,
       latencyMs: Date.now() - streamStartedAt,
       usage: timing.withTps(finalUsage),
-      costUsd, ttftMs: timing.ttftMs(),
+      costUsd,
+      ttftMs: timing.ttftMs(),
+      accounting,
     });
     if (!comment) return;
     reqLogger?.appendConvertedChunk?.(comment);
@@ -1453,7 +1472,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                     passthroughResponsesId = responseId;
                   }
                   // Responses SSE: only extract usage, forward payload as-is
-                  const extracted = extractUsage(parsed);
+                  const extracted = extractUsage(parsed, provider);
                   if (extracted) {
                     usage = extracted;
                   }
@@ -1711,7 +1730,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 } else if (isClaudeSSE) {
                   // Claude SSE: extract usage, track content, forward as-is
                   const thinkingSignatureInjected = injectThinkingSignature(parsed, provider);
-                  const extracted = extractUsage(parsed);
+                  const extracted = extractUsage(parsed, provider);
                   if (extracted) {
                     // Non-destructive merge: never overwrite a positive value with 0
                     // message_start carries input_tokens, message_delta carries output_tokens;
@@ -1786,7 +1805,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                         Object.keys(parsed.choices[0].delta).length === 0 &&
                         !parsed.choices[0]?.finish_reason))
                   ) {
-                    const emptyChoicesUsage = extractUsage(parsed) ?? parsed.usage;
+                    const emptyChoicesUsage = extractUsage(parsed, provider) ?? parsed.usage;
                     if (hasValidUsage(emptyChoicesUsage) && !passthroughForwardedUsage) {
                       // Some upstreams (e.g. Ollama Cloud) emit prompt_tokens: 0
                       // even when input was sent — they simply don't count input
@@ -1995,7 +2014,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                       reasoningDelta
                     );
 
-                  const extracted = extractUsage(parsed);
+                  const extracted = extractUsage(parsed, provider);
                   if (extracted) {
                     usage = extracted;
                   }
@@ -2046,7 +2065,9 @@ export function createSSEStream(options: StreamOptions = {}) {
                   // estimate is now emitted in flush(), only when the upstream stayed silent.
                   if (isFinishChunk && hasValidUsage(usage) && !passthroughForwardedUsage) {
                     const buffered = addBufferToUsage(usage);
-                    parsed.usage = timing.withTps(filterUsageForFormat(buffered, sourceFormat || FORMATS.OPENAI));
+                    parsed.usage = timing.withTps(
+                      filterUsageForFormat(buffered, sourceFormat || FORMATS.OPENAI)
+                    );
                     output = `data: ${JSON.stringify(parsed)}\n\n`;
                     passthroughForwardedUsage = true;
                     injectedUsage = true;
@@ -2252,7 +2273,7 @@ export function createSSEStream(options: StreamOptions = {}) {
           }
 
           // Extract usage
-          const extracted = extractUsage(parsed);
+          const extracted = extractUsage(parsed, provider);
           if (extracted) {
             if (!state.usage) {
               state.usage = extracted;
@@ -2270,6 +2291,9 @@ export function createSSEStream(options: StreamOptions = {}) {
                 su.cache_creation_input_tokens = eu.cache_creation_input_tokens;
               if (eu.cached_tokens > 0) su.cached_tokens = eu.cached_tokens;
               if (eu.reasoning_tokens > 0) su.reasoning_tokens = eu.reasoning_tokens;
+              if (eu.provider_reported_cost_usd !== undefined) {
+                su.provider_reported_cost_usd = eu.provider_reported_cost_usd;
+              }
             }
           }
 
@@ -2571,7 +2595,9 @@ export function createSSEStream(options: StreamOptions = {}) {
                   created: Math.floor(Date.now() / 1000),
                   model,
                   choices: [],
-                  usage: timing.withTps(filterUsageForFormat(usage, sourceFormat || FORMATS.OPENAI)),
+                  usage: timing.withTps(
+                    filterUsageForFormat(usage, sourceFormat || FORMATS.OPENAI)
+                  ),
                 };
                 const usageOutput = `data: ${JSON.stringify(usageOnlyChunk)}\n\n`;
                 reqLogger?.appendConvertedChunk?.(usageOutput);
@@ -2720,7 +2746,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               // Non-destructive merge: some providers send usage across multiple
               // events (e.g. prompt_tokens in message_start, completion_tokens
               // in message_delta). Direct assignment would lose earlier data.
-              const extracted = extractUsage(parsed);
+              const extracted = extractUsage(parsed, provider);
               if (extracted) {
                 if (!state.usage) {
                   state.usage = extracted;
@@ -2738,6 +2764,9 @@ export function createSSEStream(options: StreamOptions = {}) {
                     su.cache_creation_input_tokens = eu.cache_creation_input_tokens;
                   if (eu.cached_tokens > 0) su.cached_tokens = eu.cached_tokens;
                   if (eu.reasoning_tokens > 0) su.reasoning_tokens = eu.reasoning_tokens;
+                  if (eu.provider_reported_cost_usd !== undefined) {
+                    su.provider_reported_cost_usd = eu.provider_reported_cost_usd;
+                  }
                 }
               }
 

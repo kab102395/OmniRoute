@@ -336,6 +336,8 @@ import {
 import { scheduleStreamingQuotaShareConsumption } from "./chatCore/streamingQuotaShare.ts";
 import { recordStreamingUsageStats } from "./chatCore/streamingUsageStats.ts";
 import { recordStreamingCost } from "./chatCore/streamingCost.ts";
+import { resolveServedIdentity } from "./chatCore/servedIdentity.ts";
+import { classifyCostAccounting } from "@/lib/usage/costAccounting";
 import {
   appendNonStreamingSseTerminalSignal,
   type NonStreamingSseTerminalState,
@@ -5220,9 +5222,24 @@ export async function handleChatCore({
         ? translatedResponse.usage
         : null;
     const costUsage = normalizeUsage(responseUsage);
+    const usageWasEstimated =
+      (isJsonRecord(responseUsage) && responseUsage.estimated === true) ||
+      (isJsonRecord(usage) && usage.estimated === true);
+    const usageForAccounting =
+      costUsage && usageWasEstimated ? { ...costUsage, estimated: true } : costUsage;
+    const servedIdentity = resolveServedIdentity(provider, finalBody);
+    const pricingModel = servedIdentity?.model || currentModel || effectiveModel;
     const estimatedCost = costUsage
-      ? await calculateCost(provider, model, costUsage, { serviceTier: effectiveServiceTier })
+      ? await calculateCost(provider, pricingModel, costUsage, {
+          serviceTier: effectiveServiceTier,
+        })
       : 0;
+    const accounting = classifyCostAccounting({
+      provider,
+      model: pricingModel,
+      usage: usageForAccounting,
+      calculatedCostUsd: estimatedCost,
+    });
 
     if (postCallGuardrails.blocked) {
       const guardrailMessage = postCallGuardrails.message || "Response blocked by guardrail";
@@ -5377,6 +5394,9 @@ export async function handleChatCore({
       claudeCacheMeta: claudePromptCacheLogMeta,
       claudeCacheUsageMeta: cacheUsageLogMeta,
       cacheSource: "upstream",
+      servedProvider: servedIdentity?.provider || null,
+      servedModel: servedIdentity?.model || null,
+      accounting,
     });
     if (apiKeyInfo?.id && estimatedCost > 0) {
       recordCost(apiKeyInfo.id, estimatedCost);
@@ -5407,7 +5427,10 @@ export async function handleChatCore({
       startTime,
       responseUsage,
       estimatedCost,
-      requestId: skillRequestId,
+      requestId: pendingRequestId,
+      servedProvider: servedIdentity?.provider || null,
+      servedModel: servedIdentity?.model || null,
+      accounting,
       compressionResponseMeta,
       comboStrategy,
     });
@@ -5575,6 +5598,8 @@ export async function handleChatCore({
 
   // Create transform stream with logger for streaming response
   let transformStream;
+  const streamServedIdentity = resolveServedIdentity(provider, finalBody);
+  const streamModel = streamServedIdentity?.model || currentModel || model;
   const responseToolNameMap = mergeResponseToolNameMap(
     toolNameMap,
     (finalBody as Record<string, unknown> | null | undefined) ?? null
@@ -5688,7 +5713,7 @@ export async function handleChatCore({
     }
     recordStreamingUsageStats(streamUsage, {
       provider,
-      model,
+      model: streamModel,
       streamStatus: normalizedStreamStatus,
       startTime,
       ttft,
@@ -5748,7 +5773,7 @@ export async function handleChatCore({
       })
     );
 
-    persistAttemptLogs({
+    const streamLogArgs = {
       status: normalizedStreamStatus,
       error: streamError || undefined,
       tokens: streamUsage || {},
@@ -5759,12 +5784,45 @@ export async function handleChatCore({
       claudeCacheMeta: claudePromptCacheLogMeta,
       claudeCacheUsageMeta: cacheUsageLogMeta,
       cacheSource: "upstream",
-    });
+    };
+    if (normalizedStreamStatus === 200) {
+      const servedIdentity = resolveServedIdentity(provider, finalBody);
+      const pricingModel = servedIdentity?.model || currentModel || effectiveModel;
+      const costUsage = normalizeUsage(streamUsage as Record<string, unknown> | null | undefined);
+      const usageForAccounting =
+        costUsage && (streamUsage as Record<string, unknown> | null | undefined)?.estimated === true
+          ? { ...costUsage, estimated: true }
+          : costUsage;
+      void (async () => {
+        try {
+          const calculatedCostUsd = costUsage
+            ? await calculateCost(provider, pricingModel, costUsage, {
+                serviceTier: effectiveServiceTier,
+              })
+            : 0;
+          persistAttemptLogs({
+            ...streamLogArgs,
+            servedProvider: servedIdentity?.provider || null,
+            servedModel: servedIdentity?.model || null,
+            accounting: classifyCostAccounting({
+              provider,
+              model: pricingModel,
+              usage: usageForAccounting,
+              calculatedCostUsd,
+            }),
+          });
+        } catch {
+          persistAttemptLogs(streamLogArgs);
+        }
+      })();
+    } else {
+      persistAttemptLogs(streamLogArgs);
+    }
 
     recordStreamingCost({
       apiKeyId: apiKeyInfo?.id,
       provider,
-      model,
+      model: streamModel,
       streamUsage,
       serviceTier: effectiveServiceTier,
       calculateCost,
@@ -5779,7 +5837,7 @@ export async function handleChatCore({
       apiKeyId: apiKeyInfo?.id,
       connectionId: credentials?.connectionId,
       provider,
-      model,
+      model: streamModel,
       streamUsage,
       streamStatus: normalizedStreamStatus,
       serviceTier: effectiveServiceTier,
@@ -5874,7 +5932,7 @@ export async function handleChatCore({
       provider,
       reqLogger,
       responseToolNameMap,
-      model,
+      streamModel,
       connectionId,
       streamStateBody,
       onStreamComplete,
@@ -5897,7 +5955,7 @@ export async function handleChatCore({
       provider,
       reqLogger,
       responseToolNameMap,
-      model,
+      streamModel,
       connectionId,
       streamStateBody,
       onStreamComplete,
@@ -5924,7 +5982,7 @@ export async function handleChatCore({
       provider,
       reqLogger,
       responseToolNameMap,
-      model,
+      streamModel,
       connectionId,
       streamStateBody,
       onStreamComplete,

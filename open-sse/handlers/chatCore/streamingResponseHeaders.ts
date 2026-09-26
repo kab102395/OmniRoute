@@ -17,6 +17,8 @@ export function assembleStreamingResponseHeaders(
     provider: string | null | undefined;
     model: string | null | undefined;
     pendingRequestId: string;
+    servedProvider?: string | null;
+    servedModel?: string | null;
     compressionResponseMeta?: string | null | undefined;
     comboStrategy?: string | null | undefined;
   },
@@ -31,6 +33,9 @@ export function assembleStreamingResponseHeaders(
       usage: null,
       costUsd: 0,
       strategy: args.comboStrategy ?? "single",
+      servedProvider: args.servedProvider,
+      servedModel: args.servedModel,
+      accounting: { kind: "pending", usageKind: "unknown" },
     }),
     "x-omniroute-request-id": args.pendingRequestId,
   };

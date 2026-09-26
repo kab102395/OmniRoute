@@ -51,16 +51,27 @@ export type CostCalculationOptions = {
 const USD_TICKS_PER_DOLLAR = 10_000_000_000;
 
 /**
- * Extract an exact, provider-reported USD cost from a token/usage record when one
- * is present, so callers can trust it over the token × pricing estimate. Currently
- * only xAI's `cost_in_usd_ticks` field is handled — see comment above.
+ * Extract a provider-reported USD amount from a usage record when one is present,
+ * so callers can preserve it instead of substituting a local price-table estimate.
+ * xAI ticks are carried only by its usage extractor; OpenRouter's plain `cost`
+ * is first normalized into the provider-specific field below.
  */
 function extractExactCostUsd(
-  tokens: Record<string, number | undefined> | null | undefined
+  tokens: Record<string, number | undefined> | null | undefined,
+  provider?: string | null
 ): number | null {
   const ticks = tokens?.cost_in_usd_ticks;
   if (typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0) {
     return ticks / USD_TICKS_PER_DOLLAR;
+  }
+  const reportedCost = tokens?.provider_reported_cost_usd;
+  if (
+    provider?.toLowerCase() === "openrouter" &&
+    typeof reportedCost === "number" &&
+    Number.isFinite(reportedCost) &&
+    reportedCost >= 0
+  ) {
+    return reportedCost;
   }
   return null;
 }
@@ -132,7 +143,7 @@ export function computeCostFromPricing(
   if (!tokens) return 0;
   // Trust an exact, provider-reported cost over the token × pricing estimate
   // when one is present — works even when no local pricing row exists yet.
-  const exactCostUsd = extractExactCostUsd(tokens);
+  const exactCostUsd = extractExactCostUsd(tokens, options.provider);
   if (exactCostUsd !== null) return exactCostUsd;
   if (!pricing) return 0;
   // Flat-rate (subscription / cookie-web) providers don't bill per token — their
@@ -181,9 +192,8 @@ export async function calculateCost(
 ): Promise<number> {
   if (!tokens || !provider || !model) return 0;
 
-  // Short-circuit before any pricing DB lookup when an exact, provider-reported
-  // cost is present (currently xAI's `cost_in_usd_ticks` — see extractExactCostUsd).
-  const exactCostUsd = extractExactCostUsd(tokens);
+  // Short-circuit before any pricing DB lookup when a provider-reported amount is present.
+  const exactCostUsd = extractExactCostUsd(tokens, provider);
   if (exactCostUsd !== null) return exactCostUsd;
 
   try {

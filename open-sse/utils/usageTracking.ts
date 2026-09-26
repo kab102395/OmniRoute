@@ -41,6 +41,7 @@ export interface UsageLike {
   no_cache_tokens?: number;
   reasoning_tokens?: number;
   cost_in_usd_ticks?: number;
+  provider_reported_cost_usd?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
   /** OpenRouter / Devin Desktop / codex-chatgpt-web alias for cache creation. */
@@ -637,6 +638,10 @@ export function normalizeUsage(usage: UsageLike | null | undefined) {
   ) {
     normalized.cost_in_usd_ticks = exactCostTicks;
   }
+  const reportedCost = usage?.provider_reported_cost_usd;
+  if (typeof reportedCost === "number" && Number.isFinite(reportedCost) && reportedCost >= 0) {
+    normalized.provider_reported_cost_usd = reportedCost;
+  }
 
   if (Object.keys(normalized).length === 0) return null;
   return normalized;
@@ -698,12 +703,21 @@ export function isEmptyUsage(usage: unknown): boolean {
  * Fast-path: return early for chunks without any usage-related fields.
  * Most streaming chunks (content deltas) have no usage — avoids property checks.
  */
-export function extractUsage(chunk: UsagePayloadLike | null | undefined) {
+export function extractUsage(chunk: UsagePayloadLike | null | undefined, provider?: string | null) {
   if (!chunk || typeof chunk !== "object") return null;
 
   // Fast-path: check for any usage-like fields before doing full extraction
   // Most chunks are content deltas with no usage — return null immediately.
   const c = chunk as Record<string, unknown>;
+  const openRouterCost =
+    provider?.toLowerCase() === "openrouter" &&
+    c.usage &&
+    typeof c.usage === "object" &&
+    typeof (c.usage as Record<string, unknown>).cost === "number" &&
+    Number.isFinite((c.usage as Record<string, number>).cost) &&
+    (c.usage as Record<string, number>).cost >= 0
+      ? { provider_reported_cost_usd: (c.usage as Record<string, number>).cost }
+      : {};
   const response = c.response as Record<string, unknown> | undefined;
   const message = c.message as Record<string, unknown> | undefined;
   if (
@@ -803,6 +817,7 @@ export function extractUsage(chunk: UsagePayloadLike | null | undefined) {
         chunk.usage.reasoning_tokens,
       // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A).
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
+      ...openRouterCost,
     });
   }
 

@@ -2367,11 +2367,103 @@ test("chatCore attaches OmniRoute response metadata headers to non-stream respon
   assert.equal(result.success, true);
   assert.equal(result.response.headers.get("X-OmniRoute-Provider"), "cc");
   assert.equal(result.response.headers.get("X-OmniRoute-Model"), "claude-sonnet-4-6");
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), "claude");
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), "claude-sonnet-4-6");
+  assert.equal(result.response.headers.get("X-OmniRoute-Accounting-Kind"), "estimated_cost");
+  assert.equal(result.response.headers.get("X-OmniRoute-Cost-Currency"), "USD");
+  const requestId = result.response.headers.get("X-OmniRoute-Request-Id");
+  assert.ok(requestId);
+  await waitForCallLogSaves(5000);
+  const callLog = await getCallLogById(requestId);
+  assert.equal(callLog.servedProvider, "claude");
+  assert.equal(callLog.servedModel, "claude-sonnet-4-6");
+  assert.equal(callLog.accounting.kind, "estimated_cost");
   assert.equal(result.response.headers.get("X-OmniRoute-Cache-Hit"), "false");
   assert.equal(result.response.headers.get("X-OmniRoute-Tokens-In"), "12");
   assert.equal(result.response.headers.get("X-OmniRoute-Tokens-Out"), "3");
   assert.ok(Number(result.response.headers.get("X-OmniRoute-Latency-Ms")) >= 0);
   assert.match(String(result.response.headers.get("X-OmniRoute-Response-Cost")), /^\d+\.\d{10}$/);
+});
+test("chatCore reports the concrete model that succeeded after model-family fallback", async () => {
+  const { calls, result } = await invokeChatCore({
+    provider: "claude",
+    model: "claude-sonnet-5",
+    body: {
+      model: "claude-sonnet-5",
+      stream: false,
+      messages: [{ role: "user", content: "fallback provenance" }],
+    },
+    responseFactory(_captured, seenCalls) {
+      if (seenCalls.length === 1) {
+        return new Response(JSON.stringify({ error: { message: "model not found" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          id: "msg-fallback",
+          model: "claude-sonnet-4-6",
+          content: [{ type: "text", text: "fallback succeeded" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 4, output_tokens: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].body.model, "claude-sonnet-5");
+  assert.equal(calls[1].body.model, "claude-sonnet-4-6");
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), "claude");
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), "claude-sonnet-4-6");
+  await waitForCallLogSaves(5000);
+  const callLog = await getCallLogById(result.response.headers.get("X-OmniRoute-Request-Id"));
+  assert.equal(callLog.servedProvider, "claude");
+  assert.equal(callLog.servedModel, "claude-sonnet-4-6");
+});
+test("chatCore marks OpenRouter usage.cost as provider-reported accounting", async () => {
+  const { result } = await invokeChatCore({
+    provider: "openrouter",
+    model: "openai/gpt-4o-mini",
+    body: {
+      model: "openai/gpt-4o-mini",
+      stream: false,
+      messages: [{ role: "user", content: "accounting provenance" }],
+    },
+    responseFactory() {
+      return new Response(
+        JSON.stringify({
+          id: "gen-accounting-provenance",
+          object: "chat.completion",
+          model: "openai/gpt-4o-mini",
+          choices: [
+            { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6, cost: 0.00123 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(
+    result.response.headers.get("X-OmniRoute-Accounting-Kind"),
+    "provider_reported_billed_cost"
+  );
+  assert.equal(
+    result.response.headers.get("X-OmniRoute-Cost-Source"),
+    "openrouter_response.usage.cost"
+  );
+  assert.equal(result.response.headers.get("X-OmniRoute-Cost-Currency"), "USD");
+  assert.equal(result.response.headers.get("X-OmniRoute-Response-Cost"), "0.0012300000");
+  await waitForCallLogSaves(5000);
+  const callLog = await getCallLogById(result.response.headers.get("X-OmniRoute-Request-Id"));
+  assert.equal(callLog.accounting.kind, "provider_reported_billed_cost");
+  assert.equal(callLog.accounting.amountUsd, 0.00123);
 });
 test("chatCore does not expose provider request credentials in non-stream response headers", async () => {
   const { result } = await invokeChatCore({
@@ -2390,6 +2482,8 @@ test("chatCore does not expose provider request credentials in non-stream respon
   assert.equal(result.response.headers.get("x-api-key"), null);
   assert.equal(result.response.headers.get("Content-Type"), "application/json");
   assert.equal(result.response.headers.get("X-OmniRoute-Cache"), "MISS");
+  assert.ok(result.response.headers.get("X-OmniRoute-Request-Id"));
+  assert.equal(JSON.stringify(toPlainHeaders(result.response.headers)).includes("sk-test"), false);
 });
 test("chatCore normalizes tool finish reasons and estimates usage when upstream omits it", async () => {
   const { result } = await invokeChatCore({
@@ -2620,6 +2714,8 @@ test("chatCore does not substitute an OpenAI model after model-unavailable", asy
   assert.equal(result.success, false);
   assert.equal(result.status, 404);
   assert.equal(calls.length, 1);
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), null);
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), null);
 });
 test("chatCore does not substitute an OpenAI model after context overflow", async () => {
   saveModelsDevCapabilities({
@@ -3024,7 +3120,17 @@ test("chatCore strips upstream compression and length headers from streaming res
   assert.equal(result.response.headers.get("Content-Length"), null);
   assert.equal(result.response.headers.get("X-Upstream-Trace"), "trace-1");
   assert.equal(result.response.headers.get("X-OmniRoute-Cache"), "MISS");
+  assert.ok(result.response.headers.get("X-OmniRoute-Request-Id"));
+  assert.equal(result.response.headers.get("X-OmniRoute-Accounting-Kind"), "pending");
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), null);
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), null);
+  const requestId = result.response.headers.get("X-OmniRoute-Request-Id");
   await result.response.text();
+  await waitForCallLogSaves(5000);
+  const callLog = await getCallLogById(requestId);
+  assert.equal(callLog.servedProvider, "openai");
+  assert.equal(callLog.servedModel, "gpt-4o-mini");
+  assert.notEqual(callLog.accounting.kind, "pending");
 });
 test("chatCore maps upstream aborts to request-aborted errors", async () => {
   const { result } = await invokeChatCore({

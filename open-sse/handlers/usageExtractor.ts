@@ -59,6 +59,12 @@ export function extractUsageFromResponse(responseBody, provider) {
       responseBody.usage.cost_in_usd_ticks >= 0
         ? { cost_in_usd_ticks: responseBody.usage.cost_in_usd_ticks }
         : {}),
+      ...(providerId === "openrouter" &&
+      typeof responseBody.usage.cost === "number" &&
+      Number.isFinite(responseBody.usage.cost) &&
+      responseBody.usage.cost >= 0
+        ? { provider_reported_cost_usd: responseBody.usage.cost }
+        : {}),
     };
   }
 

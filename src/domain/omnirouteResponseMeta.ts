@@ -126,6 +126,9 @@ export function buildOmniRouteResponseMetaHeaders({
   provider = null,
   requestId = null,
   strategy = null,
+  servedProvider = null,
+  servedModel = null,
+  accounting = null,
   usage = null,
   ttftMs = null,
 }: {
@@ -144,6 +147,15 @@ export function buildOmniRouteResponseMetaHeaders({
   model?: string | null;
   provider?: string | null;
   requestId?: string | null;
+  /** Final concrete target that produced this completion; omitted before success is known. */
+  servedProvider?: string | null;
+  servedModel?: string | null;
+  accounting?: {
+    kind: string;
+    source?: string | null;
+    currency?: string | null;
+    usageKind?: string | null;
+  } | null;
   /**
    * Routing decision (combo strategy name, or `"single"` for a non-combo
    * request) surfaced via `X-OmniRoute-Decision`. See #6022.
@@ -177,6 +189,25 @@ export function buildOmniRouteResponseMetaHeaders({
 
   if (typeof provider === "string" && provider.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.provider] = toHeaderValue(getProviderAlias(provider));
+  }
+
+  if (typeof servedProvider === "string" && servedProvider.trim().length > 0) {
+    headers[OMNIROUTE_RESPONSE_HEADERS.servedProvider] = toHeaderValue(servedProvider);
+  }
+  if (typeof servedModel === "string" && servedModel.trim().length > 0) {
+    headers[OMNIROUTE_RESPONSE_HEADERS.servedModel] = toHeaderValue(servedModel);
+  }
+  if (accounting && typeof accounting.kind === "string") {
+    headers[OMNIROUTE_RESPONSE_HEADERS.accountingKind] = toHeaderValue(accounting.kind);
+    if (accounting.source) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.costSource] = toHeaderValue(accounting.source);
+    }
+    if (accounting.currency) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.costCurrency] = toHeaderValue(accounting.currency);
+    }
+    if (accounting.usageKind) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.usageKind] = toHeaderValue(accounting.usageKind);
+    }
   }
 
   // Cache-saved cost: emitted only when the caller passes a value (cache HITs), so
