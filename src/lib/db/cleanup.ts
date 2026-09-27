@@ -6,6 +6,7 @@
 
 import { getDbInstance } from "./core";
 import { getUserDatabaseSettings } from "./databaseSettings";
+import { resolveCallLogRetentionDays } from "@/lib/logEnv";
 import { rollupUsageHistoryBeforeDate } from "@/lib/usage/aggregateHistory";
 import { purgeCallLogArtifactDirectory } from "@/lib/usage/callLogArtifacts";
 import {
@@ -64,7 +65,7 @@ export async function cleanupCallLogs(): Promise<CleanupResult> {
   const db = getDbInstance();
   const retention = getRetentionSettings();
 
-  const retentionDays = retention.callLogs;
+  const retentionDays = resolveCallLogRetentionDays(retention.callLogs);
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
   const cutoffISO = cutoffDate.toISOString();

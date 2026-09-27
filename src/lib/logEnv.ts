@@ -103,6 +103,23 @@ export function getCallLogRetentionDaysOverride(): number | null {
   return parsePositiveIntOrNull(process.env.CALL_LOG_RETENTION_DAYS);
 }
 
+/**
+ * Resolve call-log retention with the same precedence used by cleanup jobs:
+ * explicit environment override, persisted database setting, then env default.
+ */
+export function resolveCallLogRetentionDays(databaseRetentionDays?: number): number {
+  const override = getCallLogRetentionDaysOverride();
+  if (override !== null) return override;
+  if (
+    typeof databaseRetentionDays === "number" &&
+    Number.isInteger(databaseRetentionDays) &&
+    databaseRetentionDays > 0
+  ) {
+    return databaseRetentionDays;
+  }
+  return getCallLogRetentionDays();
+}
+
 export function getAppLogMaxFiles(): number {
   return parsePositiveInt(process.env.APP_LOG_MAX_FILES, DEFAULT_APP_LOG_MAX_FILES);
 }

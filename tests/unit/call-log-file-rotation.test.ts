@@ -18,6 +18,7 @@ process.env.CALL_LOG_RETENTION_DAYS = "7";
 process.env.CALL_LOG_MAX_ENTRIES = "2";
 
 const core = await import("../../src/lib/db/core.ts");
+const databaseSettings = await import("../../src/lib/db/databaseSettings.ts");
 const { rotateCallLogs, cleanupOverflowCallLogFiles, cleanupOrphanCallLogFiles } =
   await import("../../src/lib/usage/callLogs.ts");
 const { CALL_LOGS_DIR, deleteCallArtifact } =
@@ -211,6 +212,65 @@ test("call log file rotation honors both retention days and file count", () => {
 
   assert.equal(fs.existsSync(path.join(CALL_LOGS_DIR, keepBRelPath)), true);
   assert.equal(fs.existsSync(path.join(CALL_LOGS_DIR, keepCRelPath)), true);
+});
+
+test("call log rotation uses persisted retention when no environment override is set", () => {
+  assert.ok(CALL_LOGS_DIR, "CALL_LOGS_DIR should resolve for test data dir");
+  fs.mkdirSync(CALL_LOGS_DIR, { recursive: true });
+
+  const originalRetentionDays = databaseSettings.getUserDatabaseSettings().retention.callLogs;
+  const originalEnvRetentionDays = process.env.CALL_LOG_RETENTION_DAYS;
+  const oneDay = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  try {
+    delete process.env.CALL_LOG_RETENTION_DAYS;
+    databaseSettings.updateDatabaseSettings({
+      retention: {
+        ...databaseSettings.getUserDatabaseSettings().retention,
+        callLogs: 90,
+      },
+    });
+
+    insertCallLog({
+      id: "persisted-retention-keep",
+      timestamp: new Date(now - 10 * oneDay).toISOString(),
+    });
+    insertCallLog({
+      id: "persisted-retention-prune",
+      timestamp: new Date(now - 100 * oneDay).toISOString(),
+    });
+
+    rotateCallLogs();
+
+    const db = core.getDbInstance();
+    assert.equal(
+      db
+        .prepare("SELECT COUNT(*) AS count FROM call_logs WHERE id = 'persisted-retention-keep'")
+        .get().count,
+      1,
+      "a 10-day-old row is retained under the persisted 90-day policy"
+    );
+    assert.equal(
+      db
+        .prepare("SELECT COUNT(*) AS count FROM call_logs WHERE id = 'persisted-retention-prune'")
+        .get().count,
+      0,
+      "a row older than the persisted 90-day policy is pruned"
+    );
+  } finally {
+    databaseSettings.updateDatabaseSettings({
+      retention: {
+        ...databaseSettings.getUserDatabaseSettings().retention,
+        callLogs: originalRetentionDays,
+      },
+    });
+    if (originalEnvRetentionDays === undefined) {
+      delete process.env.CALL_LOG_RETENTION_DAYS;
+    } else {
+      process.env.CALL_LOG_RETENTION_DAYS = originalEnvRetentionDays;
+    }
+  }
 });
 
 test("rotateCallLogs swallows filesystem errors during cleanup", () => {
