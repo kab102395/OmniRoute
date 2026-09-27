@@ -211,6 +211,17 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     toVersion: "101",
     toName: "api_key_usage_limits",
   },
+  {
+    // The isolated Ember provenance branch reused 174 after the canonical
+    // gateway_client_credentials migration had already shipped there. Preserve
+    // databases that recorded the provenance migration at 174 while restoring
+    // the canonical sequence: gateway credentials at 174, key-slot logging at
+    // 175, and provenance at 176.
+    fromVersion: "174",
+    fromName: "chat_completion_provenance",
+    toVersion: "176",
+    toName: "chat_completion_provenance",
+  },
 ] as const;
 
 export const LEGACY_VERSION_SLOT_MIGRATIONS = [

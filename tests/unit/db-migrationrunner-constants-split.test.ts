@@ -70,8 +70,8 @@ describe("migrationRunner/constants — exact small-table snapshots", () => {
 // ── large tables — count + shape + spot-checks (corruption guard) ─────────────
 
 describe("migrationRunner/constants — large-table integrity", () => {
-  it("RENAMED_MIGRATION_COMPATIBILITY has 32 well-formed entries", () => {
-    assert.equal(RENAMED_MIGRATION_COMPATIBILITY.length, 32);
+  it("RENAMED_MIGRATION_COMPATIBILITY has 33 well-formed entries", () => {
+    assert.equal(RENAMED_MIGRATION_COMPATIBILITY.length, 33);
     for (const e of RENAMED_MIGRATION_COMPATIBILITY) {
       assert.equal(typeof e.fromVersion, "string");
       assert.equal(typeof e.fromName, "string");
@@ -124,48 +124,81 @@ describe("migrationRunner/constants — large-table integrity", () => {
         toName: "inspector_custom_hosts",
       }
     );
-    assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-7), {
-      fromVersion: "134",
-      fromName: "ccr_blocks",
-      toVersion: "139",
-      toName: "ccr_blocks",
-    });
-    assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-6), {
-      fromVersion: "139",
-      fromName: "job_registry",
-      toVersion: "146",
-      toName: "job_registry",
-    });
-    assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-5), {
-      fromVersion: "143",
-      fromName: "radar_local_model_state",
-      toVersion: "153",
-      toName: "radar_local_model_state",
-    });
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find((e) => e.fromVersion === "134"),
+      {
+        fromVersion: "134",
+        fromName: "ccr_blocks",
+        toVersion: "139",
+        toName: "ccr_blocks",
+      }
+    );
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find(
+        (e) => e.fromVersion === "139" && e.fromName === "job_registry"
+      ),
+      {
+        fromVersion: "139",
+        fromName: "job_registry",
+        toVersion: "146",
+        toName: "job_registry",
+      }
+    );
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find(
+        (e) => e.fromVersion === "143" && e.fromName === "radar_local_model_state"
+      ),
+      {
+        fromVersion: "143",
+        fromName: "radar_local_model_state",
+        toVersion: "153",
+        toName: "radar_local_model_state",
+      }
+    );
     // #12036: renamed migrations 056/073/077/101 appended as compatibility renames
-    assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-4), {
-      fromVersion: "056",
-      fromName: "provider_default",
-      toVersion: "056",
-      toName: "mcp_accessibility_compression",
-    });
-    assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-3), {
-      fromVersion: "073",
-      fromName: "discovery_results",
-      toVersion: "073",
-      toName: "per_model_token_limits",
-    });
-    assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-2), {
-      fromVersion: "077",
-      fromName: "plugin_metrics",
-      toVersion: "077",
-      toName: "api_key_stream_default_mode",
-    });
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find(
+        (e) => e.fromVersion === "056" && e.fromName === "provider_default"
+      ),
+      {
+        fromVersion: "056",
+        fromName: "provider_default",
+        toVersion: "056",
+        toName: "mcp_accessibility_compression",
+      }
+    );
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find((e) => e.fromVersion === "073"),
+      {
+        fromVersion: "073",
+        fromName: "discovery_results",
+        toVersion: "073",
+        toName: "per_model_token_limits",
+      }
+    );
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find((e) => e.fromVersion === "077"),
+      {
+        fromVersion: "077",
+        fromName: "plugin_metrics",
+        toVersion: "077",
+        toName: "api_key_stream_default_mode",
+      }
+    );
+    assert.deepEqual(
+      RENAMED_MIGRATION_COMPATIBILITY.find((e) => e.fromVersion === "101"),
+      {
+        fromVersion: "101",
+        fromName: "proxy_pool_rotation",
+        toVersion: "101",
+        toName: "api_key_usage_limits",
+      }
+    );
     assert.deepEqual(RENAMED_MIGRATION_COMPATIBILITY.at(-1), {
-      fromVersion: "101",
-      fromName: "proxy_pool_rotation",
-      toVersion: "101",
-      toName: "api_key_usage_limits",
+      fromVersion: "174",
+      fromName: "chat_completion_provenance",
+      toVersion: "176",
+      toName: "chat_completion_provenance",
     });
   });
 

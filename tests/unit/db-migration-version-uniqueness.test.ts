@@ -66,3 +66,19 @@ test("quota_pools lives at 085 (renumbered from the 077 collision)", () => {
   assert.ok(streamDefault, "api_key_stream_default_mode migration must exist");
   assert.equal(streamDefault.version, "077", "api_key_stream_default_mode stays at 077");
 });
+
+test("canonical migration history keeps gateway credentials at 174 and provenance at 176", () => {
+  const files = migrationFiles();
+  assert.ok(
+    files.some((f) => f.version === "174" && f.name === "gateway_client_credentials"),
+    "the earlier canonical gateway credential migration retains version 174"
+  );
+  assert.ok(
+    files.some((f) => f.version === "175" && f.name === "call_logs_provider_key_slot"),
+    "the canonical key-slot migration retains version 175"
+  );
+  assert.ok(
+    files.some((f) => f.version === "176" && f.name === "chat_completion_provenance"),
+    "the later provenance migration occupies version 176"
+  );
+});
