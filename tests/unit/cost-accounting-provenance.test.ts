@@ -10,13 +10,40 @@ test("served identity follows the final successful outbound model after fallback
   assert.deepEqual(resolveServedIdentity("openai", { model: "provider-b/model-2" }), {
     provider: "openai",
     model: "provider-b/model-2",
+    providerInstanceId: null,
   });
   assert.deepEqual(resolveServedIdentity("anthropic", { model: "claude-sonnet-4-6" }), {
     provider: "anthropic",
     model: "claude-sonnet-4-6",
+    providerInstanceId: null,
   });
   assert.equal(resolveServedIdentity("openai", null), null);
   assert.equal(resolveServedIdentity("openai", { model: " " }), null);
+});
+
+test("served provider maps an exact internal node to its configured public prefix", () => {
+  const lookup = (id: string) =>
+    id === "codex-node-id"
+      ? { id, prefix: "codex-bridge" }
+      : id === "codex2-node-id"
+        ? { id, prefix: "codex2-bridge" }
+        : null;
+
+  assert.deepEqual(resolveServedIdentity("codex-node-id", { model: "codex" }, lookup), {
+    provider: "codex-bridge",
+    model: "codex",
+    providerInstanceId: "codex-node-id",
+  });
+  assert.deepEqual(resolveServedIdentity("codex2-node-id", { model: "codex2" }, lookup), {
+    provider: "codex2-bridge",
+    model: "codex2",
+    providerInstanceId: "codex2-node-id",
+  });
+  assert.deepEqual(resolveServedIdentity("unknown-node-id", { model: "codex" }, lookup), {
+    provider: "unknown-node-id",
+    model: "codex",
+    providerInstanceId: null,
+  });
 });
 
 test("OpenRouter provider-reported cost is retained only for OpenRouter usage", () => {

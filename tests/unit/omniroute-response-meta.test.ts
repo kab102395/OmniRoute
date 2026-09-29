@@ -59,6 +59,20 @@ test("buildOmniRouteResponseMetaHeaders keeps ASCII model header values unchange
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.model], "gpt-4o-mini");
 });
 
+test("buildOmniRouteResponseMetaHeaders separates public served provider from internal IDs", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({
+    servedProvider: "codex2-bridge",
+    servedModel: "codex2",
+    servedProviderInstanceId: "codex2-node-id",
+    connectionId: "connection-2",
+  });
+
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedProvider], "codex2-bridge");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedModel], "codex2");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedProviderInstanceId], "codex2-node-id");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.connectionId], "connection-2");
+});
+
 test("buildOmniRouteResponseMetaHeaders percent-encodes non-ASCII model header values", () => {
   const model = "free-mix/[假流式]gemini-3.7-flash";
   const headers = buildOmniRouteResponseMetaHeaders({

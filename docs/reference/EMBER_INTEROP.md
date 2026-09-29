@@ -15,22 +15,28 @@ with the usual bearer authentication. The OpenAI-compatible response body is unc
 
 On success, read these headers:
 
-| Header                        | Meaning                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `X-OmniRoute-Request-Id`      | ID of the successful attempt's call-log row.                                                |
-| `X-OmniRoute-Served-Provider` | Provider ID for the successful execution.                                                   |
-| `X-OmniRoute-Served-Model`    | Concrete model in the final captured outbound provider request.                             |
-| `X-OmniRoute-Accounting-Kind` | `provider_reported_billed_cost`, `estimated_cost`, `usage_only`, `zero_cost`, or `unknown`. |
-| `X-OmniRoute-Response-Cost`   | USD amount formatted to 10 decimal places; interpret only with accounting kind/source.      |
-| `X-OmniRoute-Cost-Currency`   | Currency when an amount is available (`USD`).                                               |
-| `X-OmniRoute-Cost-Source`     | Source of the amount, when present.                                                         |
-| `X-OmniRoute-Usage-Kind`      | `provider_reported_usage`, `estimated_usage`, or `unknown`.                                 |
+| Header                                    | Meaning                                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `X-OmniRoute-Request-Id`                  | ID of the successful attempt's call-log row.                                                |
+| `X-OmniRoute-Served-Provider`             | Canonical public provider prefix for the successful execution.                              |
+| `X-OmniRoute-Served-Model`                | Concrete model in the final captured outbound provider request.                             |
+| `X-OmniRoute-Served-Provider-Instance-Id` | Internal provider-node ID, for diagnostics only.                                            |
+| `X-OmniRoute-Connection-Id`               | Selected connection ID when the adapter has one.                                            |
+| `X-OmniRoute-Accounting-Kind`             | `provider_reported_billed_cost`, `estimated_cost`, `usage_only`, `zero_cost`, or `unknown`. |
+| `X-OmniRoute-Response-Cost`               | USD amount formatted to 10 decimal places; interpret only with accounting kind/source.      |
+| `X-OmniRoute-Cost-Currency`               | Currency when an amount is available (`USD`).                                               |
+| `X-OmniRoute-Cost-Source`                 | Source of the amount, when present.                                                         |
+| `X-OmniRoute-Usage-Kind`                  | `provider_reported_usage`, `estimated_usage`, or `unknown`.                                 |
 
 The existing `X-OmniRoute-Provider` and `X-OmniRoute-Model` headers remain for
 compatibility; use the `Served-*` headers for final identity. If attempt A fails and
 fallback/retry B succeeds, those headers describe B. A failed completion does not receive
 successful served-identity headers. The request ID identifies the accepted attempt; a
 logical request's correlation ID groups attempts in call-log data, where available.
+The served-provider header uses the configured public provider-node prefix when execution
+uses a provider node. Its internal node ID is carried separately and must never be used as
+the public provider identity. Praxis can validate the exact public identity from completion
+headers without querying OmniRoute's management API.
 
 `provider_reported_billed_cost` currently covers xAI's `usage.cost_in_usd_ticks` and
 OpenRouter's synchronous `usage.cost`. `zero_cost` means one of those provider-reported

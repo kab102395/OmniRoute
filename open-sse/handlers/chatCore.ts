@@ -5264,9 +5264,12 @@ export async function handleChatCore({
         ? translatedResponse.usage
         : null;
     const costUsage = normalizeUsage(responseUsage);
+    const responseUsageRecord = isJsonRecord(responseUsage)
+      ? (responseUsage as Record<string, unknown>)
+      : null;
+    const usageRecord = isJsonRecord(usage) ? (usage as Record<string, unknown>) : null;
     const usageWasEstimated =
-      (isJsonRecord(responseUsage) && responseUsage.estimated === true) ||
-      (isJsonRecord(usage) && usage.estimated === true);
+      responseUsageRecord?.estimated === true || usageRecord?.estimated === true;
     const usageForAccounting =
       costUsage && usageWasEstimated ? { ...costUsage, estimated: true } : costUsage;
     const servedIdentity = resolveServedIdentity(provider, finalBody);
@@ -5472,6 +5475,8 @@ export async function handleChatCore({
       requestId: pendingRequestId,
       servedProvider: servedIdentity?.provider || null,
       servedModel: servedIdentity?.model || null,
+      servedProviderInstanceId: servedIdentity?.providerInstanceId || null,
+      connectionId: credentials?.connectionId ?? null,
       accounting,
       compressionResponseMeta,
       comboStrategy,
@@ -5825,7 +5830,7 @@ export async function handleChatCore({
       clientResponse: clientPayload ?? streamResponseBody ?? undefined,
       claudeCacheMeta: claudePromptCacheLogMeta,
       claudeCacheUsageMeta: cacheUsageLogMeta,
-      cacheSource: "upstream",
+      cacheSource: "upstream" as const,
     };
     if (normalizedStreamStatus === 200) {
       const servedIdentity = resolveServedIdentity(provider, finalBody);

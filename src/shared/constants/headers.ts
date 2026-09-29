@@ -18,6 +18,7 @@ export const OMNIROUTE_RESPONSE_HEADERS = {
   responseCost: "X-OmniRoute-Response-Cost",
   servedModel: "X-OmniRoute-Served-Model",
   servedProvider: "X-OmniRoute-Served-Provider",
+  servedProviderInstanceId: "X-OmniRoute-Served-Provider-Instance-Id",
   tokensIn: "X-OmniRoute-Tokens-In",
   tokensOut: "X-OmniRoute-Tokens-Out",
   usageKind: "X-OmniRoute-Usage-Kind",

@@ -21,6 +21,8 @@ export function buildNonStreamingResponseHeaders(
     requestId: string | null | undefined;
     servedProvider?: string | null;
     servedModel?: string | null;
+    servedProviderInstanceId?: string | null;
+    connectionId?: string | null;
     accounting?: {
       kind: string;
       source?: string | null;
@@ -49,6 +51,8 @@ export function buildNonStreamingResponseHeaders(
     requestId: args.requestId,
     servedProvider: args.servedProvider,
     servedModel: args.servedModel,
+    servedProviderInstanceId: args.servedProviderInstanceId,
+    connectionId: args.connectionId,
     accounting: args.accounting,
     strategy: args.comboStrategy ?? "single",
   });

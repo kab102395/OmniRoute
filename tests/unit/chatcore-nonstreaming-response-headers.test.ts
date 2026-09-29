@@ -70,6 +70,23 @@ test("meta receives provider/model/cacheHit false/latency/usage/cost/requestId",
   assert.equal(meta.requestId, "req-1");
 });
 
+test("meta preserves public served identity separately from node and connection IDs", () => {
+  const { deps, metaCalls } = makeDeps();
+  buildNonStreamingResponseHeaders(
+    baseArgs({
+      servedProvider: "codex-bridge",
+      servedModel: "codex",
+      servedProviderInstanceId: "codex-node-id",
+      connectionId: "connection-1",
+    }),
+    deps
+  );
+  assert.equal(metaCalls[0].meta.servedProvider, "codex-bridge");
+  assert.equal(metaCalls[0].meta.servedModel, "codex");
+  assert.equal(metaCalls[0].meta.servedProviderInstanceId, "codex-node-id");
+  assert.equal(metaCalls[0].meta.connectionId, "connection-1");
+});
+
 test("no compression meta → no compression header", () => {
   const { deps } = makeDeps();
   const h = buildNonStreamingResponseHeaders(

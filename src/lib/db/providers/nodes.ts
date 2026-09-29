@@ -71,10 +71,14 @@ export function getProviderNodesCount(filter: JsonRecord = {}): number {
   return row.cnt;
 }
 
-export async function getProviderNodeById(id: string) {
+export function getProviderNodeByIdSync(id: string) {
   const db = getDbInstance() as unknown as DbLike;
   const row = db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
   return row ? rowToCamel(row) : null;
+}
+
+export async function getProviderNodeById(id: string) {
+  return getProviderNodeByIdSync(id);
 }
 
 // #4421: resolve the provider node for a new connection from either its concrete id
