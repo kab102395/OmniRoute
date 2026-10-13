@@ -2101,7 +2101,9 @@ test("v1 models catalog uses synced models.dev limits instead of provider defaul
 
 test("v1 models catalog preserves synchronized pricing provenance in serialized rows", async () => {
   await seedConnection("openai", { name: "openai-pricing-provenance" });
+  await seedConnection("github", { name: "github-pricing-alias" });
   await modelsDb.addCustomModel("openai", "catalog-pricing-incomplete-test", "Incomplete Test");
+  await modelsDb.addCustomModel("github", "catalog-pricing-alias-test", "Alias Pricing Test");
 
   try {
     modelsDevSync.saveModelsDevPricing({
@@ -2114,6 +2116,9 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
     pricingSync.saveSyncedPricing({
       openai: {
         "gpt-4o-mini": { output: 0.7 },
+      },
+      gh: {
+        "catalog-pricing-alias-test": { input: 0.3, output: 0.9 },
       },
     });
     await settingsDb.updatePricing({
@@ -2156,6 +2161,7 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
     const partialModel = body.data.find(
       (item) => item.id === "openai/catalog-pricing-incomplete-test"
     );
+    const aliasModel = body.data.find((item) => item.id.endsWith("/catalog-pricing-alias-test"));
     assert.ok(partialModel);
     assert.deepEqual(partialModel.pricing, { input: 0.15 });
     assert.equal(partialModel.pricing_provenance?.state, "incomplete");
@@ -2164,6 +2170,10 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
       partialModel.pricing_provenance?.reason ?? "",
       /both input and output token rates/
     );
+    assert.ok(aliasModel);
+    assert.equal(aliasModel.pricing?.input, 0.3);
+    assert.equal(aliasModel.pricing?.output, 0.9);
+    assert.equal(aliasModel.pricing_provenance?.rateSources?.input?.sourceType, "litellm");
   } finally {
     await settingsDb.resetPricing("openai", "gpt-4o-mini");
     pricingSync.clearSyncedPricing();

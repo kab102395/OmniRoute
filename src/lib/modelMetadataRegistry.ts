@@ -323,6 +323,13 @@ export function getCanonicalModelMetadata(input: {
 // its cache is warm, so the index is reused across every resolveCatalogPricing() call in
 // a rebuild instead of rebuilt per lookup.
 const lowercaseIndexCache = new WeakMap<object, Map<string, unknown>>();
+const providerIdsByPricingAlias = new Map<string, string[]>();
+for (const [providerId, alias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
+  const normalizedAlias = alias.toLowerCase();
+  const ids = providerIdsByPricingAlias.get(normalizedAlias) ?? [];
+  ids.push(providerId);
+  providerIdsByPricingAlias.set(normalizedAlias, ids);
+}
 
 function findInsensitive<T>(obj: Record<string, T> | null | undefined, key: string): T | undefined {
   if (!obj || !key) return undefined;
@@ -364,6 +371,25 @@ function findInsensitiveEntry<T>(
   return matchedKey === undefined ? null : { key: matchedKey, value };
 }
 
+function getPricingProviderKeys(provider: string): string[] {
+  const candidates: string[] = [];
+  const add = (value: string) => {
+    if (!candidates.some((candidate) => candidate.toLowerCase() === value.toLowerCase())) {
+      candidates.push(value);
+    }
+  };
+  const identities = [provider, provider.replace(/-cn$/, "")];
+  for (const identity of identities) add(identity);
+
+  for (const identity of identities) {
+    const alias = PROVIDER_ID_TO_ALIAS[identity];
+    if (typeof alias === "string" && alias) add(alias);
+    for (const providerId of providerIdsByPricingAlias.get(identity.toLowerCase()) ?? [])
+      add(providerId);
+  }
+  return candidates;
+}
+
 function extractNumericPricing(entry: Record<string, unknown>): Record<string, number> {
   return Object.fromEntries(
     Object.entries(entry).filter(
@@ -386,10 +412,9 @@ function resolveCatalogPricing(
   if (snapshot?.effectivePricing) {
     try {
       const effective = snapshot.effectivePricing;
-      const providerKeys = [provider, provider.replace(/-cn$/, "")];
       let providerPricing: { key: string; value: Record<string, Record<string, unknown>> } | null =
         null;
-      for (const key of providerKeys) {
+      for (const key of getPricingProviderKeys(provider)) {
         providerPricing = findInsensitiveEntry(effective.pricing, key);
         if (providerPricing) break;
       }
