@@ -166,4 +166,25 @@ describe("catalog pricing surface (#8018)", () => {
       /peak\/off-peak schedule/
     );
   });
+
+  it("does not label pre-existing unproven rates with DeepSeek pricing provenance", () => {
+    const entry = enrichCatalogModelEntry({
+      id: "deepseek/deepseek-v4-pro",
+      owned_by: "deepseek",
+      root: "deepseek-v4-pro",
+      pricing: { input: 9, output: 99, cached: 8 },
+    });
+
+    assert.deepEqual(entry.pricing, {
+      input: 1.32,
+      output: 3.96,
+      cached: 0.044,
+      reasoning: 3.96,
+      cache_creation: 1.32,
+    });
+    assert.equal(
+      (entry.pricing_provenance as { source?: { id?: string } }).source?.id,
+      "deepseek.api_pricing"
+    );
+  });
 });

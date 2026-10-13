@@ -820,10 +820,11 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     provider === "deepseek" ? getDeepseekPricingEvidence(model, Date.now()) : null;
   if (deepseekPricingEvidence && nextEntry.pricing_provenance == null) {
     nextEntry.pricing_provenance = deepseekPricingEvidence;
-    if (nextEntry.pricing == null) {
-      const providerPrice = getDefaultPricingForModel(provider, model);
-      if (providerPrice) nextEntry.pricing = providerPrice;
-    }
+    // A prior catalog pass may have left unattributed numeric rates on this
+    // route. Never pair those with DeepSeek's authoritative provenance.
+    const providerPrice = getDefaultPricingForModel(provider, model);
+    if (providerPrice) nextEntry.pricing = providerPrice;
+    else delete nextEntry.pricing;
   }
 
   if (nextEntry.pricing == null && nextEntry.pricing_provenance == null) {
