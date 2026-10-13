@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import {
   getLastProviderLimitsAutoSyncTime,
   getProviderLimitsSyncIntervalMinutes,
@@ -10,7 +11,10 @@ import {
  * GET /api/usage/provider-limits
  * Returns cached Provider Limits data without triggering live refreshes.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = await requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     return NextResponse.json({
       caches: await getSanitizedCachedProviderLimitsMap(),
@@ -27,7 +31,10 @@ export async function GET() {
  * POST /api/usage/provider-limits
  * Manually refresh all supported Provider Limits entries.
  */
-export async function POST() {
+export async function POST(request: Request) {
+  const authError = await requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     const result = await syncAllProviderLimits({ source: "manual" });
     const caches = await getSanitizedCachedProviderLimitsMap();
