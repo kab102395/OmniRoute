@@ -15,6 +15,10 @@ function request() {
   return new Request("http://localhost/v1/models");
 }
 
+function freeOnlyRequest() {
+  return new Request("http://localhost/v1/models?free_only=true");
+}
+
 function payload(body: string): catalogCache.CatalogPayload {
   return { body, headers: { "content-type": "application/json" }, status: 200, cacheTTL: 60_000 };
 }
@@ -58,4 +62,26 @@ test("#12627 timeout serves last-good 200 when a prior build succeeded", async (
   assert.equal(second.status, 200);
   assert.equal(await second.text(), "good");
   assert.equal(second.headers.get("x-omniroute-catalog"), "last-good");
+});
+
+test("#12627 free-only timeout does not serve stale route eligibility", async () => {
+  const req = freeOnlyRequest();
+  const first = await catalogCache.resolveCachedCatalogResponse(
+    req,
+    { corsHeaders: {}, diagnosticHeaders: {} },
+    async () => payload("old-free-route"),
+    { getStaleWhileRevalidateMs: () => 0 }
+  );
+  assert.equal(await first.text(), "old-free-route");
+  catalogCache.__expireCatalogCacheForTest(60_000);
+
+  await assert.rejects(
+    catalogCache.resolveCachedCatalogResponse(
+      req,
+      { corsHeaders: {}, diagnosticHeaders: {} },
+      neverResolves as (request: Request) => Promise<catalogCache.CatalogPayload>,
+      { getStaleWhileRevalidateMs: () => 0 }
+    ),
+    /catalog_build_timeout/
+  );
 });

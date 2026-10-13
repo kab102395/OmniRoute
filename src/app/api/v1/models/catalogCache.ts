@@ -323,7 +323,8 @@ async function awaitCatalogInFlight(
   cacheKey: string,
   inflight: InFlightBuild,
   corsHeaders: Record<string, string>,
-  diagnosticHeaders: Record<string, string>
+  diagnosticHeaders: Record<string, string>,
+  allowLastGoodOnTimeout: boolean
 ): Promise<Response> {
   let payload: CachedCatalog;
   try {
@@ -334,7 +335,7 @@ async function awaitCatalogInFlight(
       catalogInFlight.delete(cacheKey);
     }
     const lastGood = catalogLastGood.get(cacheKey);
-    if (msg === "catalog_build_timeout" && lastGood) {
+    if (msg === "catalog_build_timeout" && lastGood && allowLastGoodOnTimeout) {
       return new Response(lastGood.body, {
         status: lastGood.status,
         headers: mergeCatalogHeaders(corsHeaders, lastGood.headers, diagnosticHeaders, {
@@ -419,7 +420,13 @@ export async function resolveCachedCatalogResponse(
     });
   }
 
-  return awaitCatalogInFlight(cacheKey, inflight, corsHeaders, diagnosticHeaders);
+  return awaitCatalogInFlight(
+    cacheKey,
+    inflight,
+    corsHeaders,
+    diagnosticHeaders,
+    staleWindowMs > 0
+  );
 }
 
 // ── Test hooks ───────────────────────────────────────────────────────────────
