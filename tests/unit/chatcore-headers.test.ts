@@ -5,6 +5,7 @@ import {
   getHeaderValueCaseInsensitive,
   isFreeRouteOnlyRequested,
   isToolCallingRequiredRequested,
+  isSseMetadataRequested,
   resolveCompressionHeader,
 } from "../../open-sse/handlers/chatCore/headers.ts";
 
@@ -79,6 +80,15 @@ test("getHeaderValueCaseInsensitive returns null for null/undefined/non-object i
     ),
     null
   );
+});
+
+test("SSE accounting metadata requires an explicit request opt-in", () => {
+  assert.equal(isSseMetadataRequested({}), false);
+  assert.equal(
+    isSseMetadataRequested(new Headers({ "X-OmniRoute-Include-SSE-Metadata": " TRUE " })),
+    true
+  );
+  assert.equal(isSseMetadataRequested({ "x-omniroute-include-sse-metadata": "yes" }), false);
 });
 
 describe("resolveCompressionHeader", () => {

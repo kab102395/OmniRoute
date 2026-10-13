@@ -52,6 +52,17 @@ export function isToolCallingRequiredRequested(
   );
 }
 
+/** Opt in to final accounting metadata as an SSE comment for this request only. */
+export function isSseMetadataRequested(
+  headers: Record<string, unknown> | Headers | null | undefined
+): boolean {
+  return (
+    (getHeaderValueCaseInsensitive(headers, "x-omniroute-include-sse-metadata") || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 /**
  * Per-request opt-out of memory (and skills) injection via the
  * `x-omniroute-no-memory` header. Mirrors the existing `x-omniroute-no-cache`

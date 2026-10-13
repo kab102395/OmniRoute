@@ -174,6 +174,8 @@ type StreamOptions = {
   serviceTier?: string | null;
   /** Upstream dispatches represented by the completed response, including retries. */
   requestCount?: number;
+  /** Per-request opt-in to final SSE accounting comments when global comments are disabled. */
+  includeSseMetadata?: boolean;
   onComplete?: ((payload: StreamCompletePayload) => void) | null;
   onFailure?: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null;
   /**
@@ -669,6 +671,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     body = null,
     serviceTier,
     requestCount = 1,
+    includeSseMetadata = false,
     onComplete = null,
     onFailure = null,
     dropResponsesCommentary,
@@ -1083,10 +1086,10 @@ export function createSSEStream(options: StreamOptions = {}) {
     controller: TransformStreamDefaultController,
     finalUsage: UsageTokenRecord | Record<string, unknown> | null | undefined
   ) => {
-    // Skip SSE metadata comment lines when OMNIROUTE_SSE_COMMENTS is disabled
-    // (e.g., "off", "false", "0", "no"). Strict OpenAI-compatible clients that
-    // JSON.parse every SSE line will crash on `: x-omniroute-*` comment lines.
-    if (!sseCommentsEnabled()) return;
+    // Strict OpenAI-compatible clients that JSON.parse every SSE line can crash on
+    // `: x-omniroute-*` comment lines. Emit only when globally enabled or explicitly
+    // requested for this call.
+    if (!sseCommentsEnabled() && !includeSseMetadata) return;
 
     const normalizedUsage = normalizeTokenUsage(finalUsage);
     const costAssessment = finalUsage
@@ -3059,7 +3062,11 @@ export function createSSETransformStreamWithLogger(
   suppressThinkClose = false,
   customToolNames: ReadonlySet<string> = new Set(),
   requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
-  costContext: { serviceTier?: string | null; requestCount?: number } = {}
+  costContext: {
+    serviceTier?: string | null;
+    requestCount?: number;
+    includeSseMetadata?: boolean;
+  } = {}
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -3094,7 +3101,11 @@ export function createPassthroughStreamWithLogger(
   onFailure: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null = null,
   clientResponseFormat: string | null = null,
   requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
-  costContext: { serviceTier?: string | null; requestCount?: number } = {}
+  costContext: {
+    serviceTier?: string | null;
+    requestCount?: number;
+    includeSseMetadata?: boolean;
+  } = {}
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,

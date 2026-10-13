@@ -1547,6 +1547,16 @@ paths:
       description: OpenAI-compatible chat completions endpoint. Routes to configured providers.
       parameters:
         - in: header
+          name: X-OmniRoute-Include-SSE-Metadata
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: >-
+            When true, append final usage and cost accounting metadata as SSE comment lines after
+            stream completion, even when server-wide SSE comments are disabled. This does not
+            change the response's initial HTTP accounting headers, which remain a pre-stream snapshot.
+        - in: header
           name: X-OmniRoute-Strict-Model
           required: false
           schema:

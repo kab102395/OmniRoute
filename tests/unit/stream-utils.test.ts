@@ -158,9 +158,9 @@ test.after(() => {
   }
 });
 
-test("final SSE accounting includes pricing metadata and retry-scaled request charges", async () => {
+test("request opt-in emits final SSE accounting when server-wide comments are disabled", async () => {
   const previousCommentsSetting = process.env.OMNIROUTE_SSE_COMMENTS;
-  process.env.OMNIROUTE_SSE_COMMENTS = "on";
+  process.env.OMNIROUTE_SSE_COMMENTS = "off";
   await settingsDb.updatePricing({
     stream_receipt_test: { "receipt-model": { input: 0, output: 0, request: 0.25 } },
   });
@@ -192,6 +192,7 @@ test("final SSE accounting includes pricing metadata and retry-scaled request ch
         model: "receipt-model",
         requestCount: 3,
         serviceTier: "standard",
+        includeSseMetadata: true,
       }
     );
 

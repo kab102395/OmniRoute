@@ -80,6 +80,7 @@ import {
   isFreeRouteOnlyRequested,
   isStrictModelIdentityRequested,
   isToolCallingRequiredRequested,
+  isSseMetadataRequested,
   isNoMemoryRequested,
   resolveCompressionHeader,
   isStripReasoningRequested,
@@ -584,6 +585,7 @@ export async function handleChatCore({
   const freeRouteOnly = isFreeRouteOnlyRequested(clientRawRequest?.headers);
   const strictModelRequested = isStrictModelIdentityRequested(clientRawRequest?.headers);
   const toolCallingRequired = isToolCallingRequiredRequested(clientRawRequest?.headers);
+  const includeSseMetadata = isSseMetadataRequested(clientRawRequest?.headers);
   const selectedOpenRouterModel = model.replace(/^openrouter\//, "");
   if (
     strictModelRequested &&
@@ -6242,6 +6244,7 @@ export async function handleChatCore({
       {
         serviceTier: effectiveServiceTier,
         requestCount: Math.max(1, executionAttemptTotal),
+        includeSseMetadata,
       }
     );
   } else if (needsTranslation(targetFormat, clientResponseFormat)) {
@@ -6276,6 +6279,7 @@ export async function handleChatCore({
       {
         serviceTier: effectiveServiceTier,
         requestCount: Math.max(1, executionAttemptTotal),
+        includeSseMetadata,
       }
     );
   } else {
@@ -6295,6 +6299,7 @@ export async function handleChatCore({
       {
         serviceTier: effectiveServiceTier,
         requestCount: Math.max(1, executionAttemptTotal),
+        includeSseMetadata,
       }
     );
   }
