@@ -804,7 +804,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     !hasCurrentOpenRouterCapabilities &&
     metadata.capabilities.supportsToolsSource === "synced_capability_catalog"
       ? (() => {
-          const retrievedAt = getSyncStatus().sourceRetrievedAt;
+          const retrievedAt = snapshot?.pricingSourceStatus?.modelsDevRetrievedAt ?? null;
           return {
             retrievedAt,
             stale: !isFreshCatalogTimestamp(
