@@ -679,6 +679,8 @@ export function hasValidUsage(usage: UsageLike | null | undefined) {
     "total_tokens", // OpenAI
     "input_tokens",
     "output_tokens", // Claude
+    "input_audio_tokens",
+    "output_audio_tokens",
     "promptTokenCount",
     "candidatesTokenCount", // Gemini
     "totalTokenCount", // Gemini (was missing — caused !hasValid to misfire on {totalTokenCount:15})
@@ -703,6 +705,8 @@ export function isEmptyUsage(usage: unknown): boolean {
     "total_tokens",
     "input_tokens",
     "output_tokens",
+    "input_audio_tokens",
+    "output_audio_tokens",
     "promptTokenCount",
     "candidatesTokenCount",
     "totalTokenCount",

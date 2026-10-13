@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const { extractUsageFromResponse } = await import("../../open-sse/handlers/usageExtractor.ts");
-const { extractUsage, normalizeUsage } = await import("../../open-sse/utils/usageTracking.ts");
+const { extractUsage, hasValidUsage, isEmptyUsage, normalizeUsage } =
+  await import("../../open-sse/utils/usageTracking.ts");
 
 test("normalizeUsage keeps only finite numeric fields for stream cost calculation", () => {
   assert.deepEqual(
@@ -31,6 +32,12 @@ test("normalizeUsage preserves separately metered audio token counts", () => {
       output_audio_tokens: 8,
     }
   );
+});
+
+test("audio-only usage counts as valid and non-empty token usage", () => {
+  const usage = { input_audio_tokens: 12 };
+  assert.equal(hasValidUsage(usage), true);
+  assert.equal(isEmptyUsage(usage), false);
 });
 
 test("extractUsageFromResponse reads OpenAI chat completion usage", () => {
