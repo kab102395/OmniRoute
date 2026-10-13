@@ -1,12 +1,19 @@
 const DEEPSEEK_PRICING_URL = "https://api-docs.deepseek.com/quick_start/pricing/";
 const DEEPSEEK_FLASH_RELEASE_URL = "https://api-docs.deepseek.com/news/news260910/";
-const SOURCE_RETRIEVED_AT = "2026-10-13T06:15:58.000Z";
+const DEEPSEEK_PRO_RELEASE_URL = "https://api-docs.deepseek.com/news/news260813/";
+const SOURCE_RETRIEVED_AT = "2026-10-13T06:56:49.000Z";
 const SOURCE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const FLASH_RATES = {
   inputCacheMiss: { offPeak: 0.15, peak: 0.3 },
   inputCacheHit: { offPeak: 0.003, peak: 0.006 },
   output: { offPeak: 0.6, peak: 1.2 },
+} as const;
+
+const PRO_RATES = {
+  inputCacheMiss: { offPeak: 0.66, peak: 1.32 },
+  inputCacheHit: { offPeak: 0.022, peak: 0.044 },
+  output: { offPeak: 1.98, peak: 3.96 },
 } as const;
 
 function source(now: number, url = DEEPSEEK_PRICING_URL, id = "deepseek.api_pricing") {
@@ -52,16 +59,16 @@ export function getDeepseekPricingEvidence(modelId: string, now = Date.now()) {
       state: "conditional_reported_pricing",
       routeModelId: modelId,
       resolvedModelId: "deepseek-v4-pro",
-      servedModelVersion: "DeepSeek-V4.1-Flash",
+      servedModelVersion: "DeepSeek-V4-Pro-0813",
       currency: "USD",
       rateUnit: "USD / 1M tokens",
-      rates: FLASH_RATES,
+      rates: PRO_RATES,
       pricingCondition:
-        "DeepSeek currently routes deepseek-v4-pro requests to V4.1-Flash and bills at Flash rates until V4.1-Pro launches; rates also vary by the provider's UTC peak/off-peak schedule",
+        "input-cache-miss, input-cache-hit, and output rates vary by the provider's UTC peak/off-peak schedule",
       source: source(now),
       routeResolution: {
-        modelVersion: "DeepSeek-V4.1-Flash",
-        source: source(now, DEEPSEEK_FLASH_RELEASE_URL, "deepseek.api_model_routing"),
+        modelVersion: "DeepSeek-V4-Pro-0813",
+        source: source(now, DEEPSEEK_PRO_RELEASE_URL, "deepseek.api_model_routing"),
       },
       zeroCostEligibility: "no",
     } as const;

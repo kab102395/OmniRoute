@@ -216,6 +216,17 @@ test("GPT OSS and DeepSeek Reasoner models support tool calling", () => {
   assert.equal(deepseek.toolCalling, true);
 });
 
+test("native DeepSeek V4 Pro remains a text-only route while V4.1 Flash is multimodal", () => {
+  const pro = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-v4-pro");
+  assert.equal(pro.supportsVision, false);
+  assert.ok(!pro.modalitiesInput.includes("image"));
+  assert.equal(pro.structuredOutput, true);
+
+  const flash = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-flash");
+  assert.equal(flash.supportsVision, true);
+  assert.ok(flash.modalitiesInput.includes("image"));
+});
+
 test("Kimi K2.6 supports vision capability", () => {
   const kimi = modelCapabilities.getResolvedModelCapabilities("kimi-k2.6");
   assert.equal(kimi.supportsVision, true);

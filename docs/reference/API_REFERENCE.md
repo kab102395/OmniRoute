@@ -444,9 +444,9 @@ absent and `pricing_provenance.state` is `unavailable` with a reason; consumers 
 route's price as unknown.
 
 Native DeepSeek routes preserve the exact requested API model id while reporting their documented
-effective serving version and pricing condition. For example, DeepSeek currently maps
-`deepseek-v4-pro` requests to V4.1-Flash and bills them at Flash rates; the provider's release
-mapping and price schedule are retained separately in `pricing_provenance`.
+effective serving version and pricing condition. `deepseek-v4-pro` remains a distinct V4-Pro route
+with its own peak/off-peak rates; the provider's release mapping and price schedule are retained
+separately in `pricing_provenance`. Legacy V4-Flash names resolve to V4.1-Flash.
 
 Model rows also expose `capability_status.tool_calling` with `status` (`supported`, `unsupported`,
 or `unknown`) and a metadata `source`. Routing that requires tools should require `supported`;
