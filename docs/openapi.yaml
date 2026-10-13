@@ -15588,10 +15588,19 @@ components:
                     - openrouter.models_api
                     - huggingface.router_models_api
                     - synced_capability_catalog
+                    - provider_model_catalog
                     - provider_registry
                     - model_spec
                     - provider_parameter_constraint
                     - unknown
+                retrievedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Retrieval time for synchronized capability evidence, when known.
+                stale:
+                  type: boolean
+                  description: Whether synchronized capability evidence is too old for constrained selection.
             structured_output:
               type: object
               properties:
@@ -15604,6 +15613,7 @@ components:
                     - openrouter.models_api
                     - huggingface.router_models_api
                     - synced_capability_catalog
+                    - provider_model_catalog
                     - provider_registry
                     - model_spec
                     - provider_parameter_constraint
