@@ -590,7 +590,7 @@ function getTargetCompatibilityFailures(
     requirements.requiresTools &&
     (target.resolvedSupportsTools !== undefined
       ? target.resolvedSupportsTools !== true
-      : capabilities.supportsTools === false || !capabilities.toolCalling) &&
+      : capabilities.supportsTools !== true) &&
     // #5240: prompt-emulated tool providers remain eligible under fail-closed.
     !providerSupportsEmulatedToolCalling(target.provider)
   ) {

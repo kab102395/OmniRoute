@@ -170,6 +170,32 @@ test("live OpenRouter route tool support overrides optimistic family heuristics"
   );
 });
 
+test("unknown tool capability is not promoted by the model-name heuristic", async () => {
+  const unknownTarget = target("unknown-provider-xyz", "unknown-provider-xyz/mystery-model-xyz");
+  const body = {
+    messages: [{ role: "user", content: "use a tool" }],
+    tools: [{ type: "function", function: { name: "lookup", parameters: {} } }],
+  };
+
+  const kept = filterTargetsByRequestCompatibility([unknownTarget], body, log);
+  assert.deepEqual(kept, []);
+
+  const result = await resolveAutoStrategyOrder({
+    orderedTargets: [unknownTarget] as never,
+    body,
+    combo: { id: "unknown-tool-capability", name: "unknown-tools", config: {} } as never,
+    settings: null,
+    config: {},
+    relayOptions: null,
+    resilienceSettings: { quotaPreflight: { enabled: false } } as never,
+    log: log as never,
+    buildAutoCandidates: (async () => []) as never,
+  });
+
+  assert.ok("earlyResponse" in result);
+  if ("earlyResponse" in result) assert.equal(result.earlyResponse.status, 400);
+});
+
 test("#8488 filter: Gemini Web emulation stays eligible for tools (#5240)", () => {
   // Registry honestly tags Gemini Web models toolCalling:false; the prompt
   // shim is what makes tools work. Fail-closed must not hard-reject them.

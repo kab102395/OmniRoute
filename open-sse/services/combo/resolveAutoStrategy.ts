@@ -18,7 +18,7 @@ import { estimateTokens } from "../contextManager.ts";
 import { classifyWithConfig } from "../intentClassifier.ts";
 import type { RoutingHint } from "../manifestAdapter";
 import { parseModel } from "../model.ts";
-import { supportsToolCalling } from "../modelCapabilities.ts";
+import { getResolvedModelCapabilities } from "../modelCapabilities.ts";
 import type { ResilienceSettings } from "../../../src/lib/resilience/settings";
 import { parseAutoConfig } from "./autoConfig.ts";
 import { dedupeTargetsByExecutionKey } from "./comboData.ts";
@@ -172,7 +172,7 @@ export async function resolveAutoStrategyOrder(
       (target) =>
         (target.resolvedSupportsTools !== undefined
           ? target.resolvedSupportsTools === true
-          : supportsToolCalling(target.modelStr)) ||
+          : getResolvedModelCapabilities(target.modelStr).supportsTools === true) ||
         providerSupportsEmulatedToolCalling(target.provider)
     );
     if (filtered.length > 0) {
