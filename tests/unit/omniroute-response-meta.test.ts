@@ -417,6 +417,46 @@ test("non-streaming metadata returns bounded credential-free per-attempt receipt
   assert.doesNotMatch(decodeURIComponent(encoded), /private-connection-id|must-not-be-exposed/);
 });
 
+test("attempt receipt serializer allowlists nested usage and accounting facts", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({
+    executionAttempts: [
+      {
+        index: 1,
+        statusCode: 200,
+        outcome: "response",
+        usage: {
+          kind: "provider_reported_usage",
+          dimensions: { prompt_tokens: 12, completion_tokens: 3, prompt: "private prompt" },
+          apiKey: "private-key",
+        },
+        accounting: {
+          kind: "provider_reported_billed_cost",
+          amountUsdExact: "0.0012",
+          source: "provider.response.cost",
+          currency: "USD",
+          apiKey: "private-key",
+          providerPayload: "private response",
+        },
+      },
+    ],
+  });
+
+  const encoded = headers[OMNIROUTE_RESPONSE_HEADERS.executionAttempts];
+  assert.ok(encoded);
+  const receipts = JSON.parse(decodeURIComponent(encoded)) as Array<Record<string, unknown>>;
+  assert.deepEqual(receipts[0]?.usage, {
+    kind: "provider_reported_usage",
+    dimensions: { prompt_tokens: 12, completion_tokens: 3 },
+  });
+  assert.deepEqual(receipts[0]?.accounting, {
+    kind: "provider_reported_billed_cost",
+    amountUsdExact: "0.0012",
+    source: "provider.response.cost",
+    currency: "USD",
+  });
+  assert.doesNotMatch(decodeURIComponent(encoded), /private-key|private prompt|private response/);
+});
+
 test("attempt response header preserves only newest receipts when the 6k limit is reached", () => {
   const headers = buildOmniRouteResponseMetaHeaders({
     executionAttempts: Array.from({ length: 80 }, (_, index) => ({

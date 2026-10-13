@@ -354,6 +354,68 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const EXECUTION_ATTEMPT_ACCOUNTING_FIELDS = [
+  "kind",
+  "amountUsdExact",
+  "source",
+  "currency",
+  "usageKind",
+  "pricingRetrievedAt",
+  "pricingCondition",
+  "pricingStale",
+] as const;
+
+function sanitizeExecutionAttemptNestedFacts(attempt: Record<string, unknown>) {
+  const sanitized: Record<string, unknown> = {};
+  const usage = attempt.usage;
+  if (isRecord(usage)) {
+    const dimensions = isRecord(usage.dimensions) ? usage.dimensions : usage;
+    const safeDimensions = Object.fromEntries(
+      EXECUTION_ATTEMPT_USAGE_DIMENSIONS.flatMap((key) => {
+        const value = dimensions[key];
+        return typeof value === "number" && Number.isFinite(value) && value >= 0
+          ? [[key, value]]
+          : [];
+      })
+    );
+    if (Object.keys(safeDimensions).length > 0) {
+      sanitized.usage = {
+        ...(typeof usage.kind === "string" ? { kind: usage.kind.slice(0, 64) } : {}),
+        dimensions: safeDimensions,
+      };
+    }
+  }
+
+  const accounting = attempt.accounting;
+  if (isRecord(accounting)) {
+    const safeAccounting: Record<string, string | boolean> = {};
+    for (const key of EXECUTION_ATTEMPT_ACCOUNTING_FIELDS) {
+      const value = accounting[key];
+      if (key === "pricingStale") {
+        if (typeof value === "boolean") safeAccounting[key] = value;
+      } else if (typeof value === "string" && value.length <= 256) {
+        safeAccounting[key] = value;
+      }
+    }
+    if (Object.keys(safeAccounting).length > 0) sanitized.accounting = safeAccounting;
+  }
+
+  return sanitized;
+}
+
+function sanitizeExecutionAttemptReceipt(attempt: Record<string, unknown>) {
+  const safe = Object.fromEntries(
+    EXECUTION_ATTEMPT_RECEIPT_FIELDS.flatMap((field) =>
+      field !== "usage" &&
+      field !== "accounting" &&
+      Object.prototype.hasOwnProperty.call(attempt, field)
+        ? [[field, attempt[field]]]
+        : []
+    )
+  );
+  return { ...safe, ...sanitizeExecutionAttemptNestedFacts(attempt) };
+}
+
 function attributeExecutionAttemptReceipts(
   attempts: readonly Record<string, unknown>[],
   usage: UsageLike,
@@ -361,13 +423,8 @@ function attributeExecutionAttemptReceipts(
 ): Record<string, unknown>[] {
   const receipts = attempts
     .slice(-64)
-    .map((attempt) =>
-      Object.fromEntries(
-        EXECUTION_ATTEMPT_RECEIPT_FIELDS.flatMap((field) =>
-          Object.prototype.hasOwnProperty.call(attempt, field) ? [[field, attempt[field]]] : []
-        )
-      )
-    );
+    .map(sanitizeExecutionAttemptReceipt)
+    .filter((receipt) => Object.keys(receipt).length > 0);
   let successfulIndex = -1;
   for (let index = receipts.length - 1; index >= 0; index -= 1) {
     const attempt = receipts[index];
@@ -415,13 +472,8 @@ function encodeExecutionAttemptReceipts(
 ): string | null {
   const boundedAttempts = attempts
     .slice(-64)
-    .map((attempt) =>
-      Object.fromEntries(
-        EXECUTION_ATTEMPT_RECEIPT_FIELDS.flatMap((field) =>
-          Object.prototype.hasOwnProperty.call(attempt, field) ? [[field, attempt[field]]] : []
-        )
-      )
-    );
+    .map(sanitizeExecutionAttemptReceipt)
+    .filter((receipt) => Object.keys(receipt).length > 0);
   try {
     while (boundedAttempts.length > 0) {
       const encoded = encodeURIComponent(JSON.stringify(boundedAttempts));
