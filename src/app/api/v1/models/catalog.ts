@@ -150,6 +150,7 @@ export { getCustomVisionCapabilityFields };
 // documented behavior of this endpoint.
 import {
   CATALOG_CACHE_TTL_MS_DEFAULT,
+  CATALOG_STALE_WHILE_REVALIDATE_MS,
   resolveCachedCatalogResponse,
   type BackgroundRefreshScheduler,
 } from "./catalogCache";
