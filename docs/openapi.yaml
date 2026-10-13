@@ -14956,6 +14956,9 @@ components:
                 - free_variant
                 - reported
                 - conditional_reported_pricing
+                - third_party_reported_pricing
+                - estimated_pricing
+                - unverified_pricing
                 - incomplete
                 - unavailable
                 - unknown_stale_catalog
