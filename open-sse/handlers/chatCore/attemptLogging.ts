@@ -560,14 +560,19 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
   }
 
   if (pipelinePayloads) {
-    if (providerRequest !== undefined && !pipelinePayloads.providerRequest) {
-      pipelinePayloads.providerRequest = providerRequest as Record<string, unknown>;
-    }
-    if (providerResponse !== undefined && !pipelinePayloads.providerResponse) {
-      pipelinePayloads.providerResponse = providerResponse as Record<string, unknown>;
-    }
-    if (clientResponse !== undefined) {
-      pipelinePayloads.clientResponse = clientResponse as Record<string, unknown>;
+    // Compact route/attempt facts are persisted even when detailed call logging
+    // is disabled. Their presence must not opt a request into storing prompts,
+    // provider responses, or other payload-bearing diagnostics.
+    if (detailedLoggingEnabled) {
+      if (providerRequest !== undefined && !pipelinePayloads.providerRequest) {
+        pipelinePayloads.providerRequest = providerRequest as Record<string, unknown>;
+      }
+      if (providerResponse !== undefined && !pipelinePayloads.providerResponse) {
+        pipelinePayloads.providerResponse = providerResponse as Record<string, unknown>;
+      }
+      if (clientResponse !== undefined) {
+        pipelinePayloads.clientResponse = clientResponse as Record<string, unknown>;
+      }
     }
     if (error) {
       pipelinePayloads.error = {

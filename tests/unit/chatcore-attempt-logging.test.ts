@@ -189,6 +189,33 @@ test("persists per-attempt usage and accounting in the compact execution receipt
   ]);
 });
 
+test("compact execution receipts do not enable provider payload capture", async () => {
+  const id = "attempt-accounting-no-payload-capture";
+  persistAttemptLogs(
+    {
+      status: 200,
+      tokens: { prompt_tokens: 1, completion_tokens: 1 },
+      providerRequest: { body: { messages: [{ role: "user", content: "secret prompt" }] } },
+      providerResponse: { body: { choices: [{ message: { content: "private response" } }] } },
+      clientResponse: { body: { choices: [{ message: { content: "private response" } }] } },
+    },
+    baseCtx({
+      pendingRequestId: id,
+      getExecutionAttempts: () => [{ index: 1, statusCode: 200, outcome: "response" }],
+    })
+  );
+
+  const row = await pollForCallLog(id);
+  assert.ok(row);
+  const pipelinePayloads = row.pipelinePayloads as Record<string, unknown>;
+  assert.deepEqual(pipelinePayloads.executionAttempts, [
+    { index: 1, statusCode: 200, outcome: "response" },
+  ]);
+  assert.equal("providerRequest" in pipelinePayloads, false);
+  assert.equal("providerResponse" in pipelinePayloads, false);
+  assert.equal("clientResponse" in pipelinePayloads, false);
+});
+
 test("uses final credentials connectionId when Codex failover rotates the account", async () => {
   const id = "attempt-codex-rotation-1";
   persistAttemptLogs(
