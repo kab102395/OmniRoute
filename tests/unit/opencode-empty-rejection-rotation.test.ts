@@ -187,6 +187,13 @@ describe("OpencodeExecutor empty-rejection rotation", () => {
       200,
       "must rotate past the empty 400"
     );
+    assert.deepStrictEqual(
+      (
+        result as { executionAttempts?: Array<{ statusCode: number | null }> }
+      ).executionAttempts?.map((attempt) => attempt.statusCode),
+      [400, 200],
+      "the result must retain both the rejected and successful upstream attempts"
+    );
     assert.ok(observed.length >= 2, "should have dispatched on a second account");
     assert.ok(
       observed.some((o) => o.port === String(portA)),
@@ -248,6 +255,13 @@ describe("OpencodeExecutor empty-rejection rotation", () => {
 
     assert.strictEqual((result as { response: Response }).response.status, 400);
     assert.strictEqual(observed.length, 2, "exactly one bounded retry on the sole account");
+    assert.deepStrictEqual(
+      (
+        result as { executionAttempts?: Array<{ statusCode: number | null }> }
+      ).executionAttempts?.map((attempt) => attempt.statusCode),
+      [400, 400],
+      "the result must retain the first rejection and the retry"
+    );
     assert.ok(
       observed.every((o) => o.port === String(portA)),
       "both attempts egress through the single account's proxy"
@@ -273,6 +287,13 @@ describe("OpencodeExecutor empty-rejection rotation", () => {
       "final response should succeed"
     );
     assert.strictEqual(observed.length, 3, "429 + empty-400 + success across three accounts");
+    assert.deepStrictEqual(
+      (
+        result as { executionAttempts?: Array<{ statusCode: number | null }> }
+      ).executionAttempts?.map((attempt) => attempt.statusCode),
+      [429, 400, 200],
+      "the result must retain every rotated upstream attempt"
+    );
     assert.ok(
       observed.some((o) => o.port === String(portA)),
       "account A (429)"
@@ -343,6 +364,13 @@ describe("OpencodeExecutor empty-rejection rotation", () => {
 
     assert.strictEqual((result as { response: Response }).response.status, 400);
     assert.strictEqual(observed.length, 2, "fast path must retry the direct account exactly once");
+    assert.deepStrictEqual(
+      (
+        result as { executionAttempts?: Array<{ statusCode: number | null }> }
+      ).executionAttempts?.map((attempt) => attempt.statusCode),
+      [400, 400],
+      "the direct retry path must retain both upstream attempts"
+    );
   });
 
   it("propagates the second 400 intact when the fast path retries and empty-rejects again", async () => {

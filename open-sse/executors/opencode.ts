@@ -3,6 +3,7 @@ import {
   BaseExecutor,
   type ExecuteInput,
   type ExecutorExecuteResult,
+  type ExecutorAttemptSummary,
   type ProviderCredentials,
 } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
@@ -41,6 +42,42 @@ export type OpencodeAccountProxyConfig = AccountProxyConfig;
 interface OpencodeAccountState extends RotatableAccount {
   /** Account id (UI: providerSpecificData.fingerprints[i]); "" for the default direct account. */
   fingerprint: string;
+}
+
+function appendExecutionAttempts(
+  target: ExecutorAttemptSummary[],
+  attempts: readonly ExecutorAttemptSummary[] | undefined
+): void {
+  if (!attempts) return;
+  for (const attempt of attempts) {
+    target.push({ ...attempt, index: target.length + 1 });
+  }
+}
+
+function withExecutionAttempts<T extends { executionAttempts?: ExecutorAttemptSummary[] }>(
+  result: T,
+  executionAttempts: ExecutorAttemptSummary[]
+): T {
+  return { ...result, executionAttempts };
+}
+
+function appendErrorExecutionAttempts(
+  error: unknown,
+  executionAttempts: ExecutorAttemptSummary[]
+): void {
+  if (!error || typeof error !== "object") return;
+  const attempts = (error as { executionAttempts?: unknown }).executionAttempts;
+  if (Array.isArray(attempts)) {
+    appendExecutionAttempts(executionAttempts, attempts as ExecutorAttemptSummary[]);
+  }
+}
+
+function attachExecutionAttemptsToError(
+  error: unknown,
+  executionAttempts: ExecutorAttemptSummary[]
+): void {
+  if (!error || typeof error !== "object") return;
+  Object.assign(error, { executionAttempts: [...executionAttempts] });
 }
 
 const EFFORT_LEVELS = ["none", "low", "high", "max"] as const;
@@ -532,7 +569,19 @@ export class OpencodeExecutor extends BaseExecutor {
                 "OPENCODE",
                 `upstream empty rejection on direct account (${chatcmplId}), retrying once…`
               );
-              return this.normalizeMuseSparkResponse(input, await super.execute(input));
+              const attempts = [...(single.executionAttempts ?? [])];
+              try {
+                const retried = (await super.execute(input)) as HttpExecuteResult;
+                appendExecutionAttempts(attempts, retried.executionAttempts);
+                return this.normalizeMuseSparkResponse(
+                  input,
+                  withExecutionAttempts(retried, attempts)
+                );
+              } catch (error) {
+                appendErrorExecutionAttempts(error, attempts);
+                attachExecutionAttemptsToError(error, attempts);
+                throw error;
+              }
             }
             log?.debug?.(
               "OPENCODE",
@@ -551,6 +600,7 @@ export class OpencodeExecutor extends BaseExecutor {
         { response: Response }
       >;
       let lastResult: HttpExecuteResult | null = null;
+      const executionAttempts: ExecutorAttemptSummary[] = [];
       let lastSharedEgressError: unknown = null;
       const sharedEgressGuardEnabled = isNetworkRotationSharedEgressGuardEnabled();
       // Set once a proxy-less account's network throw reveals the shared
@@ -601,6 +651,7 @@ export class OpencodeExecutor extends BaseExecutor {
             super.execute({ ...input, skipUpstreamRetry: true })
           )) as HttpExecuteResult;
         } catch (err) {
+          appendErrorExecutionAttempts(err, executionAttempts);
           const reason = err instanceof Error ? err.message : String(err);
           // A network exception (timeout, connection refused/reset) is only
           // account-scoped when this account has its OWN egress (a configured
@@ -610,6 +661,7 @@ export class OpencodeExecutor extends BaseExecutor {
           // silently either way: logged before rotating, skipping, or rethrowing.
           if (!isNetworkErrorRotatable(account)) {
             if (sharedEgressGuardEnabled) {
+              attachExecutionAttemptsToError(err, executionAttempts);
               this.markCooldown(account);
               sharedEgressDown = true;
               lastSharedEgressError = err;
@@ -623,6 +675,7 @@ export class OpencodeExecutor extends BaseExecutor {
               "OPENCODE",
               `network error on account ${masked} (no dedicated proxy, shared egress) — not rotating (${reason})`
             );
+            attachExecutionAttemptsToError(err, executionAttempts);
             throw err;
           }
           this.markCooldown(account);
@@ -632,6 +685,7 @@ export class OpencodeExecutor extends BaseExecutor {
           );
           continue;
         }
+        appendExecutionAttempts(executionAttempts, result.executionAttempts);
         lastResult = result;
 
         const status = result.response.status;
@@ -666,11 +720,14 @@ export class OpencodeExecutor extends BaseExecutor {
           // A 400 carrying a real error (or non-empty content): propagate
           // immediately, untouched — same as before this change.
           this.markSuccess(account);
-          return result;
+          return withExecutionAttempts(result, executionAttempts);
         }
 
         this.markSuccess(account);
-        return this.normalizeMuseSparkResponse(input, result);
+        return this.normalizeMuseSparkResponse(
+          input,
+          withExecutionAttempts(result, executionAttempts)
+        );
       }
 
       // The loop exhausted without a result. If it's because every remaining
@@ -680,11 +737,29 @@ export class OpencodeExecutor extends BaseExecutor {
       // the same dead path, which is exactly the latency this guard exists
       // to avoid (see NETWORK_ROTATION_SHARED_EGRESS_GUARD).
       if (sharedEgressDown && !lastResult && lastSharedEgressError !== null) {
+        attachExecutionAttemptsToError(lastSharedEgressError, executionAttempts);
         throw lastSharedEgressError;
       }
 
       // All accounts returned 429 (or errored) — surface the last response.
-      return this.normalizeMuseSparkResponse(input, lastResult ?? (await super.execute(input)));
+      if (lastResult) {
+        return this.normalizeMuseSparkResponse(
+          input,
+          withExecutionAttempts(lastResult, executionAttempts)
+        );
+      }
+      try {
+        const fallback = (await super.execute(input)) as HttpExecuteResult;
+        appendExecutionAttempts(executionAttempts, fallback.executionAttempts);
+        return this.normalizeMuseSparkResponse(
+          input,
+          withExecutionAttempts(fallback, executionAttempts)
+        );
+      } catch (error) {
+        appendErrorExecutionAttempts(error, executionAttempts);
+        attachExecutionAttemptsToError(error, executionAttempts);
+        throw error;
+      }
     } finally {
       this._requestFormat = null;
     }

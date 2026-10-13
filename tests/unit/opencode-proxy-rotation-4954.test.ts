@@ -213,6 +213,21 @@ describe("OpencodeExecutor per-account proxy + rotation (#4954)", () => {
         200,
         "a throw on account A must not abort the request — account B must be tried"
       );
+      assert.deepStrictEqual(
+        (
+          result as {
+            executionAttempts?: Array<{
+              statusCode: number | null;
+              outcome: "response" | "network_error";
+            }>;
+          }
+        ).executionAttempts?.map((attempt) => [attempt.outcome, attempt.statusCode]),
+        [
+          ["network_error", null],
+          ["response", 200],
+        ],
+        "the network error and rotated success must both remain attributable"
+      );
       assert.ok(observed.length >= 2, "should have retried on a second account after the throw");
       assert.notStrictEqual(
         observed[0].port,
