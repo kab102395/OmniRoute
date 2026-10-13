@@ -12,7 +12,11 @@ import {
 } from "@/shared/constants/modelSpecs";
 import { getSyncedCapability } from "@/lib/modelsDevSync";
 import { MODELS_DEV_PROVIDER_MAP } from "@/lib/modelsDevSync/transform";
-import { getModelContextOverride } from "@/lib/db/modelContextOverrides";
+import {
+  getModelContextOverride,
+  getModelContextOverrideRecord,
+  type ModelContextOverrideSource,
+} from "@/lib/db/modelContextOverrides";
 import {
   getModelCapabilityOverride,
   getReasoningEffortsOverride,
@@ -629,6 +633,25 @@ export function getResolvedModelContextOverride(
   snapshot?: ModelCapabilityResolutionSnapshot | null
 ): number | null {
   return getContextOverride(resolveCapabilityInput(input), snapshot);
+}
+
+/** Resolve the provenance of a context override using the same exact/canonical keys as its value. */
+export function getResolvedModelContextOverrideSource(
+  input: CapabilityInput,
+  snapshot?: ModelCapabilityResolutionSnapshot | null
+): ModelContextOverrideSource | null {
+  const resolved = resolveCapabilityInput(input);
+  const lookup = (modelId: string | null): ModelContextOverrideSource | null => {
+    if (!resolved.provider || !modelId) return null;
+    if (snapshot) {
+      return snapshot.contextOverrideSources.get(resolved.provider)?.get(modelId) ?? null;
+    }
+    return getModelContextOverrideRecord(resolved.provider, modelId)?.source ?? null;
+  };
+  return (
+    lookup(resolved.model) ??
+    (resolved.rawModel !== resolved.model ? lookup(resolved.rawModel) : null)
+  );
 }
 
 function getInputTokenCapabilityOverride(resolved: {

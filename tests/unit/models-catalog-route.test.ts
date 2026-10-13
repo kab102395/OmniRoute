@@ -14,6 +14,7 @@ const providersDb = await import("../../src/lib/db/providers.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
 const combosDb = await import("../../src/lib/db/combos.ts");
 const settingsDb = await import("../../src/lib/db/settings.ts");
+const contextOverrides = await import("../../src/lib/db/modelContextOverrides.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const featureFlagsDb = await import("../../src/lib/db/featureFlags.ts");
 const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
@@ -1011,6 +1012,103 @@ test("current OpenRouter metadata does not retain capabilities from a synchroniz
     assert.equal(route.capabilities?.vision, undefined);
     assert.equal(route.supported_parameters, undefined);
     assert.equal(route.input_modalities, undefined);
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+test("current OpenRouter metadata does not retain omitted synchronized token limits", async () => {
+  const connection = await seedConnection("openrouter");
+  await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [
+    {
+      id: "vendor/limit-rotated-model",
+      name: "Synced route with old limits",
+      source: "imported",
+      inputTokenLimit: 131072,
+      outputTokenLimit: 8192,
+    },
+  ]);
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "vendor/limit-rotated-model",
+            name: "Current route with unpublished limits",
+            pricing: { prompt: "0.000003", completion: "0.000005" },
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        context_length?: number;
+        max_input_tokens?: number;
+        max_output_tokens?: number;
+        route_availability?: {
+          source?: { id?: string; modelId?: string; retrievedAt?: string; stale?: boolean };
+        };
+      }>;
+    };
+    const route = body.data.find((model) => model.id === "openrouter/vendor/limit-rotated-model");
+
+    assert.equal(response.status, 200);
+    assert.ok(route);
+    assert.equal(route.context_length, undefined, JSON.stringify(route));
+    assert.equal(route.max_input_tokens, undefined);
+    assert.equal(route.max_output_tokens, undefined);
+    assert.equal(route.route_availability?.source?.id, "openrouter.models_api");
+    assert.equal(route.route_availability?.source?.modelId, "vendor/limit-rotated-model");
+    assert.equal(route.route_availability?.source?.stale, false);
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+test("manual OpenRouter context overrides survive an omitted live route limit", async () => {
+  const connection = await seedConnection("openrouter");
+  await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [
+    {
+      id: "vendor/manual-limit-model",
+      name: "Synced route",
+      source: "imported",
+      inputTokenLimit: 131072,
+    },
+  ]);
+  contextOverrides.setModelContextOverride("openrouter", "vendor/manual-limit-model", 65536);
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "vendor/manual-limit-model",
+            name: "Current route",
+            pricing: { prompt: "0.000003", completion: "0.000005" },
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{ id: string; context_length?: number }>;
+    };
+    const route = body.data.find((model) => model.id === "openrouter/vendor/manual-limit-model");
+    assert.equal(response.status, 200);
+    assert.equal(route?.context_length, 65536);
   } finally {
     globalThis.fetch = REAL_FETCH;
   }

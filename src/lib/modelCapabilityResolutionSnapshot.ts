@@ -10,7 +10,10 @@
  */
 import { listModelCapabilityOverrides } from "@/lib/db/modelCapabilityOverrides";
 import type { ReasoningEffortOverrideValue } from "@/shared/reasoning/reasoningEffortsOverride";
-import { listModelContextOverrides } from "@/lib/db/modelContextOverrides";
+import {
+  listModelContextOverrides,
+  type ModelContextOverrideSource,
+} from "@/lib/db/modelContextOverrides";
 import {
   listCustomModelVisionOverrides,
   type CustomModelVisionOverrideMap,
@@ -23,6 +26,10 @@ import {
 
 /** Nested provider → model → numeric override map (collision-free). */
 export type NestedOverrideMap = ReadonlyMap<string, ReadonlyMap<string, number>>;
+export type NestedContextOverrideSourceMap = ReadonlyMap<
+  string,
+  ReadonlyMap<string, ModelContextOverrideSource>
+>;
 export type NestedReasoningEffortsOverrideMap = ReadonlyMap<
   string,
   ReadonlyMap<string, readonly ReasoningEffortOverrideValue[]>
@@ -34,6 +41,7 @@ export interface ModelCapabilityResolutionSnapshot {
   readonly maxInputTokenOverrides: NestedOverrideMap;
   readonly reasoningEffortsOverrides: NestedReasoningEffortsOverrideMap;
   readonly contextOverrides: NestedOverrideMap;
+  readonly contextOverrideSources: NestedContextOverrideSourceMap;
   readonly customVisionOverrides: CustomModelVisionOverrideMap;
 }
 
@@ -87,8 +95,15 @@ export function createModelCapabilityResolutionSnapshot(
   }
 
   const contextOverrides = new Map<string, Map<string, number>>();
+  const contextOverrideSources = new Map<string, Map<string, ModelContextOverrideSource>>();
   for (const entry of listModelContextOverrides()) {
     setNestedOverride(contextOverrides, entry.provider, entry.modelId, entry.realContext);
+    let byModel = contextOverrideSources.get(entry.provider);
+    if (!byModel) {
+      byModel = new Map();
+      contextOverrideSources.set(entry.provider, byModel);
+    }
+    byModel.set(entry.modelId, entry.source);
   }
 
   return {
@@ -97,6 +112,7 @@ export function createModelCapabilityResolutionSnapshot(
     maxInputTokenOverrides,
     reasoningEffortsOverrides,
     contextOverrides,
+    contextOverrideSources,
     customVisionOverrides: listCustomModelVisionOverrides(options.customModelVision),
   };
 }

@@ -5,6 +5,7 @@ import { getModelAliases } from "@/lib/db/models";
 import {
   getResolvedModelCapabilities,
   getResolvedModelContextOverride,
+  getResolvedModelContextOverrideSource,
   isNonChatCatalogSurface,
 } from "@/lib/modelCapabilities";
 import { getModelCapabilityOverride } from "@/lib/db/modelCapabilityOverrides";
@@ -557,6 +558,14 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     { provider, model },
     capabilitySnapshot
   );
+  const persistedContextOverrideSource = getResolvedModelContextOverrideSource(
+    { provider, model },
+    capabilitySnapshot
+  );
+  const routeContextOverride =
+    publicProvider === "openrouter" && persistedContextOverrideSource !== "manual"
+      ? null
+      : persistedContextWindow;
   const existingCapabilities =
     entry.capabilities && typeof entry.capabilities === "object"
       ? (entry.capabilities as JsonRecord)
@@ -752,18 +761,20 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
 
   if (
     !specialtySurface &&
+    (publicProvider !== "openrouter" || routeContextOverride !== null) &&
     !hasCurrentOpenRouterContext &&
     (typeof nextEntry.context_length !== "number" ||
       authoritativeContextWindow !== null ||
-      persistedContextWindow !== null) &&
+      routeContextOverride !== null) &&
     typeof metadata.limits.contextWindow === "number"
   ) {
     nextEntry.context_length = metadata.limits.contextWindow;
-  } else if (specialtySurface && persistedContextWindow !== null) {
+  } else if (specialtySurface && routeContextOverride !== null) {
     // Exact persisted overrides are authoritative for every surface of the model.
-    nextEntry.context_length = persistedContextWindow;
+    nextEntry.context_length = routeContextOverride;
   } else if (
     specialtySurface &&
+    publicProvider !== "openrouter" &&
     authoritativeContextWindow !== null &&
     typeof authoritativeContextWindow === "number"
   ) {
@@ -803,6 +814,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   if (persistedOutputLimit !== null) {
     nextEntry.max_output_tokens = persistedOutputLimit;
   } else if (
+    publicProvider !== "openrouter" &&
     typeof nextEntry.max_output_tokens !== "number" &&
     typeof metadata.limits.maxOutputTokens === "number" &&
     metadata.limits.maxOutputTokens > 0
@@ -811,6 +823,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   }
 
   if (
+    publicProvider !== "openrouter" &&
     typeof metadata.limits.maxInputTokens === "number" &&
     (typeof nextEntry.max_input_tokens !== "number" || authoritativeContextWindow !== null)
   ) {

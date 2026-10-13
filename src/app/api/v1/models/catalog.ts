@@ -1582,6 +1582,16 @@ async function buildUnifiedModelsResponseCore(
           if (isDynamicFreeRouter || !Array.isArray(openRouterModel.supported_parameters)) {
             delete liveModel.supported_parameters;
           }
+          // Synchronized limits can belong to an older upstream route (or a
+          // previously selected downstream host). Do not retain them under
+          // the current OpenRouter catalog snapshot when that snapshot omits
+          // the corresponding limit.
+          if (typeof openRouterModel.context_length !== "number") {
+            delete liveModel.context_length;
+          }
+          if (typeof openRouterModel.top_provider?.max_completion_tokens !== "number") {
+            delete liveModel.max_output_tokens;
+          }
           if (Object.keys(capabilities).length === 0) delete liveModel.capabilities;
           if (inputModalities.length === 0) delete liveModel.input_modalities;
           if (outputModalities.length === 0) delete liveModel.output_modalities;
@@ -2214,7 +2224,13 @@ async function buildUnifiedModelsResponseCore(
 
       const provider = typeof model.owned_by === "string" ? model.owned_by : null;
       if (!provider) return undefined;
+      if (provider === "openrouter") return undefined;
       const canonicalId = aliasToProviderId[provider] || provider;
+
+      // OpenRouter is an aggregator: its catalog may omit the limit for an
+      // exact route whose downstream serving provider is selected at request
+      // time. A generic provider/model fallback is not a route-level bound.
+      if (canonicalId === "openrouter") return undefined;
 
       const registryFallback = REGISTRY[canonicalId]?.defaultContextLength;
       if (registryFallback) return registryFallback;

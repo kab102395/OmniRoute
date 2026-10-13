@@ -346,6 +346,14 @@ test("#9199 nested override maps keep delimiter-colliding pairs distinct", (t) =
 
   assert.equal(snapshot.contextOverrides.get("a")?.get("b\u0000c"), 30303);
   assert.equal(snapshot.contextOverrides.get("a\u0000b")?.get("c"), 40404);
+  assert.equal(snapshot.contextOverrideSources.get("a")?.get("b\u0000c"), "manual");
+  assert.equal(
+    modelCapabilities.getResolvedModelContextOverrideSource(
+      { provider: "a", model: "b\u0000c" },
+      snapshot
+    ),
+    "manual"
+  );
   assert.notEqual(
     snapshot.contextOverrides.get("a")?.get("b\u0000c"),
     snapshot.contextOverrides.get("a\u0000b")?.get("c")
