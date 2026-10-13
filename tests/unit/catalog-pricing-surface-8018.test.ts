@@ -128,14 +128,25 @@ describe("catalog pricing surface (#8018)", () => {
       (pro.pricing_provenance as { resolvedModelId?: string }).resolvedModelId,
       "deepseek-v4-pro"
     );
-    assert.equal((pro.pricing as CatalogPricing).input, 1.32);
-    assert.equal((pro.pricing as CatalogPricing).output, 3.96);
-    assert.equal((pro.pricing as CatalogPricing).cached, 0.044);
+    assert.equal(
+      (pro.pricing_provenance as { servedModelVersion?: string }).servedModelVersion,
+      "DeepSeek-V4.1-Flash"
+    );
+    assert.equal(
+      (pro.pricing_provenance as { routeResolution?: { source?: { stale?: boolean } } })
+        .routeResolution?.source?.stale,
+      false
+    );
+    assert.equal((pro.pricing as CatalogPricing).input, 0.3);
+    assert.equal((pro.pricing as CatalogPricing).output, 1.2);
+    assert.equal((pro.pricing as CatalogPricing).cached, 0.006);
     assert.equal(
       (pro.capabilities as Record<string, unknown>).vision,
-      false,
-      "DeepSeek's current pricing page lists V4-Pro as text-only"
+      true,
+      "DeepSeek currently routes this model name to multimodal V4.1-Flash"
     );
+    assert.equal((pro.capabilities as Record<string, unknown>).structured_output, true);
+    assert.deepEqual(pro.input_modalities, ["text", "image"]);
     assert.equal((pro.capabilities as Record<string, unknown>).tool_calling, true);
     assert.match(
       (pro.pricing_provenance as { pricingCondition?: string }).pricingCondition || "",

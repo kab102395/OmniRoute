@@ -319,9 +319,10 @@ export const DEFAULT_PRICING_FRONTIER = {
       reasoning: 2.19,
       cache_creation: 0.55,
     },
-    // Peak-rate estimates checked against DeepSeek's official pricing page on
-    // 2026-10-13. V4-Pro remains a distinct API model and has distinct rates;
-    // response-reported cost, when available, remains authoritative.
+    // Peak rates checked against DeepSeek's official pricing and V4.1-Flash
+    // routing docs on 2026-10-13. The V4-Pro API name currently routes to
+    // V4.1-Flash and bills at Flash rates; response-reported cost remains
+    // authoritative when available.
     "deepseek-flash": {
       input: 0.3,
       output: 1.2,
@@ -330,11 +331,11 @@ export const DEFAULT_PRICING_FRONTIER = {
       cache_creation: 0.3,
     },
     "deepseek-v4-pro": {
-      input: 1.32,
-      output: 3.96,
-      cached: 0.044,
-      reasoning: 3.96,
-      cache_creation: 1.32,
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
     },
     "deepseek-v4-flash": {
       input: 0.3,

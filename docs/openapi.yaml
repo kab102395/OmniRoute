@@ -14567,6 +14567,27 @@ components:
                 - not_in_current_free_catalog
             routeModelId:
               type: string
+            servedModelVersion:
+              type: string
+              description: Provider-documented serving version for a compatibility route, when known.
+            routeResolution:
+              type: object
+              description: Provider-documented mapping from the requested API route to its effective model version.
+              properties:
+                modelVersion:
+                  type: string
+                source:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    url:
+                      type: string
+                    retrievedAt:
+                      type: string
+                      format: date-time
+                    stale:
+                      type: boolean
             reason:
               type: string
               description: Why an authoritative pricing assessment could not be established.

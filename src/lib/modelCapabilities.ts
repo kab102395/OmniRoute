@@ -491,9 +491,6 @@ const KNOWN_TEXT_ONLY_DESPITE_SYNC: readonly RegExp[] = [
   /(?:^|\/)mimo-v2\.5-pro$/i,
   /(?:^|\/)mimo-v2-pro$/i,
   /^(?:cmd|command-code)\/gpt-5\.3-codex(?:-|$)/i,
-  // DeepSeek's native V4-Pro route is text-only. Keep this provider-scoped:
-  // gateways may expose the same model id with different capabilities.
-  /^deepseek\/deepseek-v4-pro$/i,
 ];
 
 function isKnownTextOnlyDespiteSync(modelId: string | null | undefined): boolean {
@@ -875,15 +872,30 @@ export function getResolvedModelCapabilities(
         )
       : null;
 
-  const supportsVision = resolveVisionCapability(
-    visionSpec,
-    registryModel,
-    synced,
-    modalitiesInput,
-    modalitiesOutput,
-    lookupKey,
-    customVisionOverride
-  );
+  const nativeDeepseekV41FlashRoute =
+    resolved.provider === "deepseek" &&
+    [
+      "deepseek-flash",
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
+    ].includes(resolved.model || "");
+  const supportsVision =
+    nativeDeepseekV41FlashRoute && customVisionOverride === null
+      ? true
+      : resolveVisionCapability(
+          visionSpec,
+          registryModel,
+          synced,
+          modalitiesInput,
+          modalitiesOutput,
+          lookupKey,
+          customVisionOverride
+        );
+  const effectiveModalitiesInput =
+    nativeDeepseekV41FlashRoute && supportsVision === true
+      ? [...new Set([...modalitiesInput, "text", "image"])]
+      : modalitiesInput;
   const supportsAudio = resolveAudioCapability(spec, registryModel, modalitiesInput);
   const supportsVideo = resolveVideoCapability(spec, registryModel, modalitiesInput);
 
@@ -911,7 +923,7 @@ export function getResolvedModelCapabilities(
     supportsVideo,
     supportsMaxTokens: heuristicMaxTokens(lookupKey),
     attachment,
-    structuredOutput: synced?.structured_output ?? null,
+    structuredOutput: nativeDeepseekV41FlashRoute ? true : (synced?.structured_output ?? null),
     temperature: synced?.temperature ?? null,
     contextWindow,
     maxInputTokens: (() => {
@@ -946,7 +958,7 @@ export function getResolvedModelCapabilities(
     knowledgeCutoff: synced?.knowledge_cutoff ?? null,
     releaseDate: synced?.release_date ?? null,
     lastUpdated: synced?.last_updated ?? null,
-    modalitiesInput,
+    modalitiesInput: effectiveModalitiesInput,
     modalitiesOutput,
     interleavedField:
       synced?.interleaved_field ??
