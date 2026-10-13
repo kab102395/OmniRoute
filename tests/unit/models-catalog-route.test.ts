@@ -1260,6 +1260,43 @@ test("v1 models catalog uses synced models.dev limits instead of provider defaul
   }
 });
 
+test("v1 models catalog preserves synchronized pricing provenance in serialized rows", async () => {
+  await seedConnection("openai", { name: "openai-pricing-provenance" });
+
+  try {
+    modelsDevSync.saveModelsDevPricing({
+      openai: {
+        "gpt-4o": { input: 2.5, output: 10 },
+      },
+    });
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/api/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        pricing?: { input?: number; output?: number };
+        pricing_provenance?: {
+          state: string;
+          source: { id: string; retrievedAt: string | null; stale: boolean | null };
+        };
+      }>;
+    };
+    const model = body.data.find((item) => item.id === "openai/gpt-4o");
+
+    assert.equal(response.status, 200);
+    assert.ok(model);
+    assert.equal(model.pricing.input, 2.5);
+    assert.equal(model.pricing.output, 10);
+    assert.equal(model.pricing_provenance.state, "third_party_reported_pricing");
+    assert.equal(model.pricing_provenance.source.id, "models_dev.api_json");
+    assert.equal(model.pricing_provenance.source.retrievedAt, null);
+    assert.equal(model.pricing_provenance.source.stale, null);
+  } finally {
+    modelsDevSync.clearModelsDevPricing();
+  }
+});
+
 test("v1 models catalog exposes Bedrock Claude token limits from static metadata", async () => {
   await seedConnection("bedrock", { name: "bedrock-limits" });
 
