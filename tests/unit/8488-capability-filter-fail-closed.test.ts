@@ -45,7 +45,7 @@ function capabilityEntry(limit_context: number, overrides: Record<string, unknow
   };
 }
 
-function target(provider: string, modelStr: string) {
+function target(provider: string, modelStr: string, resolvedSupportsTools?: boolean | null) {
   return {
     kind: "model" as const,
     stepId: "s1",
@@ -56,6 +56,7 @@ function target(provider: string, modelStr: string) {
     connectionId: null,
     weight: 1,
     label: null,
+    ...(resolvedSupportsTools !== undefined ? { resolvedSupportsTools } : {}),
   };
 }
 
@@ -231,6 +232,52 @@ test("#8488 auto: Gemini Web emulation survives tool pre-filter (#5240)", async 
   if ("orderedTargets" in result) {
     assert.equal(result.orderedTargets.length, 1);
     assert.equal(result.orderedTargets[0].modelStr, "gemini-web/gemini-3.1-pro");
+  }
+});
+
+test("auto tool pre-filter honors exact route capability facts over generic model metadata", async () => {
+  saveModelsDevCapabilities({
+    openrouter: {
+      "anthropic/claude-3.5-sonnet": capabilityEntry(200000, { tool_call: true }),
+      "vendor/no-tools": capabilityEntry(64000, { tool_call: false }),
+    },
+  });
+  const body = {
+    messages: [{ role: "user", content: "Use a tool." }],
+    tools: [{ type: "function", function: { name: "lookup", parameters: {} } }],
+  };
+  const baseArgs = {
+    body,
+    combo: { id: "c1", name: "openrouter-auto", config: {} } as never,
+    settings: null,
+    config: {},
+    relayOptions: null,
+    resilienceSettings: { quotaPreflight: { enabled: false } } as never,
+    log: log as never,
+    buildAutoCandidates: (async () => []) as never,
+  };
+
+  const explicitlyUnsupported = await resolveAutoStrategyOrder({
+    ...baseArgs,
+    orderedTargets: [
+      target("openrouter", "openrouter/anthropic/claude-3.5-sonnet", false),
+    ] as never,
+  });
+  assert.ok(
+    "earlyResponse" in explicitlyUnsupported,
+    "an explicit false from the exact route must override generic model tool support"
+  );
+
+  const explicitlySupported = await resolveAutoStrategyOrder({
+    ...baseArgs,
+    orderedTargets: [target("openrouter", "openrouter/vendor/no-tools", true)] as never,
+  });
+  assert.ok(
+    !("earlyResponse" in explicitlySupported),
+    "an explicit true from the exact route must override generic model metadata"
+  );
+  if ("orderedTargets" in explicitlySupported) {
+    assert.equal(explicitlySupported.orderedTargets.length, 1);
   }
 });
 

@@ -170,7 +170,10 @@ export async function resolveAutoStrategyOrder(
     // registry/capability rows honestly report toolCalling:false.
     const filtered = eligibleTargets.filter(
       (target) =>
-        supportsToolCalling(target.modelStr) || providerSupportsEmulatedToolCalling(target.provider)
+        (target.resolvedSupportsTools !== undefined
+          ? target.resolvedSupportsTools === true
+          : supportsToolCalling(target.modelStr)) ||
+        providerSupportsEmulatedToolCalling(target.provider)
     );
     if (filtered.length > 0) {
       eligibleTargets = filtered;
