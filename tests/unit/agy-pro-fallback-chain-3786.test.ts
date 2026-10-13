@@ -110,6 +110,35 @@ test("execute retries pro-low with the next candidate when the first id 400s", a
   }
 });
 
+test("execute preserves the requested pro-low identity when strict model identity is required", async () => {
+  const executor = new AntigravityExecutor();
+  const originalFetch = globalThis.fetch;
+  seedAntigravityIdeVersionCache("2.1.1");
+  const modelsTried: string[] = [];
+
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    const m = envelopeModel(init);
+    modelsTried.push(m);
+    return make400(m);
+  }) as typeof fetch;
+
+  try {
+    const result = await executor.execute({
+      model: "antigravity/gemini-3.1-pro-low",
+      body: { request: { contents: [] } },
+      stream: false,
+      strictModelIdentity: true,
+      credentials: { accessToken: "token", projectId: "project-1" },
+      log: { debug() {}, warn() {}, info() {} },
+    });
+
+    assert.equal(result.response.status, 400);
+    assert.deepEqual(modelsTried, ["gemini-3.1-pro-low"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("execute exhausts the pro-low chain on all-400 and surfaces a sanitized 400", async () => {
   const executor = new AntigravityExecutor();
   const originalFetch = globalThis.fetch;

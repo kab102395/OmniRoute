@@ -194,6 +194,8 @@ export type ExecuteInput = {
   body: unknown;
   stream: boolean;
   credentials: ProviderCredentials;
+  /** Preserve the requested model identity by disabling provider-internal model substitutions. */
+  strictModelIdentity?: boolean;
   signal?: AbortSignal | null;
   log?: ExecutorLog | null;
   extendedContext?: boolean;
