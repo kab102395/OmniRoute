@@ -41,6 +41,10 @@ test("extractUsageFromResponse preserves an OpenRouter cost receipt when token c
   assert.deepEqual(extractUsageFromResponse({ usage: { cost: 0.00123 } }, "openrouter"), {
     provider_reported_cost_usd: 0.00123,
   });
+  assert.deepEqual(
+    extractUsageFromResponse({ response: { usage: { cost: 0.00123 } } }, "openrouter"),
+    { provider_reported_cost_usd: 0.00123 }
+  );
   assert.equal(extractUsageFromResponse({ usage: { cost: "0.00123" } }, "openrouter"), null);
   assert.equal(extractUsageFromResponse({ usage: { cost: 0.00123 } }, "openai"), null);
 });
