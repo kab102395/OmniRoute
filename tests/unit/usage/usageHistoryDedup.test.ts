@@ -192,3 +192,54 @@ test("request IDs preserve identical retry attempts and attach each cost snapsho
   );
   assert.equal(rows.find((row) => row.requestId === "retry-attempt-2")?.accountingJson, null);
 });
+
+test("usage accounting retains late OpenRouter generation host and attempt receipts", async () => {
+  const db = getDbInstance();
+  const requestId = "openrouter-generation-receipt";
+  await saveRequestUsage(makeEntry({ requestId }));
+  await updateRequestUsageAccounting(requestId, {
+    kind: "provider_reported_billed_cost",
+    amountUsd: 0.0002,
+    currency: "USD",
+    source: "openrouter.generation_api.total_cost",
+    pricingProvider: "openrouter",
+    pricingModel: "vendor/model",
+    pricingVersion: null,
+    pricingEffectiveAt: null,
+    pricingRetrievedAt: null,
+    pricingStale: null,
+    usageKind: "provider_reported_usage",
+    downstreamProvider: "Host A",
+    providerRequestId: "gen-123",
+    providerReceiptsComplete: true,
+    providerReceipts: [
+      {
+        id: "gen-123",
+        source: "openrouter.generation_api",
+        retrievedAt: "2026-10-13T00:00:00.000Z",
+        model: "vendor/model",
+        providerName: "Host A",
+        upstreamId: "upstream-1",
+        promptTokens: 12,
+        completionTokens: 7,
+        totalCostUsd: 0.0002,
+        upstreamInferenceCostUsd: 0.00018,
+        isByok: false,
+      },
+    ],
+  });
+
+  const row = db
+    .prepare("SELECT accounting_json AS accountingJson FROM usage_history WHERE request_id = ?")
+    .get(requestId) as { accountingJson: string };
+  const accounting = JSON.parse(row.accountingJson) as {
+    downstreamProvider?: string;
+    providerRequestId?: string;
+    providerReceiptsComplete?: boolean;
+    providerReceipts?: Array<{ upstreamInferenceCostUsd?: number }>;
+  };
+  assert.equal(accounting.downstreamProvider, "Host A");
+  assert.equal(accounting.providerRequestId, "gen-123");
+  assert.equal(accounting.providerReceiptsComplete, true);
+  assert.equal(accounting.providerReceipts?.[0]?.upstreamInferenceCostUsd, 0.00018);
+});

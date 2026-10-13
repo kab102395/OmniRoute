@@ -317,6 +317,8 @@ import { finalizePendingScope, updatePendingScope } from "@/lib/usage/pendingReq
 import { recordCost, recordUnknownCost } from "@/domain/costRules";
 import { calculateCost, calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import { updateRequestUsageAccounting } from "@/lib/usageDb";
+import { scheduleOpenRouterReceiptEnrichment } from "./chatCore/openrouterReceiptEnrichment.ts";
+import { isOpenRouterGenerationId } from "@/lib/usage/openrouterGeneration";
 import {
   buildClaudePassthroughToolNameMap,
   mergeResponseToolNameMap,
@@ -778,9 +780,10 @@ export async function handleChatCore({
   ): EffectiveServiceTier | null => resolveReportedServiceTierFor(provider, payload, maxDepth);
   // Failure usage record building extracted to chatCore/failureUsage.ts (#3501); the handler keeps
   // the fire-and-forget save + computes latencyMs, so the call sites stay byte-identical.
-  const persistFailureUsage = (statusCode: number, errorCode?: string | null) => {
+  const persistFailureUsage = (statusCode: number, errorCode?: string | null) =>
     saveRequestUsage(
       buildFailureUsageRecord({
+        requestId: usageAccountingRequestId,
         provider,
         model,
         connectionId: getCurrentConnectionId(),
@@ -794,7 +797,6 @@ export async function handleChatCore({
         endpoint: endpointPath,
       })
     ).catch(() => {});
-  };
   // Key-health updater extracted to chatCore/keyHealth.ts (#3501); bind the per-request log once
   // and delegate so the existing call sites stay byte-identical.
   const recordKeyHealthStatus = (
@@ -4005,7 +4007,7 @@ export async function handleChatCore({
       connectionId,
       status: `FAILED ${failureStatus}`,
     }).catch(() => {});
-    persistAttemptLogs({
+    const failedCallLogSaved = persistAttemptLogs({
       status: failureStatus,
       error: failureMessage,
       providerRequest: finalBody || translatedBody,
@@ -4020,6 +4022,29 @@ export async function handleChatCore({
       cacheSource: "upstream",
     });
     if (isRequestAborted) {
+      const abortedUsageSaved = persistFailureUsage(failureStatus, "client_aborted");
+      if (resolveProviderId(provider) === "openrouter") {
+        const generationIds = executionAttemptReceipts
+          .map((attempt) => attempt.providerRequestId)
+          .filter(isOpenRouterGenerationId);
+        const openRouterApiKey = typeof credentials?.apiKey === "string" ? credentials.apiKey : "";
+        scheduleOpenRouterReceiptEnrichment(
+          {
+            generationIds,
+            apiKey: openRouterApiKey,
+            usageRequestId: usageAccountingRequestId,
+            callLogId: pendingRequestId,
+            accounting: classifyCostAccounting({
+              provider,
+              model: currentModel || effectiveModel,
+              usage: null,
+              calculatedCostUsd: null,
+            }),
+            usageSaved: abortedUsageSaved,
+          },
+          failedCallLogSaved
+        );
+      }
       streamController.handleError(error);
       return createErrorResult(499, "Request aborted");
     }
@@ -4030,7 +4055,29 @@ export async function handleChatCore({
         upstreamErrorCode || (error instanceof Error && error.name ? error.name : "upstream_error"),
       errorType: upstreamErrorType,
     });
-    persistFailureUsage(failureStatus, persistentErrorCode);
+    const failedUsageSaved = persistFailureUsage(failureStatus, persistentErrorCode);
+    if (resolveProviderId(provider) === "openrouter") {
+      const generationIds = executionAttemptReceipts
+        .map((attempt) => attempt.providerRequestId)
+        .filter(isOpenRouterGenerationId);
+      const openRouterApiKey = typeof credentials?.apiKey === "string" ? credentials.apiKey : "";
+      scheduleOpenRouterReceiptEnrichment(
+        {
+          generationIds,
+          apiKey: openRouterApiKey,
+          usageRequestId: usageAccountingRequestId,
+          callLogId: pendingRequestId,
+          accounting: classifyCostAccounting({
+            provider,
+            model: currentModel || effectiveModel,
+            usage: null,
+            calculatedCostUsd: null,
+          }),
+          usageSaved: failedUsageSaved,
+        },
+        failedCallLogSaved
+      );
+    }
     console.log(`${COLORS.red}[ERROR] ${failureMessage}${COLORS.reset}`);
     if (stream && upstreamErrorCode) {
       const result = createStreamingErrorResult(
@@ -5192,7 +5239,7 @@ export async function handleChatCore({
 
     // Save structured call log with full payloads
     const cacheUsageLogMeta = buildCacheUsageLogMeta(usage);
-    recordNonStreamingUsageStats(usage, {
+    const nonStreamingUsageSaved = recordNonStreamingUsageStats(usage, {
       traceEnabled,
       provider,
       connectionId: successConnectionId,
@@ -5535,7 +5582,7 @@ export async function handleChatCore({
     // request). (#3821-review LEDGER-6)
     saveIdempotency(idempotencyKey, translatedResponse, 200);
     reqLogger.logConvertedResponse(translatedResponse);
-    persistAttemptLogs({
+    const callLogSaved = persistAttemptLogs({
       status: 200,
       tokens: usage,
       responseBody,
@@ -5555,6 +5602,23 @@ export async function handleChatCore({
       servedModel: servedIdentity?.model || null,
       accounting,
     });
+    if (resolveProviderId(provider) === "openrouter") {
+      const generationIds = executionAttemptReceipts
+        .map((attempt) => attempt.providerRequestId)
+        .filter(isOpenRouterGenerationId);
+      const openRouterApiKey = typeof credentials?.apiKey === "string" ? credentials.apiKey : "";
+      scheduleOpenRouterReceiptEnrichment(
+        {
+          generationIds,
+          apiKey: openRouterApiKey,
+          usageRequestId: usageAccountingRequestId,
+          callLogId: pendingRequestId,
+          accounting,
+          usageSaved: nonStreamingUsageSaved,
+        },
+        callLogSaved
+      );
+    }
     if (apiKeyInfo?.id && estimatedCost > 0) {
       recordCost(apiKeyInfo.id, estimatedCost);
     } else if (apiKeyInfo?.id && ["unknown", "usage_only"].includes(accounting.kind)) {
@@ -5889,7 +5953,7 @@ export async function handleChatCore({
         if (promptTokens > 0) incrementTokenUsage(model, promptTokens);
       }
     }
-    recordStreamingUsageStats(streamUsage, {
+    const streamingUsageSaved = recordStreamingUsageStats(streamUsage, {
       provider,
       model: streamModel,
       streamStatus: normalizedStreamStatus,
@@ -5988,12 +6052,30 @@ export async function handleChatCore({
             pricingEvidence: costAssessment.pricingEvidence,
           });
           void updateRequestUsageAccounting(usageAccountingRequestId, accounting);
-          persistAttemptLogs({
+          const callLogSaved = persistAttemptLogs({
             ...streamLogArgs,
             servedProvider: servedIdentity?.provider || null,
             servedModel: servedIdentity?.model || null,
             accounting,
           });
+          if (resolveProviderId(provider) === "openrouter") {
+            const generationIds = executionAttemptReceipts
+              .map((attempt) => attempt.providerRequestId)
+              .filter(isOpenRouterGenerationId);
+            const openRouterApiKey =
+              typeof credentials?.apiKey === "string" ? credentials.apiKey : "";
+            scheduleOpenRouterReceiptEnrichment(
+              {
+                generationIds,
+                apiKey: openRouterApiKey,
+                usageRequestId: usageAccountingRequestId,
+                callLogId: pendingRequestId,
+                accounting,
+                usageSaved: streamingUsageSaved,
+              },
+              callLogSaved
+            );
+          }
         } catch {
           persistAttemptLogs(streamLogArgs);
         }

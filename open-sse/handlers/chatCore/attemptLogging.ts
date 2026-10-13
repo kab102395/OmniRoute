@@ -434,7 +434,10 @@ export function resolveRequestLifecycleEvent(input: {
   };
 }
 
-export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAttemptLogsContext) {
+export function persistAttemptLogs(
+  args: PersistAttemptLogsArgs,
+  ctx: PersistAttemptLogsContext
+): Promise<void> {
   const {
     status,
     tokens,
@@ -600,7 +603,7 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
     }
   }
 
-  saveCallLog({
+  const callLogSave = saveCallLog({
     id: pendingRequestId,
     method: "POST",
     path: clientRawRequest?.endpoint || "/v1/chat/completions",
@@ -680,4 +683,5 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
       emit("request.failed", lifecycle.payload);
     }
   });
+  return callLogSave;
 }

@@ -35,8 +35,10 @@ export function buildFailureUsageRecord(opts: {
   errorCode: string | null | undefined;
   latencyMs: number;
   endpoint?: string | null | undefined;
+  requestId?: string | null | undefined;
 }) {
   return {
+    ...(opts.requestId ? { requestId: opts.requestId } : {}),
     provider: opts.provider || "unknown",
     model: opts.model || "unknown",
     tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },

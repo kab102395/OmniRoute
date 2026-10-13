@@ -13888,6 +13888,42 @@ components:
         pricingStale:
           type: boolean
           nullable: true
+        downstreamProvider:
+          type: string
+          description: Downstream serving provider reported by OpenRouter after generation.
+        providerRequestId:
+          type: string
+          description: OpenRouter generation ID for the latest reported upstream attempt.
+        providerReceiptsComplete:
+          type: boolean
+          description: True when every captured OpenRouter generation ID resolved to metadata.
+        providerReceiptMissingIds:
+          type: array
+          items: { type: string }
+          maxItems: 64
+          description: Generation IDs whose metadata was not available during enrichment.
+        providerReceipts:
+          type: array
+          maxItems: 8
+          description: >-
+            Bounded provider-reported generation metadata. BYOK upstream charges may not be
+            represented by OpenRouter's total cost and therefore do not upgrade the request's
+            top-level accounting amount to an actual total.
+          items:
+            type: object
+            required: [id, source, retrievedAt]
+            properties:
+              id: { type: string }
+              source: { type: string, enum: [openrouter.generation_api] }
+              retrievedAt: { type: string, format: date-time }
+              model: { type: string, nullable: true }
+              providerName: { type: string, nullable: true }
+              upstreamId: { type: string, nullable: true }
+              promptTokens: { type: integer, minimum: 0, nullable: true }
+              completionTokens: { type: integer, minimum: 0, nullable: true }
+              totalCostUsd: { type: number, minimum: 0, nullable: true }
+              upstreamInferenceCostUsd: { type: number, minimum: 0, nullable: true }
+              isByok: { type: boolean, nullable: true }
         usageKind:
           type: string
           enum: [provider_reported_usage, estimated_usage, unknown]

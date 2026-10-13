@@ -24,7 +24,94 @@ export type CostAccountingFacts = {
   pricingStale: boolean | null;
   pricingCondition?: string | null;
   usageKind: "provider_reported_usage" | "estimated_usage" | "unknown";
+  /** OpenRouter's serving host as reported after the generation completed. */
+  downstreamProvider?: string;
+  /** Per-upstream-generation receipts, including retries when OpenRouter reports them. */
+  providerReceipts?: import("./openrouterGeneration").OpenRouterGenerationReceipt[];
+  providerReceiptsComplete?: boolean;
+  providerReceiptMissingIds?: string[];
+  providerRequestId?: string;
 };
+
+function numberToDecimalString(value: number): string {
+  const raw = String(value);
+  if (!/[eE]/.test(raw)) return raw;
+  const [coefficient, exponentText] = raw.toLowerCase().split("e");
+  const exponent = Number(exponentText);
+  const negative = coefficient.startsWith("-");
+  const unsigned = negative ? coefficient.slice(1) : coefficient;
+  const point = unsigned.indexOf(".");
+  const digits = unsigned.replace(".", "");
+  const decimalIndex = (point === -1 ? unsigned.length : point) + exponent;
+  const expanded =
+    decimalIndex <= 0
+      ? `0.${"0".repeat(-decimalIndex)}${digits}`
+      : decimalIndex >= digits.length
+        ? `${digits}${"0".repeat(decimalIndex - digits.length)}`
+        : `${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
+  return `${negative ? "-" : ""}${expanded}`;
+}
+
+function sumUsdDecimals(values: number[]): number {
+  const decimals = values.map(numberToDecimalString);
+  const scale = decimals.reduce((max, value) => Math.max(max, value.split(".")[1]?.length ?? 0), 0);
+  const factor = 10n ** BigInt(scale);
+  const total = decimals.reduce((sum, value) => {
+    const [whole, fraction = ""] = value.split(".");
+    const sign = whole.startsWith("-") ? -1n : 1n;
+    const wholeDigits = whole.replace("-", "");
+    const fractionDigits = fraction.padEnd(scale, "0");
+    const units = BigInt(`${wholeDigits}${fractionDigits}` || "0");
+    return sum + sign * units;
+  }, 0n);
+  return Number(total) / Number(factor);
+}
+
+/**
+ * Merge OpenRouter's authenticated post-generation receipts into the existing
+ * accounting snapshot. Aggregate cost is authoritative only when every
+ * requested generation has a returned receipt with a reported total cost.
+ */
+export function applyOpenRouterGenerationReceipts(
+  accounting: CostAccountingFacts,
+  requestedGenerationIds: readonly string[],
+  receipts: import("./openrouterGeneration").OpenRouterGenerationReceipt[]
+): CostAccountingFacts {
+  if (requestedGenerationIds.length === 0) return accounting;
+  const uniqueRequestedIds = [...new Set(requestedGenerationIds)];
+  const receiptById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
+  const requestedReceipts = uniqueRequestedIds.map((id) => receiptById.get(id));
+  const missingIds = uniqueRequestedIds.filter((id) => !receiptById.has(id));
+  const complete =
+    requestedReceipts.length > 0 &&
+    requestedReceipts.every(
+      (receipt) =>
+        receipt !== undefined && receipt.totalCostUsd !== null && receipt.isByok === false
+    );
+  const latestReceipt = requestedReceipts.at(-1);
+  const providerReceipts = receipts;
+  const result: CostAccountingFacts = {
+    ...accounting,
+    providerReceipts,
+    providerReceiptsComplete: missingIds.length === 0,
+    ...(missingIds.length > 0 ? { providerReceiptMissingIds: missingIds } : {}),
+    ...(latestReceipt?.providerName ? { downstreamProvider: latestReceipt.providerName } : {}),
+    ...(latestReceipt?.id ? { providerRequestId: latestReceipt.id } : {}),
+  };
+  if (!complete) return result;
+
+  const amountUsd = sumUsdDecimals(requestedReceipts.map((receipt) => receipt?.totalCostUsd ?? 0));
+  return {
+    ...result,
+    kind: amountUsd === 0 ? "zero_cost" : "provider_reported_billed_cost",
+    amountUsd,
+    currency: "USD",
+    source: "openrouter.generation_api.total_cost",
+    pricingProvider: "openrouter",
+    pricingModel: latestReceipt?.model || accounting.pricingModel,
+    usageKind: "provider_reported_usage",
+  };
+}
 
 function accountingSource(
   source: import("./costCalculator").CostPricingEvidence["source"]

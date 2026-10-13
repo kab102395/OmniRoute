@@ -462,6 +462,50 @@ function serializeAccounting(value: unknown): string | null {
       : null;
   const optionalString = (key: string) =>
     typeof accounting[key] === "string" ? (accounting[key] as string).slice(0, 256) : null;
+  const providerReceipts = Array.isArray(accounting.providerReceipts)
+    ? accounting.providerReceipts
+        .filter(
+          (receipt): receipt is Record<string, unknown> =>
+            Boolean(receipt) && typeof receipt === "object" && !Array.isArray(receipt)
+        )
+        .slice(-8)
+        .map((receipt) => ({
+          id: typeof receipt.id === "string" ? receipt.id.slice(0, 256) : "",
+          source: receipt.source === "openrouter.generation_api" ? receipt.source : null,
+          retrievedAt: typeof receipt.retrievedAt === "string" ? receipt.retrievedAt : null,
+          model: typeof receipt.model === "string" ? receipt.model.slice(0, 512) : null,
+          providerName:
+            typeof receipt.providerName === "string" ? receipt.providerName.slice(0, 256) : null,
+          upstreamId:
+            typeof receipt.upstreamId === "string" ? receipt.upstreamId.slice(0, 256) : null,
+          promptTokens:
+            typeof receipt.promptTokens === "number" &&
+            Number.isSafeInteger(receipt.promptTokens) &&
+            receipt.promptTokens >= 0
+              ? receipt.promptTokens
+              : null,
+          completionTokens:
+            typeof receipt.completionTokens === "number" &&
+            Number.isSafeInteger(receipt.completionTokens) &&
+            receipt.completionTokens >= 0
+              ? receipt.completionTokens
+              : null,
+          totalCostUsd:
+            typeof receipt.totalCostUsd === "number" &&
+            Number.isFinite(receipt.totalCostUsd) &&
+            receipt.totalCostUsd >= 0
+              ? receipt.totalCostUsd
+              : null,
+          upstreamInferenceCostUsd:
+            typeof receipt.upstreamInferenceCostUsd === "number" &&
+            Number.isFinite(receipt.upstreamInferenceCostUsd) &&
+            receipt.upstreamInferenceCostUsd >= 0
+              ? receipt.upstreamInferenceCostUsd
+              : null,
+          isByok: typeof receipt.isByok === "boolean" ? receipt.isByok : null,
+        }))
+        .filter((receipt) => receipt.id.length > 0 && receipt.source !== null)
+    : undefined;
   return JSON.stringify({
     kind: accounting.kind,
     amountUsd,
@@ -475,12 +519,47 @@ function serializeAccounting(value: unknown): string | null {
     pricingRetrievedAt: optionalString("pricingRetrievedAt"),
     pricingStale: typeof accounting.pricingStale === "boolean" ? accounting.pricingStale : null,
     pricingCondition: optionalString("pricingCondition"),
+    ...(optionalString("downstreamProvider")
+      ? { downstreamProvider: optionalString("downstreamProvider") }
+      : {}),
+    ...(optionalString("providerRequestId")
+      ? { providerRequestId: optionalString("providerRequestId") }
+      : {}),
+    ...(providerReceipts && providerReceipts.length > 0 ? { providerReceipts } : {}),
+    ...(typeof accounting.providerReceiptsComplete === "boolean"
+      ? { providerReceiptsComplete: accounting.providerReceiptsComplete }
+      : {}),
+    ...(Array.isArray(accounting.providerReceiptMissingIds)
+      ? {
+          providerReceiptMissingIds: accounting.providerReceiptMissingIds
+            .filter((id): id is string => typeof id === "string")
+            .slice(0, 64)
+            .map((id) => id.slice(0, 256)),
+        }
+      : {}),
     usageKind:
       accounting.usageKind === "provider_reported_usage" ||
       accounting.usageKind === "estimated_usage"
         ? accounting.usageKind
         : "unknown",
   });
+}
+
+/** Merge late-arriving provider generation facts into an already saved call log. */
+export function updateCallLogAccounting(
+  id: string,
+  accounting: import("./costAccounting").CostAccountingFacts
+): void {
+  if (!id || !shouldPersistToDisk) return;
+  const accountingJson = serializeAccounting(accounting);
+  if (!accountingJson) return;
+  try {
+    getDbInstance()
+      .prepare("UPDATE call_logs SET accounting_json = ? WHERE id = ?")
+      .run(accountingJson, id);
+  } catch {
+    // Late receipt enrichment must never affect inference or request completion.
+  }
 }
 
 function buildLegacyPipelinePayloads(id: string) {

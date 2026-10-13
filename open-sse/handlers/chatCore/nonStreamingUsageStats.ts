@@ -40,9 +40,12 @@ function logUsageTrace(
   console.log(`${COLORS.green}${msg}${COLORS.reset}`);
 }
 
-function persistUsageRow(usage: object, ctx: RecordNonStreamingUsageStatsContext): void {
+function persistUsageRow(
+  usage: object,
+  ctx: RecordNonStreamingUsageStatsContext
+): Promise<unknown> {
   const { provider, connectionId, model, startTime, apiKeyInfo, effectiveServiceTier } = ctx;
-  saveRequestUsage({
+  return saveRequestUsage({
     provider: provider || "unknown",
     requestId: ctx.requestId,
     model: model || "unknown",
@@ -83,10 +86,11 @@ function recordBillableTokens(
 export function recordNonStreamingUsageStats(
   usage: unknown,
   ctx: RecordNonStreamingUsageStatsContext
-): void {
+): Promise<unknown> | undefined {
   if (!usage || typeof usage !== "object") return;
 
   if (ctx.traceEnabled) logUsageTrace(usage, ctx.provider, ctx.connectionId);
-  persistUsageRow(usage, ctx);
+  const saved = persistUsageRow(usage, ctx);
   recordBillableTokens(usage, ctx.apiKeyInfo, ctx.provider, ctx.model);
+  return saved;
 }

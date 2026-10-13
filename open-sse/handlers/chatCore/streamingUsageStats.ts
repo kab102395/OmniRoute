@@ -31,9 +31,12 @@ export type RecordStreamingUsageStatsContext = {
   requestId?: string | null | undefined;
 };
 
-function persistStreamingUsageRow(usage: object, ctx: RecordStreamingUsageStatsContext): void {
+function persistStreamingUsageRow(
+  usage: object,
+  ctx: RecordStreamingUsageStatsContext
+): Promise<unknown> {
   const { provider, model, streamStatus, startTime, ttft, streamErrorCode } = ctx;
-  saveRequestUsage({
+  return saveRequestUsage({
     provider: provider || "unknown",
     requestId: ctx.requestId,
     model: model || "unknown",
@@ -74,8 +77,9 @@ function recordStreamingBillableTokens(usage: object, ctx: RecordStreamingUsageS
 export function recordStreamingUsageStats(
   usage: unknown,
   ctx: RecordStreamingUsageStatsContext
-): void {
+): Promise<unknown> | undefined {
   if (!usage || typeof usage !== "object") return;
-  persistStreamingUsageRow(usage, ctx);
+  const saved = persistStreamingUsageRow(usage, ctx);
   recordStreamingBillableTokens(usage, ctx);
+  return saved;
 }

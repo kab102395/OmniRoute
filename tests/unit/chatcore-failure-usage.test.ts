@@ -62,18 +62,49 @@ test("applies the unknown/undefined fallbacks", () => {
   assert.equal(r.comboStrategy, undefined);
 });
 
+test("carries a stable request ID so failed generation receipts can be attached later", () => {
+  const r = buildFailureUsageRecord({
+    provider: "openrouter",
+    model: "vendor/model",
+    connectionId: "conn-1",
+    apiKeyInfo: null,
+    effectiveServiceTier: "standard",
+    isCombo: false,
+    comboStrategy: null,
+    statusCode: 502,
+    errorCode: "upstream_error",
+    latencyMs: 10,
+    requestId: "usage-request-1",
+  });
+  assert.equal(r.requestId, "usage-request-1");
+});
+
 test("combo strategy is included only for combo requests", () => {
   const combo = buildFailureUsageRecord({
-    provider: "x", model: "y", connectionId: null, apiKeyInfo: null,
-    effectiveServiceTier: "standard", isCombo: true, comboStrategy: "round-robin",
-    statusCode: 500, errorCode: "boom", latencyMs: 1,
+    provider: "x",
+    model: "y",
+    connectionId: null,
+    apiKeyInfo: null,
+    effectiveServiceTier: "standard",
+    isCombo: true,
+    comboStrategy: "round-robin",
+    statusCode: 500,
+    errorCode: "boom",
+    latencyMs: 1,
   });
   assert.equal(combo.comboStrategy, "round-robin");
 
   const comboNoStrategy = buildFailureUsageRecord({
-    provider: "x", model: "y", connectionId: null, apiKeyInfo: null,
-    effectiveServiceTier: "standard", isCombo: true, comboStrategy: null,
-    statusCode: 500, errorCode: "boom", latencyMs: 1,
+    provider: "x",
+    model: "y",
+    connectionId: null,
+    apiKeyInfo: null,
+    effectiveServiceTier: "standard",
+    isCombo: true,
+    comboStrategy: null,
+    statusCode: 500,
+    errorCode: "boom",
+    latencyMs: 1,
   });
   assert.equal(comboNoStrategy.comboStrategy, undefined);
 });

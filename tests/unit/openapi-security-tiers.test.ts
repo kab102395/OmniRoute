@@ -140,6 +140,12 @@ test("call-log detail contract exposes persisted execution attempt accounting", 
   ]);
   assert.equal(accounting?.properties?.amountUsdExact?.type, "string");
   assert.equal(accounting?.properties?.amountUsd?.nullable, true);
+  assert.equal(accounting?.properties?.downstreamProvider?.type, "string");
+  assert.equal(accounting?.properties?.providerReceipts?.maxItems, 8);
+  assert.equal(
+    accounting?.properties?.providerReceipts?.items?.properties?.source?.enum?.[0],
+    "openrouter.generation_api"
+  );
   assert.match(
     completionOperation?.responses?.["200"]?.headers?.["X-OmniRoute-Request-Id"]?.description ?? "",
     /call-log ID on non-streaming responses/i

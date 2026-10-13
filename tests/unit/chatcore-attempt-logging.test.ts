@@ -14,7 +14,7 @@ const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omni-attempt-logging-
 process.env.DATA_DIR = testDataDir;
 
 const coreDb = await import("../../src/lib/db/core.ts");
-const { getCallLogById } = await import("../../src/lib/usage/callLogs.ts");
+const { getCallLogById, updateCallLogAccounting } = await import("../../src/lib/usage/callLogs.ts");
 const callLogDetailRoute = await import("../../src/app/api/usage/call-logs/[id]/route.ts");
 const { attributeExecutionAttemptAccounting, persistAttemptLogs } =
   await import("../../open-sse/handlers/chatCore/attemptLogging.ts");
@@ -92,6 +92,71 @@ test("persists a call log row with the mapped fields (default cacheSource=upstre
   assert.equal(row.requestedModel, "gpt-x-requested");
   assert.equal(row.connectionId, "conn-1");
   assert.equal(row.cacheSource, "upstream");
+});
+
+test("late OpenRouter generation metadata enriches the saved accounting receipt", async () => {
+  const id = "attempt-openrouter-generation-enrichment";
+  const initialAccounting = {
+    kind: "estimated_cost",
+    amountUsd: 0.25,
+    currency: "USD",
+    source: "models_dev.api_json",
+    pricingProvider: "openrouter",
+    pricingModel: "vendor/model",
+    pricingVersion: null,
+    pricingEffectiveAt: null,
+    pricingRetrievedAt: null,
+    pricingStale: null,
+    usageKind: "provider_reported_usage",
+  } as const;
+  await persistAttemptLogs(
+    { status: 200, accounting: initialAccounting },
+    baseCtx({ pendingRequestId: id })
+  );
+
+  const enrichedAccounting = {
+    ...initialAccounting,
+    kind: "provider_reported_billed_cost",
+    amountUsd: 0.0002,
+    amountUsdExact: "0.0002",
+    source: "openrouter.generation_api.total_cost",
+    downstreamProvider: "Host A",
+    providerRequestId: "gen-123",
+    providerReceipts: [
+      {
+        id: "gen-123",
+        source: "openrouter.generation_api",
+        retrievedAt: "2026-10-13T00:00:00.000Z",
+        model: "vendor/model",
+        providerName: "Host A",
+        upstreamId: "upstream-1",
+        promptTokens: 12,
+        completionTokens: 7,
+        totalCostUsd: 0.0002,
+        isByok: false,
+      },
+    ],
+  } as const;
+  updateCallLogAccounting(id, enrichedAccounting);
+
+  const row = await getCallLogById(id);
+  assert.ok(row);
+  const stored = row.accounting as typeof enrichedAccounting;
+  assert.equal(stored.kind, "provider_reported_billed_cost");
+  assert.equal(stored.downstreamProvider, "Host A");
+  assert.equal(stored.providerReceipts[0]?.id, "gen-123");
+  assert.equal(stored.amountUsdExact, "0.0002");
+
+  const detailResponse = await callLogDetailRoute.GET(
+    new Request(`http://localhost/api/usage/call-logs/${id}`),
+    { params: Promise.resolve({ id }) }
+  );
+  assert.equal(detailResponse.status, 200);
+  const detail = (await detailResponse.json()) as {
+    accounting?: { downstreamProvider?: string; providerReceipts?: Array<{ id?: string }> };
+  };
+  assert.equal(detail.accounting?.downstreamProvider, "Host A");
+  assert.equal(detail.accounting?.providerReceipts?.[0]?.id, "gen-123");
 });
 
 test("attributes usage and cost only to the final successful upstream attempt", () => {
