@@ -48,6 +48,26 @@ export function getOpenRouterDisplayName(model: {
   return isOpenRouterFreeModel(model) && !/\bgr[aá]tis\b/i.test(name) ? `${name} (Grátis)` : name;
 }
 
+export function getOpenRouterModelCapabilities(model: {
+  architecture?: { input_modalities?: string[] };
+  supported_parameters?: string[];
+}): Record<string, boolean> {
+  const capabilities: Record<string, boolean> = {};
+  if (Array.isArray(model.architecture?.input_modalities)) {
+    capabilities.vision = model.architecture.input_modalities.includes("image");
+  }
+  if (Array.isArray(model.supported_parameters)) {
+    capabilities.tool_calling = model.supported_parameters.includes("tools");
+    capabilities.reasoning =
+      model.supported_parameters.includes("reasoning") ||
+      model.supported_parameters.includes("include_reasoning");
+    capabilities.structured_output =
+      model.supported_parameters.includes("structured_outputs") ||
+      model.supported_parameters.includes("response_format");
+  }
+  return capabilities;
+}
+
 /**
  * Synchronized rows can outlive the live free-route listing. Retain the row for
  * display when allowed, but never retain current free eligibility based only

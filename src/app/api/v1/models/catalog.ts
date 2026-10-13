@@ -106,6 +106,7 @@ import {
   getOpenRouterModelType,
   isOpenRouterFreeModel,
   getOpenRouterDisplayName,
+  getOpenRouterModelCapabilities,
   buildOpenRouterPricingEvidence,
   toOpenRouterLegacyTokenPricing,
   reconcileOpenRouterFreeRoutes,
@@ -1409,34 +1410,13 @@ async function buildUnifiedModelsResponseCore(
           // #9293: respect per-model hidden flags (e.g. operator hid google/chirp-3
           // from the OpenRouter provider, so it should not appear in the live catalog).
           if (isModelHiddenBulk("openrouter", openRouterModel.id)) continue;
-          const supportedParameters = Array.isArray(openRouterModel.supported_parameters)
-            ? openRouterModel.supported_parameters
-            : [];
           const pricingEvidence = buildOpenRouterPricingEvidence(openRouterModel, {
             retrievedAt: openRouterCatalog.cachedAt || "",
             stale: openRouterCatalog.stale,
             ttlMs: openRouterCatalog.cacheTtlMs,
           });
           const legacyPricing = toOpenRouterLegacyTokenPricing(pricingEvidence);
-          const capabilities: Record<string, boolean> = {};
-          if (openRouterModel.architecture?.input_modalities)
-            capabilities.vision = inputModalities.includes("image");
-          if (
-            supportedParameters.includes("reasoning") ||
-            supportedParameters.includes("include_reasoning")
-          ) {
-            capabilities.reasoning = true;
-          }
-          if (Array.isArray(openRouterModel.supported_parameters))
-            capabilities.tool_calling = supportedParameters.includes("tools");
-          if (
-            supportedParameters.includes("structured_outputs") ||
-            supportedParameters.includes("response_format")
-          ) {
-            capabilities.structured_output =
-              supportedParameters.includes("structured_outputs") ||
-              supportedParameters.includes("response_format");
-          }
+          const capabilities = getOpenRouterModelCapabilities(openRouterModel);
 
           const liveModel = {
             ...(existingIndex >= 0 ? models[existingIndex] : {}),

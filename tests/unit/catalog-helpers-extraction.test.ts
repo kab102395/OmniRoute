@@ -25,6 +25,7 @@ import {
   isZeroPrice,
   isOpenRouterFreeModel,
   getOpenRouterDisplayName,
+  getOpenRouterModelCapabilities,
   buildOpenRouterPricingEvidence,
   toOpenRouterLegacyTokenPricing,
   reconcileOpenRouterFreeRoutes,
@@ -228,6 +229,17 @@ test("catalogOpenrouter: free-model detection + display name", () => {
     getOpenRouterDisplayName({ id: "z/m:free", name: "Modelo Grátis" }),
     "Modelo Grátis"
   );
+});
+
+test("catalogOpenrouter: declared capabilities distinguish supported, unsupported, and unknown", () => {
+  assert.deepEqual(
+    getOpenRouterModelCapabilities({
+      architecture: { input_modalities: ["text"] },
+      supported_parameters: ["tools", "reasoning"],
+    }),
+    { vision: false, tool_calling: true, reasoning: true, structured_output: false }
+  );
+  assert.deepEqual(getOpenRouterModelCapabilities({}), {});
 });
 
 test("catalogOpenrouter: source pricing evidence preserves exact rates and host ambiguity", () => {
