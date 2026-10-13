@@ -626,9 +626,10 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
         ? { vision: metadata.capabilities.vision }
         : {}),
     ...(provider === "deepseek" &&
-    ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"].includes(metadata.model)
+    ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(metadata.model)
       ? { vision: true }
       : {}),
+    ...(provider === "deepseek" && metadata.model === "deepseek-v4-pro" ? { vision: false } : {}),
     // #8016: never invent chat tool/reasoning defaults onto specialty surfaces.
     // Only copy boolean true when authoritative metadata says so; specialty rows
     // default to false instead of optimistic chat heuristics.
@@ -737,12 +738,19 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
 
   if (
     provider === "deepseek" &&
-    ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"].includes(metadata.model)
+    ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(metadata.model)
   ) {
     nextEntry.input_modalities = uniqueStrings([
       ...((nextEntry.input_modalities as string[]) ?? []),
       "image",
     ]);
+    nextEntry.output_modalities = ["text"];
+  }
+
+  if (provider === "deepseek" && metadata.model === "deepseek-v4-pro") {
+    // DeepSeek's current route/pricing table identifies V4-Pro-0813 and marks
+    // image input unsupported; do not inherit Flash's multimodal capability.
+    nextEntry.input_modalities = ["text"];
     nextEntry.output_modalities = ["text"];
   }
 

@@ -16,7 +16,7 @@ test("deepseek-v4-pro uses DeepSeek V4-Pro peak rates", () => {
   assert.equal(entry.cache_creation, 1.32);
 });
 
-test("deepseek-v4-flash legacy alias and deepseek-flash use peak rates", () => {
+test("DeepSeek Flash route aliases use their current peak rates", () => {
   const entry = (DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>)
     .deepseek["deepseek-v4-flash"];
   assert.ok(entry, "deepseek-v4-flash entry must exist under DEFAULT_PRICING_FRONTIER.deepseek");
@@ -29,6 +29,10 @@ test("deepseek-v4-flash legacy alias and deepseek-flash use peak rates", () => {
     DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>
   ).deepseek["deepseek-flash"];
   assert.deepEqual(current, entry);
+  const legacyVision = (
+    DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>
+  ).deepseek["deepseek-v4-flash-vision-exp"];
+  assert.deepEqual(legacyVision, entry);
 });
 
 test("DeepSeek route estimates retain their published rates and input/output ratios", () => {
@@ -38,6 +42,7 @@ test("DeepSeek route estimates retain their published rates and input/output rat
   for (const [model, input, output, outputRatio] of [
     ["deepseek-v4-pro", 1.32, 3.96, 3],
     ["deepseek-v4-flash", 0.3, 1.2, 4],
+    ["deepseek-v4-flash-vision-exp", 0.3, 1.2, 4],
     ["deepseek-flash", 0.3, 1.2, 4],
   ] as const) {
     const entry = deepseek[model];
