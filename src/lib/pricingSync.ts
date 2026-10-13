@@ -17,8 +17,8 @@ import { backupDbFile } from "./db/backup";
 // ─── Types ───────────────────────────────────────────────
 
 type PricingEntry = {
-  input: number;
-  output: number;
+  input?: number;
+  output?: number;
   cached?: number;
   cache_creation?: number;
   mode?: string;
@@ -96,6 +96,11 @@ const SYNC_SOURCES = (process.env.PRICING_SYNC_SOURCES || "litellm")
 
 const LITELLM_PRICING_URL =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+
+function scaleTokenRateToPerMillion(rate: number): number {
+  const scaled = rate * 1_000_000;
+  return Number.isFinite(scaled) ? Number(scaled.toPrecision(15)) : scaled;
+}
 
 // ─── Provider mapping: LiteLLM provider → OmniRoute aliases ─────
 
@@ -191,30 +196,52 @@ export function transformToOmniRoute(raw: Record<string, LiteLLMModelInfo>): Pri
       "ocr_cost_per_page",
     ] as const;
 
-    const hasToken = info.input_cost_per_token != null || info.output_cost_per_token != null;
-    const hasNonToken = NON_TOKEN_FIELDS.some((f) => info[f] != null);
-    if (!hasToken && !hasNonToken) continue;
+    const inputTokenRate =
+      typeof info.input_cost_per_token === "number" &&
+      Number.isFinite(info.input_cost_per_token) &&
+      info.input_cost_per_token >= 0
+        ? info.input_cost_per_token
+        : null;
+    const outputTokenRate =
+      typeof info.output_cost_per_token === "number" &&
+      Number.isFinite(info.output_cost_per_token) &&
+      info.output_cost_per_token >= 0
+        ? info.output_cost_per_token
+        : null;
+    const hasCompleteTokenPair = inputTokenRate !== null && outputTokenRate !== null;
+    const hasNonToken = NON_TOKEN_FIELDS.some((field) => {
+      const value = info[field];
+      return typeof value === "number" && Number.isFinite(value) && value >= 0;
+    });
+    // An absent token dimension is unknown, not free. Keep independently
+    // reported modality rates, but omit incomplete token pricing altogether.
+    if (!hasCompleteTokenPair && !hasNonToken) continue;
 
-    const inputCost = (info.input_cost_per_token || 0) * 1_000_000;
-    const outputCost = (info.output_cost_per_token || 0) * 1_000_000;
-
-    const entry: PricingEntry = {
-      input: Math.round(inputCost * 1000) / 1000,
-      output: Math.round(outputCost * 1000) / 1000,
-    };
+    const entry: PricingEntry = {};
+    if (inputTokenRate !== null && outputTokenRate !== null) {
+      entry.input = scaleTokenRateToPerMillion(inputTokenRate);
+      entry.output = scaleTokenRateToPerMillion(outputTokenRate);
+    }
     if (info.mode) entry.mode = info.mode;
 
-    if (info.cache_read_input_token_cost != null) {
-      entry.cached = Math.round(info.cache_read_input_token_cost * 1_000_000 * 1000) / 1000;
+    if (
+      typeof info.cache_read_input_token_cost === "number" &&
+      Number.isFinite(info.cache_read_input_token_cost) &&
+      info.cache_read_input_token_cost >= 0
+    ) {
+      entry.cached = scaleTokenRateToPerMillion(info.cache_read_input_token_cost);
     }
-    if (info.cache_creation_input_token_cost != null) {
-      entry.cache_creation =
-        Math.round(info.cache_creation_input_token_cost * 1_000_000 * 1000) / 1000;
+    if (
+      typeof info.cache_creation_input_token_cost === "number" &&
+      Number.isFinite(info.cache_creation_input_token_cost) &&
+      info.cache_creation_input_token_cost >= 0
+    ) {
+      entry.cache_creation = scaleTokenRateToPerMillion(info.cache_creation_input_token_cost);
     }
 
     for (const f of NON_TOKEN_FIELDS) {
       const v = info[f];
-      if (typeof v === "number" && Number.isFinite(v)) entry[f] = v;
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) entry[f] = v;
     }
 
     // Extract model name (strip provider prefix from key)

@@ -107,6 +107,42 @@ describe("transformToOmniRoute", () => {
     );
   });
 
+  test("does not turn a missing token dimension into a zero rate", () => {
+    const raw = {
+      "vendor/missing-output": {
+        input_cost_per_token: 0.000001,
+        litellm_provider: "vendor",
+        mode: "chat",
+      },
+      "vendor/missing-input": {
+        output_cost_per_token: 0.000002,
+        litellm_provider: "vendor",
+        mode: "chat",
+      },
+    };
+
+    const result = transformToOmniRoute(raw);
+
+    assert.deepEqual(result.vendor, undefined);
+  });
+
+  test("keeps modality-only pricing without inventing token rates", () => {
+    const raw = {
+      "openai/dall-e-3": {
+        mode: "image_generation",
+        output_cost_per_image: 0.04,
+        litellm_provider: "openai",
+      },
+    };
+
+    const result = transformToOmniRoute(raw);
+    const image = result.openai?.["dall-e-3"];
+
+    assert.equal(image?.output_cost_per_image, 0.04);
+    assert.equal("input" in (image ?? {}), false);
+    assert.equal("output" in (image ?? {}), false);
+  });
+
   test("includes cache pricing when available", () => {
     const raw = {
       "anthropic/claude-sonnet-4-20250514": {
@@ -210,7 +246,7 @@ describe("transformToOmniRoute", () => {
     assert.strictEqual(result.openai["gpt-4o-mini"].input, 0.15);
   });
 
-  test("rounds pricing to 3 decimal places", () => {
+  test("preserves reported token-rate precision without rounding paid rates to zero", () => {
     const raw = {
       "test/model": {
         input_cost_per_token: 0.00000033333,
@@ -222,9 +258,24 @@ describe("transformToOmniRoute", () => {
 
     const result = transformToOmniRoute(raw);
 
-    // 0.00000033333 * 1e6 = 0.33333 → rounded to 0.333
-    assert.strictEqual(result.openai.model.input, 0.333);
-    assert.strictEqual(result.openai.model.output, 0.667);
+    assert.strictEqual(result.openai.model.input, 0.33333);
+    assert.strictEqual(result.openai.model.output, 0.66666);
+  });
+
+  test("retains very small positive rates as paid pricing", () => {
+    const raw = {
+      "openai/low-cost-model": {
+        input_cost_per_token: 0.0000000001,
+        output_cost_per_token: 0.0000000002,
+        litellm_provider: "openai",
+        mode: "chat",
+      },
+    };
+
+    const result = transformToOmniRoute(raw);
+
+    assert.equal(result.openai["low-cost-model"].input, 0.0001);
+    assert.equal(result.openai["low-cost-model"].output, 0.0002);
   });
 });
 

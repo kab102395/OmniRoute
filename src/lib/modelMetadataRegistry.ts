@@ -336,6 +336,15 @@ function findInsensitive<T>(obj: Record<string, T> | null | undefined, key: stri
   return index.get(key.toLowerCase()) as T | undefined;
 }
 
+function extractNumericPricing(entry: Record<string, unknown>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(entry).filter(
+      (item): item is [string, number] =>
+        typeof item[1] === "number" && Number.isFinite(item[1]) && item[1] >= 0
+    )
+  );
+}
+
 function resolveCatalogPricing(
   provider: string | null,
   model: string | null,
@@ -360,16 +369,8 @@ function resolveCatalogPricing(
           model.includes("/") ? model.split("/").pop() || model : model
         );
       if (modelPricing && typeof modelPricing === "object") {
-        const input = modelPricing.input;
-        const output = modelPricing.output;
-        if (typeof input === "number" || typeof output === "number") {
-          const pricing: Record<string, number> = {};
-          if (typeof input === "number") pricing.input = input;
-          if (typeof output === "number") pricing.output = output;
-          if (typeof modelPricing.cached === "number") pricing.cached = modelPricing.cached;
-          if (typeof modelPricing.cache_creation === "number") {
-            pricing.cache_creation = modelPricing.cache_creation;
-          }
+        const pricing = extractNumericPricing(modelPricing);
+        if (Object.keys(pricing).length > 0) {
           const status = snapshot?.pricingSourceStatus;
           const fallbackStatus = status ? null : getSyncStatus();
           const retrievedAt = status
@@ -413,16 +414,8 @@ function resolveCatalogPricing(
           model.includes("/") ? model.split("/").pop() || model : model
         );
       if (modelPricing && typeof modelPricing === "object") {
-        const input = modelPricing.input;
-        const output = modelPricing.output;
-        if (typeof input === "number" || typeof output === "number") {
-          const pricing: Record<string, number> = {};
-          if (typeof input === "number") pricing.input = input;
-          if (typeof output === "number") pricing.output = output;
-          if (typeof modelPricing.cached === "number") pricing.cached = modelPricing.cached;
-          if (typeof modelPricing.cache_creation === "number") {
-            pricing.cache_creation = modelPricing.cache_creation;
-          }
+        const pricing = extractNumericPricing(modelPricing);
+        if (Object.keys(pricing).length > 0) {
           const status = snapshot?.pricingSourceStatus;
           const liteLlmStatus = status ? null : getLiteLlmPricingSyncStatus();
           const retrievedAt = status

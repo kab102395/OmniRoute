@@ -20,6 +20,7 @@ type CatalogPricing = {
   output?: number;
   cached?: number;
   cache_creation?: number;
+  output_cost_per_image?: number;
 };
 
 // #9364: resolveCatalogPricing() only consults models_dev_pricing and hardcoded
@@ -50,6 +51,7 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
     const synced: SyncedPricingByProvider = {
       openai: {
         "babbage-002": { input: 0.4, output: 0.4 },
+        "custom-image-rate": { output_cost_per_image: 0.04 },
       },
     };
     saveSyncedPricing(synced);
@@ -131,6 +133,24 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
     assert.equal(provenance.source.id, "models_dev.api_json");
     assert.equal(provenance.source.retrievedAt, "2026-10-12T10:00:00.000Z");
     assert.equal(provenance.source.stale, false);
+  });
+
+  it("surfaces modality pricing without inventing token rates", () => {
+    const entry = enrichCatalogModelEntry(
+      {
+        id: "openai/custom-image-rate",
+        owned_by: "openai",
+        root: "custom-image-rate",
+      },
+      undefined,
+      snapshot
+    );
+
+    assert.equal((entry.pricing as CatalogPricing).output_cost_per_image, 0.04);
+    assert.equal("input" in (entry.pricing as Record<string, unknown>), false);
+    assert.equal("output" in (entry.pricing as Record<string, unknown>), false);
+    const provenance = entry.pricing_provenance as { source: { id: string } };
+    assert.equal(provenance.source.id, "litellm.model_prices");
   });
 
   it("marks synchronized rates stale after the source sync TTL", () => {
