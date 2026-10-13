@@ -48,6 +48,23 @@ test("normalizeExecutorResult wraps bare Response and passes through rich result
   const rich = normalizeExecutorResult({ response: r, url: "u", headers: { a: "b" } });
   assert.equal(rich.url, "u");
   assert.equal(rich.headers.a, "b");
+  const attempts = normalizeExecutorResult({
+    response: r,
+    executionAttempts: [
+      {
+        index: 1,
+        endpointIndex: 0,
+        startedAt: "2026-01-01T00:00:00.000Z",
+        durationMs: 3,
+        statusCode: 200,
+        outcome: "response",
+        costAttribution: "unknown",
+        attemptSource: "executor_reported",
+      },
+    ],
+  });
+  assert.equal(attempts.executionAttempts.length, 1);
+  assert.equal(attempts.executionAttempts[0].statusCode, 200);
 });
 
 test("normalizeExecutorResult rejects malformed executor output", () => {

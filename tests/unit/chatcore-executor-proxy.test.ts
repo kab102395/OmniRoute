@@ -77,6 +77,60 @@ test("mode 'fallback' returns a distinct wrapper owning its own execute()", asyn
   assert.equal(typeof exec.execute, "function");
 });
 
+test("proxy fallback returns both native and fallback attempt receipts", async () => {
+  await upstreamProxyDb.upsertUpstreamProxyConfig({
+    providerId: "openai",
+    mode: "fallback",
+    enabled: true,
+  });
+  clearUpstreamProxyConfigCache("openai");
+  const native = await getExecutor("openai");
+  const fallback = await getExecutor("cliproxyapi");
+  const originalNativeExecute = native.execute;
+  const originalFallbackExecute = fallback.execute;
+  const attempt = {
+    index: 1,
+    endpointIndex: 0,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    durationMs: 8,
+    statusCode: 429,
+    outcome: "response" as const,
+    costAttribution: "unknown" as const,
+    attemptSource: "executor_reported" as const,
+  };
+
+  native.execute = async () => ({
+    response: new Response("native", { status: 429 }),
+    executionAttempts: [attempt],
+  });
+  fallback.execute = async () => ({
+    response: new Response("fallback", { status: 200 }),
+    executionAttempts: [{ ...attempt, statusCode: 200 }],
+  });
+
+  try {
+    const exec = await resolveExecutorWithProxy("openai");
+    const result = await exec.execute({
+      model: "gpt-4.1",
+      body: {},
+      stream: false,
+      credentials: { apiKey: "not-used" },
+    });
+    assert.equal(result.response.status, 200);
+    assert.deepEqual(
+      result.executionAttempts?.map((entry) => [entry.statusCode, entry.routeLeg]),
+      [
+        [429, "native"],
+        [200, "proxy_fallback"],
+      ]
+    );
+  } finally {
+    native.execute = originalNativeExecute;
+    fallback.execute = originalFallbackExecute;
+    clearUpstreamProxyConfigCache("openai");
+  }
+});
+
 // === Per-connection routing override (#6339) ===
 // The resolved connection's providerSpecificData.cliproxyapiMode === "claude-native"
 // opts THIS connection into the CLIProxyAPI executor regardless of the provider-level

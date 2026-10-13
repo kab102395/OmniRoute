@@ -24,6 +24,7 @@ export type RequestPipelinePayloads = {
     openai?: string[];
     client?: string[];
   };
+  executionAttempts?: Array<Record<string, unknown>>;
 };
 
 type RequestLogger = {
@@ -282,7 +283,11 @@ function compactPipelinePayloads(
       continue;
     }
 
-    result[key as keyof RequestPipelinePayloads] = value;
+    if (key === "executionAttempts" && Array.isArray(value)) {
+      result.executionAttempts = value as Array<Record<string, unknown>>;
+      continue;
+    }
+    (result as Record<string, unknown>)[key] = value;
   }
 
   return hasOwnValues(result) ? result : null;

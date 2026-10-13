@@ -317,7 +317,21 @@ export type ExecutorExecuteResult =
       headers?: Record<string, string>;
       transformedBody?: unknown;
       transport?: string;
+      executionAttempts?: ExecutorAttemptSummary[];
     };
+
+/** Credential-free receipt for one actual upstream fetch performed by BaseExecutor. */
+export type ExecutorAttemptSummary = {
+  index: number;
+  endpointIndex?: number;
+  startedAt?: string;
+  durationMs?: number;
+  statusCode: number | null;
+  outcome: "response" | "network_error";
+  costAttribution: "unknown";
+  attemptSource: "executor_reported" | "wrapper_observed";
+  routeLeg?: "native" | "proxy_fallback";
+};
 
 export class BaseExecutor {
   provider: string;
@@ -733,6 +747,7 @@ export class BaseExecutor {
     let lastError: unknown = null;
     let lastStatus = 0;
     let activeCredentials = credentials;
+    const executionAttempts: ExecutorAttemptSummary[] = [];
     // Track per-URL intra-retry attempts to avoid infinite loops
     const retryAttemptsByUrl: Record<number, number> = {};
 
@@ -957,9 +972,26 @@ export class BaseExecutor {
             ? { ...requestOptions, signal: combinedSignal }
             : requestOptions;
 
+          const startedMs = Date.now();
+          const attempt: ExecutorAttemptSummary = {
+            index: executionAttempts.length + 1,
+            endpointIndex: urlIndex,
+            startedAt: new Date(startedMs).toISOString(),
+            durationMs: 0,
+            statusCode: null,
+            outcome: "network_error",
+            costAttribution: "unknown",
+            attemptSource: "executor_reported",
+          };
+          executionAttempts.push(attempt);
           try {
-            return await fetch(requestUrl, optionsWithSignal);
+            const response = await fetch(requestUrl, optionsWithSignal);
+            attempt.durationMs = Math.max(0, Date.now() - startedMs);
+            attempt.statusCode = response.status;
+            attempt.outcome = "response";
+            return response;
           } finally {
+            attempt.durationMs = Math.max(0, Date.now() - startedMs);
             if (timeoutId) clearTimeout(timeoutId);
           }
         };
@@ -1736,7 +1768,13 @@ export class BaseExecutor {
           continue;
         }
 
-        return { response, url, headers: finalHeaders, transformedBody: serializedBody };
+        return {
+          response,
+          url,
+          headers: finalHeaders,
+          transformedBody: serializedBody,
+          executionAttempts,
+        };
       } catch (error) {
         // Distinguish timeout errors from other abort errors
         const err = error instanceof Error ? error : new Error(String(error));
@@ -1748,11 +1786,17 @@ export class BaseExecutor {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);
           continue;
         }
+        Object.assign(err, { executionAttempts: [...executionAttempts] });
         throw err;
       }
     }
 
-    throw lastError || new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`);
+    const terminalError =
+      lastError instanceof Error
+        ? lastError
+        : new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`);
+    Object.assign(terminalError, { executionAttempts: [...executionAttempts] });
+    throw terminalError;
   }
 }
 

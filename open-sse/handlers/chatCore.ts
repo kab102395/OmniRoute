@@ -1057,6 +1057,41 @@ export async function handleChatCore({
     (settings.call_log_pipeline_enabled === true ||
       settings.call_log_pipeline_enabled === "1" ||
       settings.call_log_pipeline_enabled === "true");
+  const executionAttemptReceipts: Array<Record<string, unknown>> = [];
+  let executionAttemptSequence = 0;
+  const recordExecutionAttempts = (
+    attempts: Array<Record<string, unknown>>,
+    connectionId?: string | null,
+    routeModel?: string | null
+  ) => {
+    if (attempts.length === 0) return;
+    executionAttemptReceipts.push(
+      ...attempts.map((attempt) => {
+        executionAttemptSequence += 1;
+        return {
+          ...attempt,
+          executorIndex: attempt.index,
+          index: executionAttemptSequence,
+          ...(connectionId ? { connectionId: connectionId.slice(0, 128) } : {}),
+          ...(routeModel ? { routeModel: routeModel.slice(0, 256) } : {}),
+        };
+      })
+    );
+    if (executionAttemptReceipts.length > 64) {
+      executionAttemptReceipts.splice(0, executionAttemptReceipts.length - 64);
+    }
+  };
+  const recordExecutionAttemptsFromError = (
+    error: unknown,
+    connectionId?: string | null,
+    routeModel?: string | null
+  ) => {
+    if (!error || typeof error !== "object") return;
+    const attempts = (error as { executionAttempts?: unknown }).executionAttempts;
+    if (Array.isArray(attempts)) {
+      recordExecutionAttempts(attempts as Array<Record<string, unknown>>, connectionId, routeModel);
+    }
+  };
   const capturePipelineStreamChunks =
     detailedLoggingEnabled && getCallLogPipelineCaptureStreamChunks();
   const skillRequestId = generateRequestId();
@@ -1102,6 +1137,7 @@ export async function handleChatCore({
       requestedModel,
       credentials,
       executionCredentials: () => lastExecutionCredentials,
+      getExecutionAttempts: () => executionAttemptReceipts,
       startTime,
       body,
       sourceFormat,
@@ -3220,6 +3256,7 @@ export async function handleChatCore({
                 streamController.signal
               );
               const res = normalizeExecutorResult(rawExecutorResult);
+              recordExecutionAttempts(res.executionAttempts, attemptConnectionId, modelToCall);
               trace("post_executor", { status: res?.response?.status });
 
               if (
@@ -3539,6 +3576,11 @@ export async function handleChatCore({
                           ),
                       });
                       const retryRes = normalizeExecutorResult(retryRaw);
+                      recordExecutionAttempts(
+                        retryRes.executionAttempts,
+                        attemptConnectionId,
+                        modelToCall
+                      );
                       const retryOk =
                         retryRes.response.status >= 200 && retryRes.response.status < 300;
                       if (retryOk && retryRes.response.body) {
@@ -3546,7 +3588,8 @@ export async function handleChatCore({
                       }
                       await retryRes.response.body?.cancel().catch(() => {});
                       return null;
-                    } catch {
+                    } catch (error) {
+                      recordExecutionAttemptsFromError(error, attemptConnectionId, modelToCall);
                       return null;
                     }
                   };
@@ -3616,6 +3659,7 @@ export async function handleChatCore({
                 _accountSemaphoreRelease: releaseAccountSemaphore,
               };
             } catch (error) {
+              recordExecutionAttemptsFromError(error, attemptConnectionId, modelToCall);
               releaseAccountSemaphore();
               throw error;
             }
@@ -4081,6 +4125,11 @@ export async function handleChatCore({
             })
           )
         );
+        recordExecutionAttempts(
+          retryResult.executionAttempts,
+          getExecutionConnectionId(getExecutionCredentials()),
+          retryModelId
+        );
 
         if (retryResult.response.ok) {
           providerResponse = retryResult.response;
@@ -4099,6 +4148,11 @@ export async function handleChatCore({
           upstreamErrorParsed = false; // Let it be parsed downstream
         }
       } catch (retryErr) {
+        recordExecutionAttemptsFromError(
+          retryErr,
+          getExecutionConnectionId(getExecutionCredentials()),
+          String(translatedBody.model || effectiveModel)
+        );
         if (isManagedLeaseFenceError(retryErr)) return managedLeaseFenceErrorResult(retryErr);
         // Refresh succeeded but the retry leg failed (network blip, AbortError,
         // executor throw). Don't swallow — the operator-visible signal "the user

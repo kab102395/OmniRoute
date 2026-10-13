@@ -123,10 +123,7 @@ export function getExecutorTimeoutMs(
     // Defensive backstop for direct callers: resolveConnectionTimeoutMs is the
     // gate (it rejects out-of-range values so the chain falls through); this
     // clamp only caps values a future caller could pass unvetted.
-    return Math.min(
-      Math.max(0, Math.floor(connectionTimeoutMs)),
-      MAX_PROVIDER_SPECIFIC_TIMEOUT_MS
-    );
+    return Math.min(Math.max(0, Math.floor(connectionTimeoutMs)), MAX_PROVIDER_SPECIFIC_TIMEOUT_MS);
   }
   const modelOverride = resolveModelTimeoutOverride(provider, model);
   if (modelOverride !== undefined) return modelOverride;
@@ -195,9 +192,20 @@ export function normalizeExecutorResult(result: unknown): {
   headers: Record<string, string>;
   transformedBody: unknown;
   transport?: string;
+  executionAttempts: Array<{
+    index: number;
+    endpointIndex?: number;
+    startedAt?: string;
+    durationMs?: number;
+    statusCode: number | null;
+    outcome: "response" | "network_error";
+    costAttribution: "unknown";
+    attemptSource: "executor_reported" | "wrapper_observed";
+    routeLeg?: "native" | "proxy_fallback";
+  }>;
 } {
   if (isResponseLike(result)) {
-    return { response: result, url: "", headers: {}, transformedBody: null };
+    return { response: result, url: "", headers: {}, transformedBody: null, executionAttempts: [] };
   }
   if (
     !result ||
@@ -213,6 +221,17 @@ export function normalizeExecutorResult(result: unknown): {
     headers?: Record<string, string>;
     transformedBody?: unknown;
     transport?: string;
+    executionAttempts?: Array<{
+      index: number;
+      endpointIndex?: number;
+      startedAt?: string;
+      durationMs?: number;
+      statusCode: number | null;
+      outcome: "response" | "network_error";
+      costAttribution: "unknown";
+      attemptSource: "executor_reported" | "wrapper_observed";
+      routeLeg?: "native" | "proxy_fallback";
+    }>;
   };
   return {
     response: normalized.response,
@@ -220,6 +239,9 @@ export function normalizeExecutorResult(result: unknown): {
     headers: normalized.headers || {},
     transformedBody: normalized.transformedBody ?? null,
     transport: normalized.transport,
+    executionAttempts: Array.isArray(normalized.executionAttempts)
+      ? normalized.executionAttempts
+      : [],
   };
 }
 

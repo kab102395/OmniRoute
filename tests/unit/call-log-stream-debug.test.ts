@@ -93,3 +93,35 @@ test("saveCallLog preserves partial streamChunks", async () => {
   assert.equal(detail.pipelinePayloads.streamChunks.openai, undefined);
   assert.equal(detail.pipelinePayloads.streamChunks.client, undefined);
 });
+
+test("saveCallLog persists attempt receipts without request-body logging", async () => {
+  const logId = "req_execution_attempt_receipt_1";
+  const executionAttempts = [
+    {
+      index: 1,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      durationMs: 24,
+      statusCode: 429,
+      outcome: "response",
+    },
+    {
+      index: 2,
+      startedAt: "2026-01-01T00:00:00.024Z",
+      durationMs: 15,
+      statusCode: 200,
+      outcome: "response",
+    },
+  ];
+
+  await callLogs.saveCallLog({
+    id: logId,
+    status: 200,
+    model: "test-model",
+    provider: "test-provider",
+    pipelinePayloads: { executionAttempts },
+  });
+
+  const detail = await callLogs.getCallLogById(logId);
+  assert.deepEqual(detail?.pipelinePayloads?.executionAttempts, executionAttempts);
+  assert.equal(detail?.pipelinePayloads?.providerRequest, undefined);
+});

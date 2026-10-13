@@ -180,17 +180,68 @@ export async function resolveExecutorWithProxy(
     upstreamExtraHeaders?: Record<string, string> | null;
   }) => {
     let result;
+    const failedNativeAttempts: Array<Record<string, unknown>> = [];
+    const fallbackWithPriorAttempts = async (priorAttempts: Array<Record<string, unknown>>) => {
+      const fallbackResult = await proxyExec.execute(input);
+      const mappedPrior = priorAttempts.map((attempt) => ({ ...attempt, routeLeg: "native" }));
+      const fallbackStatus =
+        fallbackResult instanceof Response ? fallbackResult.status : fallbackResult.response.status;
+      const fallbackAttempts =
+        !(fallbackResult instanceof Response) && Array.isArray(fallbackResult.executionAttempts)
+          ? fallbackResult.executionAttempts
+          : [
+              {
+                index: 1,
+                statusCode: fallbackStatus,
+                outcome: "response",
+                costAttribution: "unknown",
+                attemptSource: "wrapper_observed",
+              },
+            ];
+      if (fallbackResult instanceof Response) {
+        return {
+          response: fallbackResult,
+          executionAttempts: [
+            ...mappedPrior,
+            ...fallbackAttempts.map((attempt) => ({ ...attempt, routeLeg: "proxy_fallback" })),
+          ],
+        };
+      }
+      return {
+        ...fallbackResult,
+        executionAttempts: [
+          ...mappedPrior,
+          ...fallbackAttempts.map((attempt) => ({ ...attempt, routeLeg: "proxy_fallback" })),
+        ],
+      };
+    };
     try {
       result = await nativeExec.execute(input);
     } catch (err) {
+      const attempts = (err as { executionAttempts?: unknown }).executionAttempts;
+      if (Array.isArray(attempts)) {
+        failedNativeAttempts.push(...(attempts as Array<Record<string, unknown>>));
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       log?.info?.(
         "UPSTREAM_PROXY",
         `${prov} native error (${errMsg}), retrying via ${backendLabel}`
       );
       try {
-        return await proxyExec.execute(input);
+        return await fallbackWithPriorAttempts(failedNativeAttempts);
       } catch (proxyErr) {
+        const proxyAttempts = (proxyErr as { executionAttempts?: unknown }).executionAttempts;
+        if (Array.isArray(proxyAttempts)) {
+          Object.assign(proxyErr, {
+            executionAttempts: [
+              ...failedNativeAttempts.map((attempt) => ({ ...attempt, routeLeg: "native" })),
+              ...(proxyAttempts as Array<Record<string, unknown>>).map((attempt) => ({
+                ...attempt,
+                routeLeg: "proxy_fallback",
+              })),
+            ],
+          });
+        }
         const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
         log?.error?.("UPSTREAM_PROXY", `${prov} ${backendLabel} fallback also failed: ${proxyMsg}`);
         throw proxyErr;
@@ -205,8 +256,37 @@ export async function resolveExecutorWithProxy(
       `${prov} native failed (${result.response.status}), retrying via ${backendLabel}`
     );
     try {
-      return await proxyExec.execute(input);
+      const nativeAttempts = Array.isArray(result.executionAttempts)
+        ? result.executionAttempts
+        : [
+            {
+              index: 1,
+              statusCode: result.response.status,
+              outcome: "response",
+              costAttribution: "unknown",
+              attemptSource: "wrapper_observed",
+              routeLeg: "native",
+            },
+          ];
+      return await fallbackWithPriorAttempts(nativeAttempts);
     } catch (proxyErr) {
+      const proxyAttempts = (proxyErr as { executionAttempts?: unknown }).executionAttempts;
+      if (Array.isArray(proxyAttempts)) {
+        Object.assign(proxyErr, {
+          executionAttempts: [
+            ...(Array.isArray(result.executionAttempts)
+              ? (result.executionAttempts as Array<Record<string, unknown>>).map((attempt) => ({
+                  ...attempt,
+                  routeLeg: "native",
+                }))
+              : []),
+            ...(proxyAttempts as Array<Record<string, unknown>>).map((attempt) => ({
+              ...attempt,
+              routeLeg: "proxy_fallback",
+            })),
+          ],
+        });
+      }
       const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
       log?.error?.("UPSTREAM_PROXY", `${prov} ${backendLabel} fallback also failed: ${proxyMsg}`);
       throw proxyErr;

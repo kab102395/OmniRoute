@@ -1361,8 +1361,55 @@ test("BaseExecutor.execute returns response metadata and merges headers", async 
     assert.equal(result.headers["X-Trace-Id"], "trace-1");
     assert.equal(result.headers.Accept, "text/event-stream");
     assert.equal(captured.options.body.includes('"transformed":true'), true);
+    const executionAttempts = "executionAttempts" in result ? result.executionAttempts : undefined;
+    assert.equal(executionAttempts?.length, 1);
+    assert.equal(executionAttempts?.[0].statusCode, 200);
+    assert.equal("url" in (executionAttempts?.[0] ?? {}), false);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("BaseExecutor.execute records each retry without persisting its URL", async () => {
+  const executor = new TestExecutor();
+  const originalFetch = globalThis.fetch;
+  const originalMaxAttempts = BaseExecutor.RETRY_CONFIG.maxAttempts;
+  const originalDelayMs = BaseExecutor.RETRY_CONFIG.delayMs;
+  let calls = 0;
+  BaseExecutor.RETRY_CONFIG.maxAttempts = 1;
+  BaseExecutor.RETRY_CONFIG.delayMs = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("{}", { status: calls === 1 ? 429 : 200 });
+  };
+
+  try {
+    const result = await executor.execute({
+      model: "gpt-4.1",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "base-key" },
+    });
+    assert.equal(calls, 2);
+    assert.deepEqual(
+      ("executionAttempts" in result ? result.executionAttempts : undefined)?.map(
+        ({ index, statusCode, outcome }) => ({
+          index,
+          statusCode,
+          outcome,
+        })
+      ),
+      [
+        { index: 1, statusCode: 429, outcome: "response" },
+        { index: 2, statusCode: 200, outcome: "response" },
+      ]
+    );
+    const executionAttempts = "executionAttempts" in result ? result.executionAttempts : [];
+    assert.ok(executionAttempts.every((attempt) => !("url" in attempt)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    BaseExecutor.RETRY_CONFIG.maxAttempts = originalMaxAttempts;
+    BaseExecutor.RETRY_CONFIG.delayMs = originalDelayMs;
   }
 });
 
@@ -1434,6 +1481,18 @@ test("BaseExecutor.execute falls back to the next base URL after a transport err
       "https://fallback.example/v1/chat/completions",
     ]);
     assert.equal(result.url, "https://fallback.example/v1/chat/completions");
+    const executionAttempts = "executionAttempts" in result ? result.executionAttempts : [];
+    assert.deepEqual(
+      executionAttempts.map(({ statusCode, outcome, endpointIndex }) => ({
+        statusCode,
+        outcome,
+        endpointIndex,
+      })),
+      [
+        { statusCode: null, outcome: "network_error", endpointIndex: 0 },
+        { statusCode: 200, outcome: "response", endpointIndex: 1 },
+      ]
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1454,7 +1513,22 @@ test("BaseExecutor.execute throws the last error when all URLs fail", async () =
         stream: false,
         credentials: {},
       }),
-      /still down/
+      (
+        error: Error & { executionAttempts?: Array<{ outcome: string; endpointIndex?: number }> }
+      ) => {
+        assert.match(error.message, /still down/);
+        assert.deepEqual(
+          error.executionAttempts?.map(({ outcome, endpointIndex }) => ({
+            outcome,
+            endpointIndex,
+          })),
+          [
+            { outcome: "network_error", endpointIndex: 0 },
+            { outcome: "network_error", endpointIndex: 1 },
+          ]
+        );
+        return true;
+      }
     );
   } finally {
     globalThis.fetch = originalFetch;

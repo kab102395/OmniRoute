@@ -277,6 +277,7 @@ export type PersistAttemptLogsContext = {
    */
   videoContentRemoved?: boolean;
   odysseusTelemetry?: OdysseusTelemetry | null;
+  getExecutionAttempts?: () => Array<Record<string, unknown>>;
 };
 
 function toConnectionId(value: unknown): string | null {
@@ -476,6 +477,16 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
             : null,
         usage_source: usageTelemetry.usage_source,
       } satisfies OdysseusTelemetry,
+    };
+  }
+
+  const executionAttempts = ctx.getExecutionAttempts?.() ?? [];
+  if (executionAttempts.length > 0) {
+    // Keep compact execution receipts even when detailed request/response logging is off.
+    // No URLs, headers, bodies, credential material, or speculative charges are included.
+    pipelinePayloads = {
+      ...(pipelinePayloads ?? {}),
+      executionAttempts: executionAttempts.slice(-64),
     };
   }
 

@@ -526,6 +526,30 @@ test("omits encrypted reasoning split across captured SSE chunks", () => {
   assert.equal(storedChunks[0].includes('"summary":[]'), true);
 });
 
+test("preserves bounded execution-attempt receipts in the protected pipeline artifact", () => {
+  const protectedPipeline = protectPipelinePayloads({
+    executionAttempts: [
+      {
+        index: 1,
+        startedAt: "2026-01-01T00:00:00.000Z",
+        durationMs: 12,
+        statusCode: 429,
+        outcome: "response",
+      },
+    ],
+  });
+
+  assert.deepEqual(protectedPipeline?.executionAttempts, [
+    {
+      index: 1,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      durationMs: 12,
+      statusCode: 429,
+      outcome: "response",
+    },
+  ]);
+});
+
 test("wraps raw text payloads in JSON-safe objects", () => {
   const normalized = normalizePayloadForLog("event: ping\ndata: plain-text\n\n");
 
