@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it, before, after } from "node:test";
-import { enrichCatalogModelEntry } from "../../src/lib/modelMetadataRegistry.ts";
+import {
+  enrichCatalogModelEntry,
+  type CatalogEnrichmentSnapshot,
+} from "../../src/lib/modelMetadataRegistry.ts";
 import {
   saveModelsDevPricing,
   clearModelsDevPricing,
@@ -27,6 +30,19 @@ type CatalogPricing = {
 // defaults, then asserts enrichCatalogModelEntry() surfaces it.
 
 describe("catalog pricing LiteLLM gap (#9364)", () => {
+  const snapshot: CatalogEnrichmentSnapshot = {
+    modelsDevPricing: {
+      openai: {
+        "gpt-4o": { input: 2.5, output: 10 },
+      },
+    },
+    pricingSourceStatus: {
+      modelsDevRetrievedAt: "2026-10-12T10:00:00.000Z",
+      modelsDevTtlMs: 86_400_000,
+      liteLlmRetrievedAt: "2026-10-12T10:00:00.000Z",
+      liteLlmTtlMs: 86_400_000,
+    },
+  };
   before(() => {
     // Seed ONLY the LiteLLM namespace with a model that is absent from both
     // models.dev and hardcoded defaults (babbage-002 is not in default-pricing
@@ -58,24 +74,102 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
   });
 
   it("attaches LiteLLM-synced pricing onto catalog entries absent from models.dev and defaults", () => {
-    const entry = enrichCatalogModelEntry({
-      id: "openai/babbage-002",
-      owned_by: "openai",
-      root: "babbage-002",
-    });
+    const entry = enrichCatalogModelEntry(
+      {
+        id: "openai/babbage-002",
+        owned_by: "openai",
+        root: "babbage-002",
+      },
+      undefined,
+      snapshot
+    );
     assert.ok(entry.pricing, "pricing should resolve from pricing_synced (LiteLLM) layer");
     assert.equal((entry.pricing as CatalogPricing).input, 0.4);
     assert.equal((entry.pricing as CatalogPricing).output, 0.4);
+    const provenance = entry.pricing_provenance as {
+      state: string;
+      source: {
+        id: string;
+        retrievedAt: string;
+        cacheTtlMs: number;
+        ageMs: number;
+        stale: boolean;
+      };
+      routeModelId: string;
+      currency: string;
+      rateUnit: string;
+      authority: string;
+    };
+    assert.equal(provenance.state, "third_party_reported_pricing");
+    assert.equal(provenance.source.id, "litellm.model_prices");
+    assert.equal(provenance.source.retrievedAt, "2026-10-12T10:00:00.000Z");
+    assert.equal(provenance.source.cacheTtlMs, 86_400_000);
+    assert.ok(provenance.source.ageMs > 0);
+    assert.equal(provenance.source.stale, false);
+    assert.equal(provenance.routeModelId, "babbage-002");
+    assert.equal(provenance.currency, "USD");
   });
 
   it("still resolves models.dev pricing when present (precedence preserved)", () => {
+    const entry = enrichCatalogModelEntry(
+      {
+        id: "openai/gpt-4o",
+        owned_by: "openai",
+        root: "gpt-4o",
+      },
+      undefined,
+      snapshot
+    );
+    assert.ok(entry.pricing);
+    assert.equal((entry.pricing as CatalogPricing).input, 2.5);
+    assert.equal((entry.pricing as CatalogPricing).output, 10);
+    const provenance = entry.pricing_provenance as {
+      state: string;
+      source: { id: string; retrievedAt: string; stale: boolean };
+    };
+    assert.equal(provenance.state, "third_party_reported_pricing");
+    assert.equal(provenance.source.id, "models_dev.api_json");
+    assert.equal(provenance.source.retrievedAt, "2026-10-12T10:00:00.000Z");
+    assert.equal(provenance.source.stale, false);
+  });
+
+  it("marks synchronized rates stale after the source sync TTL", () => {
+    const staleSnapshot: CatalogEnrichmentSnapshot = {
+      modelsDevPricing: {},
+      pricingSourceStatus: {
+        modelsDevRetrievedAt: "2020-01-01T00:00:00.000Z",
+        modelsDevTtlMs: 60_000,
+        liteLlmRetrievedAt: "2020-01-01T00:00:00.000Z",
+        liteLlmTtlMs: 60_000,
+      },
+    };
+    const entry = enrichCatalogModelEntry(
+      {
+        id: "openai/babbage-002",
+        owned_by: "openai",
+        root: "babbage-002",
+      },
+      undefined,
+      staleSnapshot
+    );
+    const provenance = entry.pricing_provenance as { source: { stale: boolean } };
+    assert.equal(provenance.source.stale, true);
+  });
+
+  it("does not imply source or freshness for a pre-populated catalog price", () => {
     const entry = enrichCatalogModelEntry({
       id: "openai/gpt-4o",
       owned_by: "openai",
       root: "gpt-4o",
+      pricing: { input: 2.5, output: 10 },
     });
-    assert.ok(entry.pricing);
-    assert.equal((entry.pricing as CatalogPricing).input, 2.5);
-    assert.equal((entry.pricing as CatalogPricing).output, 10);
+    const provenance = entry.pricing_provenance as {
+      state: string;
+      source: { id: string; retrievedAt: string | null; stale: boolean | null };
+    };
+    assert.equal(provenance.state, "unverified_pricing");
+    assert.equal(provenance.source.id, "catalog_entry.unattributed");
+    assert.equal(provenance.source.retrievedAt, null);
+    assert.equal(provenance.source.stale, null);
   });
 });

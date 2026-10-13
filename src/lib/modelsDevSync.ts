@@ -55,6 +55,7 @@ export type {
 interface SyncStatus {
   enabled: boolean;
   lastSync: string | null;
+  sourceRetrievedAt: string | null;
   lastSyncModelCount: number;
   lastSyncCapabilityCount: number;
   nextSync: string | null;
@@ -110,6 +111,7 @@ let activeSyncAbortController: AbortController | null = null;
 let activeSyncPromise: Promise<SyncResult> | null = null;
 let activePeriodicSyncToken: { stopped: boolean } | null = null;
 let lastSyncTime: string | null = null;
+let sourceRetrievedAt: string | null = null;
 let lastSyncModelCount = 0;
 let lastSyncCapabilityCount = 0;
 let activeSyncIntervalMs = SYNC_INTERVAL_MS;
@@ -119,6 +121,52 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 let cachedCapabilities: CapabilitiesByProvider | null = null;
 let cachedCapabilitiesLoadedAll = false;
 const MODELS_DEV_ABORT_ERROR = "AbortError";
+const SYNC_STATUS_NAMESPACE = "models_dev_sync_status";
+const SYNC_STATUS_KEY = "last_sync";
+
+function readPersistedSyncStatus(): {
+  lastSync: string;
+  sourceRetrievedAt: string;
+  modelCount: number;
+  capabilityCount: number;
+} | null {
+  const row = getDbInstance()
+    .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
+    .get(SYNC_STATUS_NAMESPACE, SYNC_STATUS_KEY) as { value?: unknown } | undefined;
+  if (typeof row?.value !== "string") return null;
+  try {
+    const parsed = JSON.parse(row.value) as Record<string, unknown>;
+    if (typeof parsed.lastSync !== "string") return null;
+    return {
+      lastSync: parsed.lastSync,
+      sourceRetrievedAt:
+        typeof parsed.sourceRetrievedAt === "string" ? parsed.sourceRetrievedAt : parsed.lastSync,
+      modelCount: typeof parsed.modelCount === "number" ? parsed.modelCount : 0,
+      capabilityCount: typeof parsed.capabilityCount === "number" ? parsed.capabilityCount : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedSyncStatus(): void {
+  if (!lastSyncTime || !sourceRetrievedAt) return;
+  getDbInstance()
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) " +
+        "ON CONFLICT(namespace, key) DO UPDATE SET value = excluded.value"
+    )
+    .run(
+      SYNC_STATUS_NAMESPACE,
+      SYNC_STATUS_KEY,
+      JSON.stringify({
+        lastSync: lastSyncTime,
+        sourceRetrievedAt,
+        modelCount: lastSyncModelCount,
+        capabilityCount: lastSyncCapabilityCount,
+      })
+    );
+}
 
 function createAbortError(): Error {
   const error = new Error("models.dev sync aborted");
@@ -605,8 +653,10 @@ export async function syncModelsDev(opts?: {
           saveModelsDevCapabilities(capabilities);
         }
         lastSyncTime = new Date().toISOString();
+        sourceRetrievedAt = cacheTime > 0 ? new Date(cacheTime).toISOString() : lastSyncTime;
         lastSyncModelCount = modelCount;
         lastSyncCapabilityCount = capabilityCount;
+        writePersistedSyncStatus();
       }
 
       return {
@@ -746,14 +796,18 @@ export function stopPeriodicSync(): void {
 export function getSyncStatus(): SyncStatus {
   // If the sync timer is active, it's enabled.
   const enabled = syncTimer !== null;
+  const persisted = lastSyncTime === null ? readPersistedSyncStatus() : null;
+  const effectiveLastSync = lastSyncTime ?? persisted?.lastSync ?? null;
   return {
     enabled,
-    lastSync: lastSyncTime,
-    lastSyncModelCount,
-    lastSyncCapabilityCount,
+    lastSync: effectiveLastSync,
+    sourceRetrievedAt: sourceRetrievedAt ?? persisted?.sourceRetrievedAt ?? null,
+    lastSyncModelCount: lastSyncTime !== null ? lastSyncModelCount : (persisted?.modelCount ?? 0),
+    lastSyncCapabilityCount:
+      lastSyncTime !== null ? lastSyncCapabilityCount : (persisted?.capabilityCount ?? 0),
     nextSync:
-      syncTimer && lastSyncTime
-        ? new Date(new Date(lastSyncTime).getTime() + activeSyncIntervalMs).toISOString()
+      syncTimer && effectiveLastSync
+        ? new Date(new Date(effectiveLastSync).getTime() + activeSyncIntervalMs).toISOString()
         : null,
     intervalMs: activeSyncIntervalMs,
   };

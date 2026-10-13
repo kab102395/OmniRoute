@@ -68,7 +68,12 @@ import {
   type CatalogEnrichmentSnapshot,
 } from "@/lib/modelMetadataRegistry";
 import { createModelCapabilityResolutionSnapshot } from "@/lib/modelCapabilityResolutionSnapshot";
-import { getModelsDevPricing, getSyncedCapability } from "@/lib/modelsDevSync";
+import {
+  getModelsDevPricing,
+  getSyncedCapability,
+  getSyncStatus as getModelsDevSyncStatus,
+} from "@/lib/modelsDevSync";
+import { getSyncStatus as getLiteLlmPricingSyncStatus } from "@/lib/pricingSync";
 import { getModelSpec } from "@/shared/constants/modelSpecs";
 import { classifyModelSupportedEndpoints } from "@/shared/constants/modelSupportedEndpoints";
 import { getModelsCatalogPrefixMode } from "@/shared/utils/featureFlags";
@@ -2068,8 +2073,16 @@ async function buildUnifiedModelsResponseCore(
       } catch {
         // Pricing lookup is optional; hardcoded defaults still enrich the response.
       }
+      const modelsDevStatus = getModelsDevSyncStatus();
+      const liteLlmPricingStatus = getLiteLlmPricingSyncStatus();
       enrichmentSnapshot = {
         modelsDevPricing,
+        pricingSourceStatus: {
+          modelsDevRetrievedAt: modelsDevStatus.sourceRetrievedAt,
+          modelsDevTtlMs: modelsDevStatus.intervalMs,
+          liteLlmRetrievedAt: liteLlmPricingStatus.lastSync,
+          liteLlmTtlMs: liteLlmPricingStatus.intervalMs,
+        },
         capabilityResolutionSnapshot,
         providerNodeIdsByPrefix: providerNodeIdByPrefix,
       };

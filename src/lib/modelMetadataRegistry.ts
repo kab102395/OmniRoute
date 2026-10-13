@@ -23,7 +23,7 @@ import {
   getModelsDevPricing,
   type PricingByProvider,
 } from "@/lib/modelsDevSync";
-import { getSyncedPricing } from "@/lib/pricingSync";
+import { getSyncedPricing, getSyncStatus as getLiteLlmPricingSyncStatus } from "@/lib/pricingSync";
 import { getPricingForModel as getDefaultPricingForModel } from "@/shared/constants/pricing";
 import { getDeepseekPricingEvidence } from "@/lib/catalog/deepseekPricing";
 import {
@@ -41,6 +41,12 @@ type JsonRecord = Record<string, unknown>;
 
 export interface CatalogEnrichmentSnapshot {
   modelsDevPricing: PricingByProvider | null;
+  pricingSourceStatus?: {
+    modelsDevRetrievedAt: string | null;
+    modelsDevTtlMs: number;
+    liteLlmRetrievedAt: string | null;
+    liteLlmTtlMs: number;
+  };
   providerNodeIdsByPrefix?: Readonly<Record<string, string>>;
   /** #9147: build-local bulk load of synced capabilities + token/context overrides
    * so per-entry enrichment never hits SQLite again (see catalogResponse.ts). */
@@ -334,7 +340,7 @@ function resolveCatalogPricing(
   provider: string | null,
   model: string | null,
   snapshot?: CatalogEnrichmentSnapshot
-): Record<string, number> | null {
+): { pricing: Record<string, number>; provenance: Record<string, unknown> } | null {
   if (!provider || !model) return null;
 
   // Prefer models.dev synced pricing when present; fall back to hardcoded defaults.
@@ -364,7 +370,22 @@ function resolveCatalogPricing(
           if (typeof modelPricing.cache_creation === "number") {
             pricing.cache_creation = modelPricing.cache_creation;
           }
-          return pricing;
+          const status = snapshot?.pricingSourceStatus;
+          const fallbackStatus = status ? null : getSyncStatus();
+          const retrievedAt = status
+            ? status.modelsDevRetrievedAt
+            : (fallbackStatus?.sourceRetrievedAt ?? null);
+          const ttlMs = status?.modelsDevTtlMs ?? fallbackStatus?.intervalMs ?? 0;
+          return {
+            pricing,
+            provenance: buildSyncedPricingProvenance(
+              "models.dev",
+              "models_dev.api_json",
+              retrievedAt,
+              ttlMs,
+              model
+            ),
+          };
         }
       }
     }
@@ -402,7 +423,22 @@ function resolveCatalogPricing(
           if (typeof modelPricing.cache_creation === "number") {
             pricing.cache_creation = modelPricing.cache_creation;
           }
-          return pricing;
+          const status = snapshot?.pricingSourceStatus;
+          const liteLlmStatus = status ? null : getLiteLlmPricingSyncStatus();
+          const retrievedAt = status
+            ? status.liteLlmRetrievedAt
+            : (liteLlmStatus?.lastSync ?? null);
+          const ttlMs = status?.liteLlmTtlMs ?? liteLlmStatus?.intervalMs ?? 0;
+          return {
+            pricing,
+            provenance: buildSyncedPricingProvenance(
+              "LiteLLM",
+              "litellm.model_prices",
+              retrievedAt,
+              ttlMs,
+              model
+            ),
+          };
         }
       }
     }
@@ -413,12 +449,52 @@ function resolveCatalogPricing(
   try {
     const defaults = getDefaultPricingForModel(provider, model) as Record<string, number> | null;
     if (defaults && (typeof defaults.input === "number" || typeof defaults.output === "number")) {
-      return defaults;
+      return {
+        pricing: defaults,
+        provenance: {
+          state: "estimated_pricing",
+          source: {
+            id: "omniroute.static_pricing",
+            retrievedAt: null,
+            stale: null,
+          },
+          routeModelId: model,
+          currency: "USD",
+          rateUnit: "Source-native USD units; token rates use USD / 1M tokens",
+          authority: "OmniRoute-maintained estimate; not provider billing evidence",
+        },
+      };
     }
   } catch {
     // ignore
   }
   return null;
+}
+
+function buildSyncedPricingProvenance(
+  providerName: string,
+  sourceId: string,
+  retrievedAt: string | null,
+  ttlMs: number,
+  modelId: string
+): Record<string, unknown> {
+  const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
+  const validRetrievedAt = Number.isFinite(retrievedAtMs);
+  const ageMs = validRetrievedAt ? Math.max(0, Date.now() - retrievedAtMs) : null;
+  return {
+    state: "third_party_reported_pricing",
+    source: {
+      id: sourceId,
+      retrievedAt: validRetrievedAt ? retrievedAt : null,
+      cacheTtlMs: ttlMs,
+      ageMs,
+      stale: validRetrievedAt ? ageMs! > ttlMs : null,
+    },
+    routeModelId: modelId,
+    currency: "USD",
+    rateUnit: "Source-native USD units; token rates use USD / 1M tokens",
+    authority: `${providerName} catalog metadata; not provider-authenticated billing evidence`,
+  };
 }
 
 export function enrichCatalogModelEntry<T extends JsonRecord>(
@@ -640,8 +716,19 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   }
 
   if (nextEntry.pricing == null && nextEntry.pricing_provenance == null) {
-    const pricing = resolveCatalogPricing(provider, model, snapshot);
-    if (pricing) nextEntry.pricing = pricing;
+    const resolved = resolveCatalogPricing(provider, model, snapshot);
+    if (resolved) {
+      nextEntry.pricing = resolved.pricing;
+      nextEntry.pricing_provenance = resolved.provenance;
+    }
+  } else if (nextEntry.pricing != null && nextEntry.pricing_provenance == null) {
+    nextEntry.pricing_provenance = {
+      state: "unverified_pricing",
+      routeModelId: model,
+      currency: "USD",
+      source: { id: "catalog_entry.unattributed", retrievedAt: null, stale: null },
+      authority: "The catalog contains rates, but their source and freshness are unavailable",
+    };
   }
 
   return nextEntry as T;

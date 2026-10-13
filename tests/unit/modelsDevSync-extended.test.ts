@@ -484,7 +484,14 @@ test.describe("modelsDevSync-extended", { concurrency: 1 }, async () => {
     assert.ok(modelsDev.getModelsDevPricing().anthropic["claude-sonnet-4-20250514"]);
     assert.ok(modelsDev.getSyncedCapabilities().openai["gpt-4o"]);
     assert.ok(modelsDev.getSyncStatus().lastSync);
+    assert.ok(modelsDev.getSyncStatus().sourceRetrievedAt);
     assert.ok(modelsDev.getSyncStatus().lastSyncModelCount > 0);
+    const statusReader = await importFresh("sync-status-reader");
+    assert.equal(statusReader.getSyncStatus().lastSync, modelsDev.getSyncStatus().lastSync);
+    assert.equal(
+      statusReader.getSyncStatus().sourceRetrievedAt,
+      modelsDev.getSyncStatus().sourceRetrievedAt
+    );
 
     const failing = await importFresh("sync-failure");
     globalThis.fetch = async () => {
