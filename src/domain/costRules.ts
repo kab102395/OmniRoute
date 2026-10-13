@@ -13,6 +13,7 @@ import {
   deleteAllCostData,
   deleteBudget as dbDeleteBudget,
   deleteCostEntries,
+  hasUnknownCostEntries,
   loadAllBudgets,
   loadBudget,
   loadCostEntries,
@@ -20,6 +21,7 @@ import {
   loadCostTotal,
   saveBudget,
   saveBudgetResetLog,
+  saveUnknownCostEntry,
 } from "../lib/db/domainState";
 import {
   discardSpendBatchEntries,
@@ -58,6 +60,7 @@ interface NormalizedBudgetConfig {
 interface CostEntry {
   cost: number;
   timestamp: number;
+  known?: boolean;
 }
 
 interface BudgetWindow {
@@ -115,13 +118,13 @@ function toCostEntries(value: unknown): CostEntry[] {
     const cost = toNumber(record.cost, Number.NaN);
     const timestamp = toNumber(record.timestamp, Number.NaN);
     if (!Number.isFinite(cost) || !Number.isFinite(timestamp)) continue;
-    entries.push({ cost, timestamp });
+    entries.push({ cost, timestamp, known: record.cost_known !== 0 });
   }
   return entries;
 }
 
 function sumEntries(entries: CostEntry[]): number {
-  return entries.reduce((sum, entry) => sum + entry.cost, 0);
+  return entries.reduce((sum, entry) => sum + (entry.known !== false ? entry.cost : 0), 0);
 }
 
 function normalizeResetInterval(value: unknown): BudgetResetInterval {
@@ -404,6 +407,15 @@ export function recordCost(apiKeyId: string, cost: number): void {
   }
 }
 
+/** Persist uncertainty so a configured monetary budget cannot silently ignore it. */
+export function recordUnknownCost(apiKeyId: string): void {
+  try {
+    saveUnknownCostEntry(apiKeyId, Date.now());
+  } catch {
+    // Non-critical for the completed response; an unresolved amount is not a cost of zero.
+  }
+}
+
 /**
  * Sync all budgets against the current clock so overdue resets get persisted.
  */
@@ -457,6 +469,24 @@ export function checkBudget(apiKeyId: string, additionalCost = 0) {
   const periodUsed = getBudgetWindowTotal(apiKeyId, window.periodStartAt);
   const projectedTotal = periodUsed + additionalCost;
   const activeLimitUsd = getActiveBudgetLimit(budget);
+  if (activeLimitUsd > 0 && hasUnknownCostEntries(apiKeyId, window.periodStartAt)) {
+    return {
+      allowed: false,
+      reason:
+        "USD budget cannot be safely enforced because one or more requests in this period have unknown cost",
+      dailyUsed: periodUsed,
+      dailyLimit: activeLimitUsd,
+      warningReached: true,
+      remaining: Math.max(activeLimitUsd - projectedTotal, 0),
+      periodUsed,
+      activeLimitUsd,
+      resetInterval: budget.resetInterval,
+      resetTime: budget.resetTime,
+      budgetResetAt: window.nextResetAt,
+      lastBudgetResetAt: window.periodStartAt,
+      periodStartAt: window.periodStartAt,
+    };
+  }
   const warningReached =
     activeLimitUsd > 0 && projectedTotal >= activeLimitUsd * budget.warningThreshold;
   const remaining = Math.max(activeLimitUsd - projectedTotal, 0);

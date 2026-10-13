@@ -307,7 +307,7 @@ import { ensureEngineBreakdown } from "../services/compression/engineBreakdown.t
 import { handleBypassRequest } from "../utils/bypassHandler.ts";
 import { saveRequestUsage, trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import { finalizePendingScope, updatePendingScope } from "@/lib/usage/pendingRequestScope";
-import { recordCost } from "@/domain/costRules";
+import { recordCost, recordUnknownCost } from "@/domain/costRules";
 import { calculateCost, calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import {
   buildClaudePassthroughToolNameMap,
@@ -5366,6 +5366,8 @@ export async function handleChatCore({
       });
       if (apiKeyInfo?.id && estimatedCost > 0) {
         recordCost(apiKeyInfo.id, estimatedCost);
+      } else if (apiKeyInfo?.id && ["unknown", "usage_only"].includes(accounting.kind)) {
+        recordUnknownCost(apiKeyInfo.id);
       }
       log?.warn?.(
         "GUARDRAIL",
@@ -5505,6 +5507,8 @@ export async function handleChatCore({
     });
     if (apiKeyInfo?.id && estimatedCost > 0) {
       recordCost(apiKeyInfo.id, estimatedCost);
+    } else if (apiKeyInfo?.id && ["unknown", "usage_only"].includes(accounting.kind)) {
+      recordUnknownCost(apiKeyInfo.id);
     }
 
     // === Quota Share POST-hook (B/F7) — fire-and-forget, fail-open ===
@@ -5939,8 +5943,10 @@ export async function handleChatCore({
       model: streamModel,
       streamUsage,
       serviceTier: effectiveServiceTier,
-      calculateCost,
+      calculateCostWithEvidence,
+      classifyCostAccounting,
       recordCost,
+      recordUnknownCost,
     });
 
     // === Quota Share POST-hook streaming (B/F7) — fire-and-forget, fail-open ===

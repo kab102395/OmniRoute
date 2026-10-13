@@ -90,6 +90,19 @@ test("checkBudget reports warning and blocks when projected spend exceeds the da
   assert.match(denied.reason, /Daily budget exceeded/);
 });
 
+test("checkBudget fails closed after a request with unknown monetary cost", () => {
+  costRules.setBudget("key-unknown-cost", { dailyLimitUsd: 10 });
+  costRules.recordUnknownCost("key-unknown-cost");
+
+  const denied = costRules.checkBudget("key-unknown-cost");
+  assert.equal(denied.allowed, false);
+  assert.match(denied.reason, /unknown cost/);
+  assert.equal(denied.dailyUsed, 0, "unknown cost is not fabricated as a numeric amount");
+
+  costRules.resetCostData("key-unknown-cost");
+  assert.equal(costRules.checkBudget("key-unknown-cost").allowed, true);
+});
+
 test("getDailyTotal and getCostSummary split daily and monthly totals correctly", () => {
   const OriginalDate = global.Date;
   const mockNow = Date.UTC(2026, 4, 15, 12, 0, 0); // May 15, 2026

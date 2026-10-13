@@ -373,11 +373,41 @@ export function deleteBudget(apiKeyId: string) {
 export function saveCostEntry(apiKeyId: string, cost: number, timestamp = Date.now()) {
   ensureBudgetSchema();
   const db = getDbInstance();
-  db.prepare("INSERT INTO domain_cost_history (api_key_id, cost, timestamp) VALUES (?, ?, ?)").run(
-    apiKeyId,
-    cost,
-    timestamp
-  );
+  db.prepare(
+    "INSERT INTO domain_cost_history (api_key_id, cost, timestamp, cost_known) VALUES (?, ?, ?, 1)"
+  ).run(apiKeyId, cost, timestamp);
+}
+
+/** Record a billable request whose amount could not be established. */
+export function saveUnknownCostEntry(apiKeyId: string, timestamp = Date.now()) {
+  ensureBudgetSchema();
+  const db = getDbInstance();
+  db.prepare(
+    "INSERT INTO domain_cost_history (api_key_id, cost, timestamp, cost_known) VALUES (?, 0, ?, 0)"
+  ).run(apiKeyId, timestamp);
+}
+
+/** Whether a request with unknown monetary amount occurred in the selected budget window. */
+export function hasUnknownCostEntries(
+  apiKeyId: string,
+  sinceTimestamp: number,
+  untilTimestamp?: number
+): boolean {
+  ensureBudgetSchema();
+  const db = getDbInstance();
+  const row =
+    untilTimestamp === undefined
+      ? db
+          .prepare(
+            "SELECT 1 AS found FROM domain_cost_history WHERE api_key_id = ? AND timestamp >= ? AND cost_known = 0 LIMIT 1"
+          )
+          .get(apiKeyId, sinceTimestamp)
+      : db
+          .prepare(
+            "SELECT 1 AS found FROM domain_cost_history WHERE api_key_id = ? AND timestamp >= ? AND timestamp < ? AND cost_known = 0 LIMIT 1"
+          )
+          .get(apiKeyId, sinceTimestamp, untilTimestamp);
+  return row !== undefined;
 }
 
 export function batchSaveCostEntries(
@@ -423,7 +453,7 @@ export function loadCostEntries(apiKeyId: string, sinceTimestamp: number) {
   const db = getDbInstance();
   return db
     .prepare(
-      "SELECT cost, timestamp FROM domain_cost_history WHERE api_key_id = ? AND timestamp >= ? ORDER BY timestamp"
+      "SELECT cost, timestamp, cost_known FROM domain_cost_history WHERE api_key_id = ? AND timestamp >= ? ORDER BY timestamp"
     )
     .all(apiKeyId, sinceTimestamp);
 }
@@ -444,7 +474,7 @@ export function loadCostEntriesInRange(
   const db = getDbInstance();
   return db
     .prepare(
-      `SELECT cost, timestamp
+      `SELECT cost, timestamp, cost_known
        FROM domain_cost_history
        WHERE api_key_id = ? AND timestamp >= ? AND timestamp < ?
        ORDER BY timestamp`
