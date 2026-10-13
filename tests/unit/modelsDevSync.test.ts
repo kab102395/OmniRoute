@@ -5,7 +5,7 @@
  * DB save/retrieve, and resolution order.
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   transformModelsDevToPricing,
@@ -13,6 +13,8 @@ import {
   mapProviderId,
   fetchModelsDev,
 } from "../../src/lib/modelsDevSync.ts";
+import { MODELS_DEV_PROVIDER_MAP } from "../../src/lib/modelsDevSync/transform.ts";
+import { REGISTRY } from "../../open-sse/config/providerRegistry.ts";
 
 // ─── Mock data ───────────────────────────────────────────
 
@@ -390,6 +392,19 @@ describe("modelsDevSync — transformModelsDevToCapabilities", () => {
 });
 
 describe("modelsDevSync — mapProviderId", () => {
+  it("maps metadata only to registered provider IDs or aliases", () => {
+    const knownProviderKeys = new Set(
+      Object.entries(REGISTRY).flatMap(([id, entry]) => [id, entry.alias].filter(Boolean))
+    );
+    const unknownTargets = Object.entries(MODELS_DEV_PROVIDER_MAP).flatMap(([source, targets]) =>
+      targets
+        .filter((target) => !knownProviderKeys.has(target))
+        .map((target) => `${source} -> ${target}`)
+    );
+
+    assert.deepEqual(unknownTargets, []);
+  });
+
   it("maps openai to [openai, cx]", () => {
     assert.deepEqual(mapProviderId("openai"), ["openai", "cx"]);
   });

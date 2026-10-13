@@ -4219,11 +4219,6 @@
       "count": 2
     }
   },
-  "tests/unit/modelsDevSync.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
-    }
-  },
   "tests/unit/moderations-handler.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 7
