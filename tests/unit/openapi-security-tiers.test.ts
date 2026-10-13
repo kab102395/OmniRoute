@@ -148,7 +148,11 @@ test("call-log detail contract exposes persisted execution attempt accounting", 
   );
   assert.match(
     completionOperation?.responses?.["200"]?.headers?.["X-OmniRoute-Request-Id"]?.description ?? "",
-    /call-log ID on non-streaming responses/i
+    /same ID is persisted with the completed execution receipt/i
+  );
+  assert.match(
+    detail?.properties?.id?.description ?? "",
+    /completed non-streaming and streaming responses/i
   );
 });
 

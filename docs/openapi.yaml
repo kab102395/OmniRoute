@@ -1717,7 +1717,10 @@ paths:
             X-OmniRoute-Request-Id:
               schema:
                 type: string
-              description: Successful attempt's call-log ID on non-streaming responses; initial stream correlation ID on streaming responses.
+              description: >-
+                Call-log ID for non-streaming responses and correlation ID for streaming responses.
+                On streams, the same ID is persisted with the completed execution receipt after the
+                stream finishes.
             X-OmniRoute-Provider-Request-Id:
               schema:
                 type: string
@@ -13789,7 +13792,7 @@ components:
       properties:
         id:
           type: string
-          description: Matches X-OmniRoute-Request-Id on a non-streaming completion response.
+          description: Matches X-OmniRoute-Request-Id on completed non-streaming and streaming responses.
         timestamp:
           type: string
           format: date-time
