@@ -96,6 +96,8 @@ export function classifyCostAccounting(args: {
   model: string | null | undefined;
   usage: Record<string, unknown> | null | undefined;
   calculatedCostUsd: number | null | undefined;
+  /** True only when OmniRoute has complete, valid rates for every billed dimension. */
+  calculatedCostKnown?: boolean;
   pricingEvidence?: import("./costCalculator").CostPricingEvidence | null;
 }): CostAccountingFacts {
   const ticks = args.usage?.cost_in_usd_ticks;
@@ -144,7 +146,11 @@ export function classifyCostAccounting(args: {
   }
 
   const calculatedCostUsd = Number(args.calculatedCostUsd);
-  if (Number.isFinite(calculatedCostUsd) && calculatedCostUsd > 0) {
+  if (
+    Number.isFinite(calculatedCostUsd) &&
+    calculatedCostUsd >= 0 &&
+    (calculatedCostUsd > 0 || args.calculatedCostKnown === true)
+  ) {
     const pricingSource = args.pricingEvidence?.source;
     const source =
       pricingSource === "modelsDev"

@@ -28,6 +28,7 @@ export type RecordNonStreamingUsageStatsContext = {
   isCombo: boolean;
   comboStrategy: string | null | undefined;
   endpoint?: string | null | undefined;
+  requestId?: string | null | undefined;
 };
 
 function logUsageTrace(
@@ -43,6 +44,7 @@ function persistUsageRow(usage: object, ctx: RecordNonStreamingUsageStatsContext
   const { provider, connectionId, model, startTime, apiKeyInfo, effectiveServiceTier } = ctx;
   saveRequestUsage({
     provider: provider || "unknown",
+    requestId: ctx.requestId,
     model: model || "unknown",
     tokens: usage,
     status: "200",

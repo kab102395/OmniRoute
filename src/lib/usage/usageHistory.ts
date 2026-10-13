@@ -366,7 +366,10 @@ export function trackPendingRequest(
       pendingRequests.details[connectionId][modelKey].push(newDetail);
       pendingById.set(newDetail.id, newDetail);
       if (normalizedMetadata.correlationId) {
-        pendingIdByCorrelation.set(normalizedMetadata.correlationId, { id: newDetail.id, touchedAt: now });
+        pendingIdByCorrelation.set(normalizedMetadata.correlationId, {
+          id: newDetail.id,
+          touchedAt: now,
+        });
       }
       return newDetail.id;
     } else if (!started && nextCount >= 0) {
@@ -660,6 +663,10 @@ export async function getUsageDb(sinceIso?: string | null, limit?: number, curso
  * `./tokenAccounting` accept both and extract the right fields.
  */
 export interface UsageEntry {
+  /** Stable per-upstream-attempt identifier, distinct across retries. */
+  requestId?: string | null;
+  /** Per-request pricing and billing facts, captured after execution. */
+  accounting?: import("./costAccounting").CostAccountingFacts | null;
   provider?: string | null;
   model?: string | null;
   /** Raw or normalized token usage — see the interface doc above. */
@@ -704,6 +711,8 @@ export async function saveRequestUsage(entry: UsageEntry) {
       ? resolveUsageAccountIdentity(connection)
       : resolveOrphanedUsageAccountIdentity(entry.provider, entry.connectionId);
 
+    const accountingJson = serializeCostAccounting(entry.accounting);
+
     // Dedup guard: skip INSERT when an identical row already exists in the same
     // second. This prevents double-counting when onRequestSuccess fires more
     // than once (e.g. combo routing calling the callback from both the
@@ -714,9 +723,13 @@ export async function saveRequestUsage(entry: UsageEntry) {
     let inserted = false;
 
     db.transaction(() => {
-      const existing = db
-        .prepare(
-          `SELECT id, endpoint FROM usage_history
+      const existing = entry.requestId
+        ? (db
+            .prepare("SELECT id, endpoint FROM usage_history WHERE request_id = ? LIMIT 1")
+            .get(entry.requestId) as { id: number; endpoint: string | null } | undefined)
+        : (db
+            .prepare(
+              `SELECT id, endpoint FROM usage_history
            WHERE timestamp = ?
              AND COALESCE(provider, '')     = COALESCE(?, '')
              AND COALESCE(model, '')        = COALESCE(?, '')
@@ -725,16 +738,16 @@ export async function saveRequestUsage(entry: UsageEntry) {
              AND tokens_input  = ?
              AND tokens_output = ?
            ORDER BY id DESC LIMIT 1`
-        )
-        .get(
-          timestamp,
-          entry.provider || null,
-          entry.model || null,
-          entry.connectionId || null,
-          entry.apiKeyId || null,
-          tokensInput,
-          tokensOutput
-        ) as { id: number; endpoint: string | null } | undefined;
+            )
+            .get(
+              timestamp,
+              entry.provider || null,
+              entry.model || null,
+              entry.connectionId || null,
+              entry.apiKeyId || null,
+              tokensInput,
+              tokensOutput
+            ) as { id: number; endpoint: string | null } | undefined);
 
       if (existing) {
         // Back-fill endpoint if the original row missed it.
@@ -752,8 +765,8 @@ export async function saveRequestUsage(entry: UsageEntry) {
         INSERT INTO usage_history (provider, model, connection_id, account_key, account_label,
           account_label_priority, api_key_id, api_key_name, tokens_input, tokens_output,
           tokens_cache_read, tokens_cache_creation, tokens_reasoning, service_tier, status, success,
-          latency_ms, ttft_ms, error_code, combo_strategy, endpoint, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          latency_ms, ttft_ms, error_code, combo_strategy, endpoint, timestamp, request_id, accounting_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       ).run(
         entry.provider || null,
@@ -781,7 +794,9 @@ export async function saveRequestUsage(entry: UsageEntry) {
         entry.errorCode || null,
         entry.comboStrategy || entry.combo_strategy || null,
         entry.endpoint || null,
-        timestamp
+        timestamp,
+        entry.requestId || null,
+        accountingJson
       );
 
       inserted = true;
@@ -795,6 +810,32 @@ export async function saveRequestUsage(entry: UsageEntry) {
     }
   } catch (error) {
     console.error("Failed to save usage stats:", error);
+  }
+}
+
+function serializeCostAccounting(accounting: UsageEntry["accounting"]): string | null {
+  if (!accounting || typeof accounting !== "object") return null;
+  try {
+    return JSON.stringify(accounting);
+  } catch {
+    return null;
+  }
+}
+
+/** Attach final cost facts to the usage row after asynchronous price resolution. */
+export async function updateRequestUsageAccounting(
+  requestId: string,
+  accounting: import("./costAccounting").CostAccountingFacts
+): Promise<void> {
+  if (!requestId || !shouldPersistToDisk) return;
+  const accountingJson = serializeCostAccounting(accounting);
+  if (!accountingJson) return;
+  try {
+    getDbInstance()
+      .prepare("UPDATE usage_history SET accounting_json = ? WHERE request_id = ?")
+      .run(accountingJson, requestId);
+  } catch {
+    // Best effort: request handling must not fail because accounting evidence could not persist.
   }
 }
 

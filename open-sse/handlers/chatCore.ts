@@ -309,6 +309,7 @@ import { saveRequestUsage, trackPendingRequest, appendRequestLog } from "@/lib/u
 import { finalizePendingScope, updatePendingScope } from "@/lib/usage/pendingRequestScope";
 import { recordCost, recordUnknownCost } from "@/domain/costRules";
 import { calculateCost, calculateCostWithEvidence } from "@/lib/usage/costCalculator";
+import { updateRequestUsageAccounting } from "@/lib/usageDb";
 import {
   buildClaudePassthroughToolNameMap,
   mergeResponseToolNameMap,
@@ -601,6 +602,7 @@ export async function handleChatCore({
   // (not Math.random) purely to satisfy CodeQL js/insecure-randomness — this id
   // is a log-correlation token, not a security secret.
   const traceId = globalThis.crypto.randomUUID().slice(0, 6);
+  const usageAccountingRequestId = globalThis.crypto.randomUUID();
   const odysseusTelemetry =
     odysseusDecision.result === "disabled"
       ? null
@@ -5156,6 +5158,7 @@ export async function handleChatCore({
       isCombo,
       comboStrategy,
       endpoint: endpointPath,
+      requestId: usageAccountingRequestId,
     });
 
     // Translate response to client's expected format (usually OpenAI)
@@ -5334,15 +5337,17 @@ export async function handleChatCore({
       ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
           serviceTier: effectiveServiceTier,
         })
-      : { costUsd: 0, pricingEvidence: null };
+      : { costUsd: 0, costKnown: false, pricingEvidence: null };
     const estimatedCost = costAssessment.costUsd;
     const accounting = classifyCostAccounting({
       provider,
       model: pricingModel,
       usage: usageForAccounting,
       calculatedCostUsd: estimatedCost,
+      calculatedCostKnown: costAssessment.costKnown,
       pricingEvidence: costAssessment.pricingEvidence,
     });
+    void updateRequestUsageAccounting(usageAccountingRequestId, accounting);
 
     if (postCallGuardrails.blocked) {
       const guardrailMessage = postCallGuardrails.message || "Response blocked by guardrail";
@@ -5841,6 +5846,7 @@ export async function handleChatCore({
       isCombo,
       comboStrategy,
       endpoint: endpointPath,
+      requestId: usageAccountingRequestId,
     });
 
     // Routing event (feedback foundation) — fire-and-forget, cheap, never blocks
@@ -5916,18 +5922,21 @@ export async function handleChatCore({
             ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
                 serviceTier: effectiveServiceTier,
               })
-            : { costUsd: 0, pricingEvidence: null };
+            : { costUsd: 0, costKnown: false, pricingEvidence: null };
+          const accounting = classifyCostAccounting({
+            provider,
+            model: pricingModel,
+            usage: usageForAccounting,
+            calculatedCostUsd: costAssessment.costUsd,
+            calculatedCostKnown: costAssessment.costKnown,
+            pricingEvidence: costAssessment.pricingEvidence,
+          });
+          void updateRequestUsageAccounting(usageAccountingRequestId, accounting);
           persistAttemptLogs({
             ...streamLogArgs,
             servedProvider: servedIdentity?.provider || null,
             servedModel: servedIdentity?.model || null,
-            accounting: classifyCostAccounting({
-              provider,
-              model: pricingModel,
-              usage: usageForAccounting,
-              calculatedCostUsd: costAssessment.costUsd,
-              pricingEvidence: costAssessment.pricingEvidence,
-            }),
+            accounting,
           });
         } catch {
           persistAttemptLogs(streamLogArgs);

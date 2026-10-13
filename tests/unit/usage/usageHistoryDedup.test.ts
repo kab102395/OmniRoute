@@ -22,7 +22,8 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 // Dynamic imports so DATA_DIR is set before any module initialises the DB.
 const { resetDbInstance, getDbInstance } = await import("../../../src/lib/db/core.ts");
 const { onUsageRecorded } = await import("../../../src/lib/usage/usageEvents.ts");
-const { saveRequestUsage } = await import("../../../src/lib/usage/usageHistory.ts");
+const { saveRequestUsage, updateRequestUsageAccounting } =
+  await import("../../../src/lib/usage/usageHistory.ts");
 
 // Cleanup: close DB handle and temp directory so the test runner doesn't hang.
 test.after(() => {
@@ -139,4 +140,53 @@ test("saveRequestUsage: two entries with different providers are both inserted",
     before + 2,
     "Two entries with different providers should both be inserted"
   );
+});
+
+test("request IDs preserve identical retry attempts and attach each cost snapshot", async () => {
+  const db = getDbInstance();
+  const timestamp = new Date().toISOString();
+  const first = makeEntry({ timestamp, requestId: "retry-attempt-1" });
+  const second = makeEntry({
+    ...first,
+    requestId: "retry-attempt-2",
+  });
+  await saveRequestUsage(first);
+  await saveRequestUsage(second);
+  await updateRequestUsageAccounting("retry-attempt-1", {
+    kind: "estimated_cost",
+    amountUsd: 0.25,
+    currency: "USD",
+    source: "omniroute.user_pricing",
+    pricingProvider: "test-provider",
+    pricingModel: "test-model",
+    pricingVersion: null,
+    pricingEffectiveAt: null,
+    pricingRetrievedAt: timestamp,
+    pricingStale: false,
+    usageKind: "provider_reported_usage",
+  });
+
+  const rows = db
+    .prepare(
+      "SELECT request_id AS requestId, accounting_json AS accountingJson FROM usage_history WHERE request_id LIKE 'retry-attempt-%'"
+    )
+    .all() as Array<{ requestId: string; accountingJson: string | null }>;
+  assert.equal(rows.length, 2);
+  assert.equal(
+    rows.find((row) => row.requestId === "retry-attempt-1")?.accountingJson,
+    JSON.stringify({
+      kind: "estimated_cost",
+      amountUsd: 0.25,
+      currency: "USD",
+      source: "omniroute.user_pricing",
+      pricingProvider: "test-provider",
+      pricingModel: "test-model",
+      pricingVersion: null,
+      pricingEffectiveAt: null,
+      pricingRetrievedAt: timestamp,
+      pricingStale: false,
+      usageKind: "provider_reported_usage",
+    })
+  );
+  assert.equal(rows.find((row) => row.requestId === "retry-attempt-2")?.accountingJson, null);
 });

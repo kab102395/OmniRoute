@@ -2,7 +2,6 @@ import { getDbInstance } from "@/lib/db/core";
 import type { ProviderLimitsCacheEntry } from "@/lib/db/providerLimits";
 import { getProviderQuotaWindowStartIso } from "@/lib/db/quotaResetEvents";
 import { toNumber } from "@/shared/utils/numeric";
-import { calculateCostWithEvidence } from "./costCalculator";
 import { buildErrorBody, sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
 
 const FORTALEZA_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -40,17 +39,6 @@ export interface ApiKeyUsageLimitDeps {
   getProviderConnections?: (filter?: Record<string, unknown>) => Promise<unknown[]>;
   getProviderLimitsCache?: (connectionId: string) => ProviderLimitsCacheEntry | null;
   getAllProviderLimitsCache?: () => Record<string, ProviderLimitsCacheEntry>;
-}
-
-interface UsageCostRow {
-  provider: string | null;
-  model: string | null;
-  serviceTier: string | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  cacheReadTokens: number | null;
-  cacheCreationTokens: number | null;
-  reasoningTokens: number | null;
 }
 
 interface WeeklyResetCandidate {
@@ -376,49 +364,43 @@ async function getApiKeyUsdSpendSince(
   const rows = db
     .prepare(
       `
-      SELECT
-        LOWER(provider) as provider,
-        LOWER(model) as model,
-        COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
-        COALESCE(SUM(tokens_input), 0) as promptTokens,
-        COALESCE(SUM(tokens_output), 0) as completionTokens,
-        COALESCE(SUM(tokens_cache_read), 0) as cacheReadTokens,
-        COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
-        COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens
+      SELECT accounting_json as accountingJson
       FROM usage_history
       WHERE api_key_id = @apiKeyId
         AND timestamp >= @sinceIso
         AND success = 1
-      GROUP BY LOWER(provider), LOWER(model), serviceTier
     `
     )
-    .all({ apiKeyId, sinceIso }) as UsageCostRow[];
+    .all({ apiKeyId, sinceIso }) as Array<{ accountingJson: string | null }>;
 
   let total = 0;
   let pricingUnknown = false;
   for (const row of rows) {
-    const provider = typeof row.provider === "string" ? row.provider : "";
-    const model = typeof row.model === "string" ? row.model : "";
-    if (!provider || !model) continue;
-
-    const assessment = await calculateCostWithEvidence(
-      provider,
-      model,
-      {
-        input: toNumber(row.promptTokens),
-        output: toNumber(row.completionTokens),
-        cacheRead: toNumber(row.cacheReadTokens),
-        cacheCreation: toNumber(row.cacheCreationTokens),
-        reasoning: toNumber(row.reasoningTokens),
-      },
-      {
-        provider,
-        model,
-        serviceTier: row.serviceTier || "standard",
-      }
-    );
-    total += assessment.costUsd;
-    if (!assessment.costKnown) pricingUnknown = true;
+    let accounting: Record<string, unknown> | null = null;
+    try {
+      accounting = row.accountingJson
+        ? (JSON.parse(row.accountingJson) as Record<string, unknown>)
+        : null;
+    } catch {
+      accounting = null;
+    }
+    const kind = accounting?.kind;
+    const amount = accounting?.amountUsd;
+    if (
+      (kind === "estimated_cost" ||
+        kind === "provider_reported_billed_cost" ||
+        kind === "zero_cost") &&
+      accounting?.currency === "USD" &&
+      typeof amount === "number" &&
+      Number.isFinite(amount) &&
+      amount >= 0
+    ) {
+      total += amount;
+    } else {
+      // Legacy records and usage without a persisted pricing snapshot cannot
+      // safely be repriced using a catalog that may have changed since then.
+      pricingUnknown = true;
+    }
   }
 
   return { spentUsd: roundUsd(total), pricingUnknown };
@@ -528,10 +510,10 @@ function buildUsageLimitExceededMessage(
 ): string {
   const showUsd = options.showUsd !== false;
   if (status.dailyExceeded && status.dailyPricingUnknown) {
-    return "This API key has usage with unknown pricing in its daily budget window. Requests are blocked until the window resets or authoritative pricing is available.";
+    return "This API key has usage with unknown pricing in its daily budget window. Requests are blocked until the window resets or the usage record is reconciled.";
   }
   if (status.weeklyExceeded && status.weeklyPricingUnknown) {
-    return "This API key has usage with unknown pricing in its weekly budget window. Requests are blocked until the window resets or authoritative pricing is available.";
+    return "This API key has usage with unknown pricing in its weekly budget window. Requests are blocked until the window resets or the usage record is reconciled.";
   }
   if (status.dailyExceeded && status.dailyLimitUsd !== null) {
     const percent = formatUsagePercent(getUsagePercent(status.dailySpentUsd, status.dailyLimitUsd));

@@ -148,6 +148,16 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
       model: "gpt-4o-mini",
       usage: { prompt_tokens: 7 },
       calculatedCostUsd: 0,
+      calculatedCostKnown: true,
+    }).kind,
+    "estimated_cost"
+  );
+  assert.equal(
+    classifyCostAccounting({
+      provider: "openai",
+      model: "gpt-4o-mini",
+      usage: { prompt_tokens: 7 },
+      calculatedCostUsd: 0,
     }).kind,
     "usage_only"
   );

@@ -15,6 +15,22 @@ const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const usageHistory = await import("../../src/lib/usage/usageHistory.ts");
 const usageLimits = await import("../../src/lib/usage/apiKeyUsageLimits.ts");
 
+function estimatedAccounting(amountUsd: number) {
+  return {
+    kind: "estimated_cost" as const,
+    amountUsd,
+    currency: "USD" as const,
+    source: "omniroute.user_pricing",
+    pricingProvider: "claude",
+    pricingModel: "claude-opus-4-8",
+    pricingVersion: null,
+    pricingEffectiveAt: null,
+    pricingRetrievedAt: "2026-06-19T12:00:00.000Z",
+    pricingStale: false,
+    usageKind: "provider_reported_usage" as const,
+  };
+}
+
 const NOW = Date.parse("2026-06-19T20:00:00.000Z");
 
 async function resetStorage() {
@@ -98,7 +114,7 @@ test("unknown-priced usage fails closed under finite API-key USD limits", async 
   assert.match(body.error?.message ?? "", /unknown pricing.*Requests are blocked/i);
 });
 
-test("incomplete billable dimensions fail closed under finite API-key USD limits", async () => {
+test("usage without a complete saved pricing snapshot fails closed under finite API-key USD limits", async () => {
   await localDb.updatePricing({
     partial: {
       "partial-price-model": { input: 1 },
@@ -148,6 +164,12 @@ test("complete explicit zero rates remain known and do not trip finite USD limit
     model: "verified-free-route",
     apiKeyId: created.id,
     tokens: { input: 100_000, output: 50_000 },
+    requestId: "verified-free-zero-cost",
+    accounting: {
+      ...estimatedAccounting(0),
+      kind: "zero_cost",
+      source: "openrouter.current_free_catalog",
+    },
     success: true,
     timestamp: "2026-06-19T12:00:00.000Z",
   });
@@ -194,6 +216,8 @@ test("getApiKeyUsageLimitStatus aligns weekly USD spend with provider resetAt wh
     apiKeyId: created.id,
     apiKeyName: "Metered Key",
     tokens: { input: 2_000_000, output: 0 },
+    requestId: "metered-today",
+    accounting: estimatedAccounting(2),
     success: true,
     timestamp: "2026-06-19T12:00:00.000Z",
   });
@@ -203,6 +227,8 @@ test("getApiKeyUsageLimitStatus aligns weekly USD spend with provider resetAt wh
     apiKeyId: created.id,
     apiKeyName: "Metered Key",
     tokens: { input: 3_000_000, output: 0 },
+    requestId: "metered-yesterday",
+    accounting: estimatedAccounting(3),
     success: true,
     timestamp: "2026-06-18T21:00:00.000Z",
   });
@@ -212,8 +238,21 @@ test("getApiKeyUsageLimitStatus aligns weekly USD spend with provider resetAt wh
     apiKeyId: created.id,
     apiKeyName: "Metered Key",
     tokens: { input: 7_000_000, output: 0 },
+    requestId: "metered-older",
+    accounting: estimatedAccounting(7),
     success: true,
     timestamp: "2026-06-18T12:00:00.000Z",
+  });
+  await localDb.updatePricing({
+    claude: {
+      "claude-opus-4-8": {
+        input: 100,
+        cached: 100,
+        output: 100,
+        reasoning: 100,
+        cache_creation: 100,
+      },
+    },
   });
 
   const metadata = await apiKeysDb.getApiKeyMetadata(created.key);
@@ -284,6 +323,8 @@ test("getApiKeyUsageLimitStatus cuts weekly USD spend at observed provider quota
     apiKeyId: created.id,
     apiKeyName: "Reset Cut Key",
     tokens: { input: 7_000_000, output: 0 },
+    requestId: "reset-before",
+    accounting: estimatedAccounting(7),
     success: true,
     timestamp: "2026-06-19T23:30:00.000Z",
   });
@@ -293,6 +334,10 @@ test("getApiKeyUsageLimitStatus cuts weekly USD spend at observed provider quota
     apiKeyId: created.id,
     apiKeyName: "Reset Cut Key",
     tokens: { input: 2_000_000, output: 0 },
+    requestId: "reset-after",
+    accounting: estimatedAccounting(2),
+    requestId: "reset-after",
+    accounting: estimatedAccounting(2),
     success: true,
     timestamp: "2026-06-20T02:00:00.000Z",
   });

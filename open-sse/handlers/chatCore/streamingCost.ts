@@ -16,6 +16,7 @@ type CostResolver = (
   options: { serviceTier?: string }
 ) => Promise<{
   costUsd: number;
+  costKnown: boolean;
   pricingEvidence: import("@/lib/usage/costCalculator").CostPricingEvidence;
 }>;
 
@@ -47,6 +48,7 @@ export function recordStreamingCost(args: {
         model: args.model,
         usage: args.streamUsage,
         calculatedCostUsd: assessment.costUsd,
+        calculatedCostKnown: assessment.costKnown,
         pricingEvidence: assessment.pricingEvidence,
       });
       if (assessment.costUsd > 0) args.recordCost(apiKeyId, assessment.costUsd);

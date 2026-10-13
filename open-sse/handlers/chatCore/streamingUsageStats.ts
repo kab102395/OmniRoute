@@ -28,12 +28,14 @@ export type RecordStreamingUsageStatsContext = {
   isCombo: boolean;
   comboStrategy: string | null | undefined;
   endpoint?: string | null | undefined;
+  requestId?: string | null | undefined;
 };
 
 function persistStreamingUsageRow(usage: object, ctx: RecordStreamingUsageStatsContext): void {
   const { provider, model, streamStatus, startTime, ttft, streamErrorCode } = ctx;
   saveRequestUsage({
     provider: provider || "unknown",
+    requestId: ctx.requestId,
     model: model || "unknown",
     tokens: usage,
     status: String(streamStatus),

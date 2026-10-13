@@ -25,6 +25,7 @@ export {
   finalizePendingRequest,
   getUsageDb,
   saveRequestUsage,
+  updateRequestUsageAccounting,
   getUsageHistory,
   getModelLatencyStats,
   appendRequestLog,
