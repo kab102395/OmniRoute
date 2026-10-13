@@ -36,6 +36,10 @@ import { storeStreamingSemanticCacheResponse } from "./chatCore/streamingSemanti
 import { assembleStreamingPipeline } from "./chatCore/streamingPipeline.ts";
 import { sanitizeChatRequestBody } from "./chatCore/sanitization.ts";
 import {
+  getExecutionRetryCount,
+  isExecutionRouteFallback,
+} from "./chatCore/executionAttemptTelemetry.ts";
+import {
   applyReasoningInputPolicy,
   resolveIncompatibleReasoningAction,
 } from "../services/reasoningInputPolicy.ts";
@@ -1092,6 +1096,8 @@ export async function handleChatCore({
   const executionAttemptReceipts: Array<Record<string, unknown>> = [];
   let executionAttemptTotal = 0;
   let executionAttemptSequence = 0;
+  let lastExecutionAttempt: Record<string, unknown> | null = null;
+  let executionRouteFallbackUsed = false;
   const recordExecutionAttempts = (
     attempts: Array<Record<string, unknown>>,
     connectionId?: string | null,
@@ -1102,13 +1108,18 @@ export async function handleChatCore({
     executionAttemptReceipts.push(
       ...attempts.map((attempt) => {
         executionAttemptSequence += 1;
-        return {
+        const receipt = {
           ...attempt,
           executorIndex: attempt.index,
           index: executionAttemptSequence,
           ...(connectionId ? { connectionId: connectionId.slice(0, 128) } : {}),
           ...(routeModel ? { routeModel: routeModel.slice(0, 256) } : {}),
         };
+        if (isExecutionRouteFallback(lastExecutionAttempt, receipt)) {
+          executionRouteFallbackUsed = true;
+        }
+        lastExecutionAttempt = receipt;
+        return receipt;
       })
     );
     if (executionAttemptReceipts.length > 64) {
@@ -5490,8 +5501,8 @@ export async function handleChatCore({
           inputTokens: null,
           outputTokens: null,
           cost: null,
-          retries: 0,
-          fallbackUsed: false, // combo-level fallback tracked by decisionTrace
+          retries: getExecutionRetryCount(executionAttemptTotal),
+          fallbackUsed: executionRouteFallbackUsed,
           outcome: "malformed",
           status: HTTP_STATUS.BAD_GATEWAY,
           finishReason: routingFinishReason(translatedResponse),
@@ -5639,8 +5650,8 @@ export async function handleChatCore({
               })()
             : null,
         cost: Number.isFinite(estimatedCost) ? estimatedCost : null,
-        retries: 0,
-        fallbackUsed: false, // combo-level fallback tracked by decisionTrace
+        retries: getExecutionRetryCount(executionAttemptTotal),
+        fallbackUsed: executionRouteFallbackUsed,
         outcome: "success",
         status: 200,
         finishReason: routingFinishReason(translatedResponse),
@@ -5927,8 +5938,8 @@ export async function handleChatCore({
               })()
             : null,
         cost: null,
-        retries: 0,
-        fallbackUsed: false, // combo-level fallback tracked by decisionTrace
+        retries: getExecutionRetryCount(executionAttemptTotal),
+        fallbackUsed: executionRouteFallbackUsed,
         outcome:
           normalizedStreamStatus === 200
             ? "success"
