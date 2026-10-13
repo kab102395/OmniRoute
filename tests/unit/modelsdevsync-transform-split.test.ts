@@ -144,6 +144,38 @@ describe("modelsDevSync/transform split-guard", () => {
     assert.equal(capabilities.gemini, undefined);
   });
 
+  it("synchronizes the current Ollama Cloud source id to its provider alias", () => {
+    const raw = {
+      "ollama-cloud": {
+        id: "ollama-cloud",
+        models: {
+          "glm-5.3-flash": {
+            id: "glm-5.3-flash",
+            name: "GLM-5.3-Flash",
+            cost: { input: 0.15, output: 0.5, cache_read: 0.03 },
+            tool_call: true,
+            limit: { context: 1_000_000, output: 131_072 },
+          },
+        },
+      },
+    };
+    const pricing = transformModelsDevToPricing(raw as never);
+    const capabilities = transformModelsDevToCapabilities(raw as never);
+
+    assert.deepEqual(pricing["ollama-cloud"]["glm-5.3-flash"], {
+      input: 0.15,
+      output: 0.5,
+      cached: 0.03,
+    });
+    assert.deepEqual(
+      pricing.ollamacloud["glm-5.3-flash"],
+      pricing["ollama-cloud"]["glm-5.3-flash"]
+    );
+    assert.equal(capabilities.ollamacloud["glm-5.3-flash"].tool_call, true);
+    assert.equal(capabilities.ollamacloud["glm-5.3-flash"].limit_context, 1_000_000);
+    assert.equal(capabilities.ollamacloud["glm-5.3-flash"].limit_output, 131_072);
+  });
+
   it("drops malformed optional billing dimensions instead of persisting unsafe values", () => {
     const raw = {
       openai: {

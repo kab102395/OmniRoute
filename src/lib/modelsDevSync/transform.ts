@@ -175,6 +175,7 @@ export const MODELS_DEV_PROVIDER_MAP: Record<string, string[]> = {
   cloudflare: ["cf"],
   scaleway: ["scw"],
   ollama: ["ollamacloud", "ollama-cloud"],
+  "ollama-cloud": ["ollama-cloud", "ollamacloud"],
   blackbox: ["bb", "blackbox"],
   cline: ["cl", "cline"],
   cursor: ["cu", "cursor"],
