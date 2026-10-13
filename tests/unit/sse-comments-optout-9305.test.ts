@@ -100,7 +100,8 @@ async function runFinalizationCase({
           executionAttempts: () => [
             {
               index: 1,
-              statusCode: 503,
+              executorIndex: 3,
+              statusCode: upstreamDone ? 200 : 503,
               outcome: "response",
               routeModel: "provider-model-retry",
               providerRequestId: "upstream-attempt-1",
@@ -182,15 +183,32 @@ for (const upstreamDone of [true, false]) {
           /^: x-omniroute-execution-attempts=(.+)$/m
         )?.[1];
         assert.ok(attemptsComment, "opt-in metadata should include upstream attempt receipts");
-        assert.deepEqual(JSON.parse(decodeURIComponent(attemptsComment)), [
-          {
-            index: 1,
-            statusCode: 503,
-            providerRequestId: "upstream-attempt-1",
-            outcome: "response",
-            routeModel: "provider-model-retry",
-          },
-        ]);
+        const [attempt] = JSON.parse(decodeURIComponent(attemptsComment)) as Array<
+          Record<string, unknown>
+        >;
+        assert.equal(attempt.index, 1);
+        assert.equal(attempt.executorIndex, 3);
+        assert.equal(attempt.statusCode, upstreamDone ? 200 : 503);
+        assert.equal(attempt.providerRequestId, "upstream-attempt-1");
+        assert.equal(attempt.outcome, "response");
+        assert.equal(attempt.routeModel, "provider-model-retry");
+        if (upstreamDone) {
+          assert.deepEqual(attempt.usage, {
+            kind: "provider_reported_usage",
+            dimensions: { prompt_tokens: 2, completion_tokens: 1 },
+          });
+          assert.equal(typeof attempt.accounting, "object");
+          assert.ok(
+            ["unknown", "usage_only"].includes(
+              (attempt.accounting as Record<string, unknown>).kind as string
+            ),
+            "unpriced provider usage remains non-billed accounting"
+          );
+          assert.equal(attempt.costAttribution, "unknown");
+        } else {
+          assert.equal(attempt.usage, undefined, "failed attempts do not inherit final usage");
+          assert.equal(attempt.accounting, undefined);
+        }
         assert.ok(metadataIndex > finishIndex, "metadata should follow the finish chunk");
         assert.ok(metadataIndex < doneIndex, "metadata should precede [DONE]");
       } else {
