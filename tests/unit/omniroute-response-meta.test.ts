@@ -272,6 +272,47 @@ test("buildOmniRouteSseMetadataComment emits comment lines compatible with SSE",
   assert.match(comment, /^: x-omniroute-response-cost=0\.0000000000/m);
 });
 
+test("SSE metadata includes bounded, allowlisted upstream attempt receipts", () => {
+  const comment = buildOmniRouteSseMetadataComment({
+    provider: "antigravity",
+    model: "gemini-3.1-pro-low",
+    executionAttempts: [
+      {
+        index: 1,
+        statusCode: 400,
+        outcome: "response",
+        routeModel: "gemini-3.1-pro-low",
+        providerRequestId: "request-1",
+        providerApiKey: "must-not-be-exposed",
+      },
+      {
+        index: 2,
+        statusCode: 200,
+        outcome: "response",
+        routeModel: "gemini-3-pro-low",
+      },
+    ],
+  });
+  const encoded = comment.match(/^: x-omniroute-execution-attempts=(.+)$/m)?.[1];
+  assert.ok(encoded);
+  assert.deepEqual(JSON.parse(decodeURIComponent(encoded)), [
+    {
+      index: 1,
+      statusCode: 400,
+      providerRequestId: "request-1",
+      outcome: "response",
+      routeModel: "gemini-3.1-pro-low",
+    },
+    {
+      index: 2,
+      statusCode: 200,
+      outcome: "response",
+      routeModel: "gemini-3-pro-low",
+    },
+  ]);
+  assert.doesNotMatch(comment, /must-not-be-exposed/);
+});
+
 test("buildOmniRouteResponseMetaHeaders emits X-OmniRoute-Cost-Saved only when costSavedUsd is provided", () => {
   // Cache HIT: the incremental cost of serving the hit is 0, but the cache saved the
   // original (would-have-been) cost — surfaced via the Cost-Saved header for analytics.

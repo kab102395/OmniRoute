@@ -176,6 +176,8 @@ type StreamOptions = {
   requestCount?: number;
   /** Per-request opt-in to final SSE accounting comments when global comments are disabled. */
   includeSseMetadata?: boolean;
+  /** Sanitized attempt receipts to append to the opt-in final SSE metadata comment. */
+  executionAttempts?: () => Array<Record<string, unknown>>;
   onComplete?: ((payload: StreamCompletePayload) => void) | null;
   onFailure?: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null;
   /**
@@ -672,6 +674,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     serviceTier,
     requestCount = 1,
     includeSseMetadata = false,
+    executionAttempts,
     onComplete = null,
     onFailure = null,
     dropResponsesCommentary,
@@ -1126,6 +1129,7 @@ export function createSSEStream(options: StreamOptions = {}) {
       costUsd,
       ttftMs: timing.ttftMs(),
       accounting,
+      executionAttempts: executionAttempts?.(),
     });
     if (!comment) return;
     reqLogger?.appendConvertedChunk?.(comment);
@@ -3067,6 +3071,7 @@ export function createSSETransformStreamWithLogger(
     serviceTier?: string | null;
     requestCount?: number;
     includeSseMetadata?: boolean;
+    executionAttempts?: () => Array<Record<string, unknown>>;
   } = {}
 ) {
   return createSSEStream({
@@ -3106,6 +3111,7 @@ export function createPassthroughStreamWithLogger(
     serviceTier?: string | null;
     requestCount?: number;
     includeSseMetadata?: boolean;
+    executionAttempts?: () => Array<Record<string, unknown>>;
   } = {}
 ) {
   return createSSEStream({

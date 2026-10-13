@@ -302,7 +302,7 @@ const EXECUTION_ATTEMPT_RECEIPT_STRING_LIMITS = {
  * Executors are extensible and their runtime objects must not be persisted wholesale:
  * a future implementation could otherwise accidentally attach a URL, headers, or body.
  */
-function sanitizeExecutionAttemptReceipt(
+export function sanitizeExecutionAttemptReceipt(
   attempt: Record<string, unknown>
 ): Record<string, unknown> {
   const receipt: Record<string, unknown> = {};

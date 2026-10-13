@@ -97,6 +97,15 @@ async function runFinalizationCase({
               convertedChunks.push(value);
             },
           },
+          executionAttempts: () => [
+            {
+              index: 1,
+              statusCode: 503,
+              outcome: "response",
+              routeModel: "provider-model-retry",
+              providerRequestId: "upstream-attempt-1",
+            },
+          ],
           onComplete(payload) {
             completion = payload as CompletionPayload;
             finalized = usageHistory.finalizePendingRequestById(requestId, {
@@ -136,7 +145,7 @@ for (const upstreamDone of [true, false]) {
     test(`createSSEStream ${finalization} finalization preserves invariants with comments ${label}`, async () => {
       const result = await runFinalizationCase({ envValue, upstreamDone });
       const finishMarker = '"finish_reason":"stop"';
-      const metadataMarker = ": x-omniroute-response-cost=";
+      const metadataMarker = ": x-omniroute-provider=test-provider";
       const doneMarker = "data: [DONE]";
 
       assert.match(result.output, /"content":"ordinary-data"/);
@@ -169,10 +178,24 @@ for (const upstreamDone of [true, false]) {
 
       if (commentsExpected) {
         assert.match(result.output, /: x-omniroute-provider=test-provider/);
+        const attemptsComment = result.output.match(
+          /^: x-omniroute-execution-attempts=(.+)$/m
+        )?.[1];
+        assert.ok(attemptsComment, "opt-in metadata should include upstream attempt receipts");
+        assert.deepEqual(JSON.parse(decodeURIComponent(attemptsComment)), [
+          {
+            index: 1,
+            statusCode: 503,
+            providerRequestId: "upstream-attempt-1",
+            outcome: "response",
+            routeModel: "provider-model-retry",
+          },
+        ]);
         assert.ok(metadataIndex > finishIndex, "metadata should follow the finish chunk");
         assert.ok(metadataIndex < doneIndex, "metadata should precede [DONE]");
       } else {
         assert.doesNotMatch(result.output, /: x-omniroute-/);
+        assert.doesNotMatch(result.output, /upstream-attempt-1/);
       }
     });
   }

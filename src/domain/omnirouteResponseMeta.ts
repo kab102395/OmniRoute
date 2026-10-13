@@ -310,12 +310,48 @@ export function buildOmniRouteResponseMetaHeaders({
 }
 
 export function buildOmniRouteSseMetadataComment(
-  options: Parameters<typeof buildOmniRouteResponseMetaHeaders>[0]
+  options: Parameters<typeof buildOmniRouteResponseMetaHeaders>[0] & {
+    executionAttempts?: readonly Record<string, unknown>[];
+  }
 ): string {
-  const headers = buildOmniRouteResponseMetaHeaders(options);
+  const { executionAttempts, ...responseMeta } = options;
+  const headers = buildOmniRouteResponseMetaHeaders(responseMeta);
   const lines = Object.entries(headers)
     .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
     .map(([name, value]) => `: ${name.toLowerCase()}=${value}`);
+
+  if (executionAttempts && executionAttempts.length > 0) {
+    const receiptFields = [
+      "index",
+      "endpointIndex",
+      "startedAt",
+      "durationMs",
+      "statusCode",
+      "providerRequestId",
+      "outcome",
+      "costAttribution",
+      "attemptSource",
+      "routeLeg",
+      "routeModel",
+      "usage",
+      "accounting",
+    ] as const;
+    const boundedAttempts = executionAttempts
+      .slice(-64)
+      .map((attempt) =>
+        Object.fromEntries(
+          receiptFields.flatMap((field) =>
+            Object.prototype.hasOwnProperty.call(attempt, field) ? [[field, attempt[field]]] : []
+          )
+        )
+      );
+    const encodedAttempts = encodeURIComponent(JSON.stringify(boundedAttempts));
+    // Keep the final SSE comment bounded even when provider request IDs or receipt metadata
+    // are unusually large. The call-log receipt remains the full authorized record.
+    if (encodedAttempts.length <= 65_536) {
+      lines.push(`: x-omniroute-execution-attempts=${encodedAttempts}`);
+    }
+  }
 
   return lines.length > 0 ? `${lines.join("\n")}\n` : "";
 }

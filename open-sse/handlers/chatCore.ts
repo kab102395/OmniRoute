@@ -300,6 +300,7 @@ import type { ClaudeMessage } from "./chatCore/claudeMessageTypes.ts";
 import { normalizeClaudeUpstreamMessages as normalizeClaudeUpstreamMessagesFor } from "./chatCore/claudeUpstreamMessages.ts";
 import {
   persistAttemptLogs as persistAttemptLogsFor,
+  sanitizeExecutionAttemptReceipt,
   type PersistAttemptLogsArgs,
 } from "./chatCore/attemptLogging.ts";
 import { resolveOdysseusPolicyDecision } from "@/lib/odysseus/routeGuard";
@@ -1173,6 +1174,10 @@ export async function handleChatCore({
     const requestId = executionAttemptReceipts.at(-1)?.providerRequestId;
     return typeof requestId === "string" && requestId.trim() ? requestId : null;
   };
+  const getSseExecutionAttempts = () =>
+    executionAttemptReceipts
+      .map((attempt) => sanitizeExecutionAttemptReceipt(attempt as Record<string, unknown>))
+      .map(({ connectionId: _connectionId, ...attempt }) => attempt);
   const capturePipelineStreamChunks =
     detailedLoggingEnabled && getCallLogPipelineCaptureStreamChunks();
   const skillRequestId = generateRequestId();
@@ -6257,6 +6262,7 @@ export async function handleChatCore({
         serviceTier: effectiveServiceTier,
         requestCount: Math.max(1, executionAttemptTotal),
         includeSseMetadata,
+        executionAttempts: getSseExecutionAttempts,
       }
     );
   } else if (needsTranslation(targetFormat, clientResponseFormat)) {
@@ -6292,6 +6298,7 @@ export async function handleChatCore({
         serviceTier: effectiveServiceTier,
         requestCount: Math.max(1, executionAttemptTotal),
         includeSseMetadata,
+        executionAttempts: getSseExecutionAttempts,
       }
     );
   } else {
@@ -6312,6 +6319,7 @@ export async function handleChatCore({
         serviceTier: effectiveServiceTier,
         requestCount: Math.max(1, executionAttemptTotal),
         includeSseMetadata,
+        executionAttempts: getSseExecutionAttempts,
       }
     );
   }

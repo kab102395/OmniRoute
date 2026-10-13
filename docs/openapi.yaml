@@ -1565,9 +1565,12 @@ paths:
             that need this metadata must inspect comment lines and split each line at its first `=`.
             The initial HTTP accounting headers remain a pre-stream snapshot and are not updated.
             Correlate the stream with X-OmniRoute-Request-Id from the initial response headers.
-            Fallback-Attempts is aggregate only; per-attempt details are available in the authorized
-            call-log receipt. Final comments may be absent if a stream fails or is cancelled before
-            the completion metadata is emitted.
+            When available, `x-omniroute-execution-attempts` contains a URI-component-encoded JSON
+            array of at most 64 allowlisted upstream attempt receipts. Decode the value before JSON
+            parsing; receipt fields follow `CallLogExecutionAttempt` except account identifiers are
+            omitted. Final comments may be absent if a stream fails or is cancelled before the
+            completion metadata is emitted. The authorized call-log receipt remains the durable
+            record and may include final usage and accounting attribution per attempt.
         - in: header
           name: X-OmniRoute-Strict-Model
           required: false
