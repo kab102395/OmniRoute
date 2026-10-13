@@ -142,6 +142,7 @@ test("accounting aggregates only complete provider-reported generation costs", (
     [receipt("tiny-1", 0.00000001), receipt("tiny-2", 0.00000002)]
   );
   assert.equal(decimalTotals.amountUsd, 0.00000003);
+  assert.equal(decimalTotals.amountUsdExact, "0.00000003");
 
   const partial = applyOpenRouterGenerationReceipts(
     accounting,

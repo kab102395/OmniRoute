@@ -191,6 +191,25 @@ test("buildOmniRouteResponseMetaHeaders exposes cost pricing provenance and fres
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.pricingStale], "false");
 });
 
+test("buildOmniRouteResponseMetaHeaders exposes exact provider cost when available", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({
+    costUsd: 0.00000003,
+    accounting: {
+      kind: "provider_reported_billed_cost",
+      amountUsdExact: "0.00000003",
+    },
+  });
+
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.responseCost], "0.0000000300");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.responseCostExact], "0.00000003");
+
+  const malformed = buildOmniRouteResponseMetaHeaders({
+    costUsd: 0.1,
+    accounting: { kind: "provider_reported_billed_cost", amountUsdExact: "NaN" },
+  });
+  assert.equal(malformed[OMNIROUTE_RESPONSE_HEADERS.responseCostExact], undefined);
+});
+
 test("buildOmniRouteResponseMetaHeaders emits X-OmniRoute-Request-Id only when provided", () => {
   const withId = buildOmniRouteResponseMetaHeaders({ model: "gpt", requestId: "req-123" });
   assert.equal(withId[OMNIROUTE_RESPONSE_HEADERS.requestId], "req-123");

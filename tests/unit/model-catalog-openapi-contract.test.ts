@@ -307,6 +307,7 @@ test("OmniRoute keeps catalog and execution facts needed by external routers", (
     "X-OmniRoute-Served-Model-Source",
     "X-OmniRoute-Accounting-Kind",
     "X-OmniRoute-Response-Cost",
+    "X-OmniRoute-Response-Cost-Exact",
     "X-OmniRoute-Cost-Source",
     "X-OmniRoute-Cost-Currency",
     "X-OmniRoute-Usage-Kind",

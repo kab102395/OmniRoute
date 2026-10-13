@@ -27,6 +27,7 @@ export function buildNonStreamingResponseHeaders(
     connectionId?: string | null;
     accounting?: {
       kind: string;
+      amountUsdExact?: string;
       source?: string | null;
       currency?: string | null;
       usageKind?: string | null;

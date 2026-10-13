@@ -168,6 +168,7 @@ describe("cors/origins.applyCorsHeaders", () => {
     assert.match(exposed, /X-OmniRoute-Pricing-Condition/);
     assert.match(exposed, /X-OmniRoute-Pricing-Stale/);
     assert.match(exposed, /X-OmniRoute-Fallback-Attempts/);
+    assert.match(exposed, /X-OmniRoute-Response-Cost-Exact/);
   });
 
   it("CLIENT_API: does NOT echo the Origin for a credential-less cross-origin request (GHSA-7px7)", () => {

@@ -167,6 +167,7 @@ export function buildOmniRouteResponseMetaHeaders({
   connectionId?: string | null;
   accounting?: {
     kind: string;
+    amountUsdExact?: string;
     source?: string | null;
     currency?: string | null;
     usageKind?: string | null;
@@ -205,6 +206,14 @@ export function buildOmniRouteResponseMetaHeaders({
 
   if (formattedCost !== null) {
     headers[OMNIROUTE_RESPONSE_HEADERS.responseCost] = toHeaderValue(formattedCost);
+  }
+  const exactCost = accounting?.amountUsdExact;
+  if (
+    !amountIsUnestablished &&
+    typeof exactCost === "string" &&
+    /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(exactCost)
+  ) {
+    headers[OMNIROUTE_RESPONSE_HEADERS.responseCostExact] = toHeaderValue(exactCost);
   }
 
   if (typeof model === "string" && model.trim().length > 0) {

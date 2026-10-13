@@ -155,6 +155,7 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
     {
       kind: "provider_reported_billed_cost",
       amountUsd: 0.0042,
+      amountUsdExact: "0.0042",
       currency: "USD",
       source: "openrouter_response.usage.cost",
       pricingProvider: "openrouter",
@@ -248,6 +249,7 @@ test("an exact provider-reported charge does not imply provider-reported token u
   });
   assert.equal(openRouterCostOnly.kind, "provider_reported_billed_cost");
   assert.equal(openRouterCostOnly.usageKind, "unknown");
+  assert.equal(openRouterCostOnly.amountUsdExact, "0.0042");
 
   const xaiCostOnly = classifyCostAccounting({
     provider: "xai",

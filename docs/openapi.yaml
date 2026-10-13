@@ -1621,6 +1621,13 @@ paths:
                 USD amount, fixed 10 decimals. Omitted when Accounting-Kind is unknown,
                 usage-only, or pending, or when no cost amount is established. Interpret with
                 Accounting-Kind and Cost-Source; zero alone does not mean free.
+            X-OmniRoute-Response-Cost-Exact:
+              schema:
+                type: string
+                pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$'
+              description: >-
+                Exact decimal USD amount when provider-reported accounting retains an exact
+                amount. Prefer this over the fixed 10-decimal compatibility header.
             X-OmniRoute-Fallback-Attempts:
               schema:
                 type: string

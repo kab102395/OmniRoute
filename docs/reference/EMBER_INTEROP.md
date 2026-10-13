@@ -85,6 +85,7 @@ On success, read these headers:
 | `X-OmniRoute-Decision`                    | Routing strategy, provider, and latency summary for this response.                          |
 | `X-OmniRoute-Accounting-Kind`             | `provider_reported_billed_cost`, `estimated_cost`, `usage_only`, `zero_cost`, or `unknown`. |
 | `X-OmniRoute-Response-Cost`               | USD amount formatted to 10 decimal places; interpret only with accounting kind/source.      |
+| `X-OmniRoute-Response-Cost-Exact`         | Exact provider-reported USD decimal when available; otherwise omitted.                      |
 | `X-OmniRoute-Cost-Currency`               | Currency when an amount is available (`USD`).                                               |
 | `X-OmniRoute-Cost-Source`                 | Source of the amount, when present.                                                         |
 | `X-OmniRoute-Pricing-Retrieved-At`        | UTC timestamp when the referenced price metadata was retrieved, when known.                 |
@@ -145,7 +146,8 @@ a successful attempt. This lookup requires OmniRoute management authentication; 
 authorized by an ordinary completion API key.
 
 The call-log lookup is also useful for detailed accounting facts. Token usage is stored in the
-existing call-log token fields; `accounting` carries `kind`, `amountUsd`, `currency`, `source`,
+existing call-log token fields; `accounting` carries `kind`, `amountUsd`, `amountUsdExact` when an
+exact decimal is available, `currency`, `source`,
 `pricingProvider`, `pricingModel`, `pricingVersion`, `pricingEffectiveAt`, and `usageKind`.
 Pricing version/date are currently null because OmniRoute does not retain them. Provenance
 metadata contains provider/model/usage/cost facts only; it does not expose credentials or

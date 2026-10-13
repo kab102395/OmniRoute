@@ -53,10 +53,12 @@ function numberToDecimalString(value: number): string {
   return `${negative ? "-" : ""}${expanded}`;
 }
 
-function sumUsdDecimals(values: number[]): number {
+function sumUsdDecimals(values: readonly number[]): {
+  readonly amountUsd: number | null;
+  readonly amountUsdExact: string;
+} {
   const decimals = values.map(numberToDecimalString);
   const scale = decimals.reduce((max, value) => Math.max(max, value.split(".")[1]?.length ?? 0), 0);
-  const factor = 10n ** BigInt(scale);
   const total = decimals.reduce((sum, value) => {
     const [whole, fraction = ""] = value.split(".");
     const sign = whole.startsWith("-") ? -1n : 1n;
@@ -65,7 +67,16 @@ function sumUsdDecimals(values: number[]): number {
     const units = BigInt(`${wholeDigits}${fractionDigits}` || "0");
     return sum + sign * units;
   }, 0n);
-  return Number(total) / Number(factor);
+  const isNegative = total < 0n;
+  const digits = (isNegative ? -total : total).toString().padStart(scale + 1, "0");
+  const whole = scale === 0 ? digits : digits.slice(0, -scale);
+  const fraction = scale === 0 ? "" : digits.slice(-scale).replace(/0+$/, "");
+  const amountUsdExact = `${isNegative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+  const amountUsd = Number(amountUsdExact);
+  return {
+    amountUsd: Number.isFinite(amountUsd) ? amountUsd : null,
+    amountUsdExact,
+  };
 }
 
 /**
@@ -101,11 +112,14 @@ export function applyOpenRouterGenerationReceipts(
   };
   if (!complete) return result;
 
-  const amountUsd = sumUsdDecimals(requestedReceipts.map((receipt) => receipt?.totalCostUsd ?? 0));
+  const { amountUsd, amountUsdExact } = sumUsdDecimals(
+    requestedReceipts.map((receipt) => receipt?.totalCostUsd ?? 0)
+  );
   return {
     ...result,
-    kind: amountUsd === 0 ? "zero_cost" : "provider_reported_billed_cost",
+    kind: amountUsdExact === "0" ? "zero_cost" : "provider_reported_billed_cost",
     amountUsd,
+    amountUsdExact,
     currency: "USD",
     source: "openrouter.generation_api.total_cost",
     pricingProvider: "openrouter",
@@ -242,6 +256,7 @@ export function classifyCostAccounting(args: {
     return {
       kind: reportedCost === 0 ? "zero_cost" : "provider_reported_billed_cost",
       amountUsd: reportedCost,
+      amountUsdExact: numberToDecimalString(reportedCost),
       currency: "USD",
       source: "openrouter_response.usage.cost",
       ...identity,
