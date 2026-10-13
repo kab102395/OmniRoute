@@ -134,6 +134,7 @@ export function buildOmniRouteResponseMetaHeaders({
   strategy = null,
   servedProvider = null,
   servedModel = null,
+  servedModelSource = null,
   servedProviderInstanceId = null,
   connectionId = null,
   accounting = null,
@@ -158,6 +159,7 @@ export function buildOmniRouteResponseMetaHeaders({
   /** Final concrete target that produced this completion; omitted before success is known. */
   servedProvider?: string | null;
   servedModel?: string | null;
+  servedModelSource?: "provider_response" | "outbound_request" | null;
   servedProviderInstanceId?: string | null;
   connectionId?: string | null;
   accounting?: {
@@ -218,6 +220,9 @@ export function buildOmniRouteResponseMetaHeaders({
   }
   if (typeof servedModel === "string" && servedModel.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.servedModel] = toHeaderValue(servedModel);
+    if (servedModelSource) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.servedModelSource] = toHeaderValue(servedModelSource);
+    }
   }
   if (typeof servedProviderInstanceId === "string" && servedProviderInstanceId.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.servedProviderInstanceId] =

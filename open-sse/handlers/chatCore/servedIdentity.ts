@@ -1,10 +1,11 @@
-/** Resolved identity captured from the final provider request accepted by chatCore. */
+/** Route identity paired with the provider response when it reports an effective model. */
 import { getProviderNodeByIdSync } from "@/lib/db/providers/nodes";
 
 export type ServedIdentity = {
   /** Public provider prefix. Internal provider-node IDs are never used here when mapped. */
   provider: string;
   model: string;
+  modelSource: "provider_response" | "outbound_request";
   providerInstanceId: string | null;
 };
 
@@ -13,13 +14,23 @@ type ProviderNodeLookup = (id: string) => { id?: unknown; prefix?: unknown } | n
 export function resolveServedIdentity(
   provider: unknown,
   providerRequest: unknown,
-  lookupProviderNode: ProviderNodeLookup = getProviderNodeByIdSync
+  lookupProviderNode: ProviderNodeLookup = getProviderNodeByIdSync,
+  providerResponse?: unknown
 ): ServedIdentity | null {
   if (typeof provider !== "string" || !provider.trim()) return null;
   if (!providerRequest || typeof providerRequest !== "object" || Array.isArray(providerRequest)) {
     return null;
   }
-  const model = (providerRequest as Record<string, unknown>).model;
+  const outboundModel = (providerRequest as Record<string, unknown>).model;
+  const reportedModel =
+    providerResponse && typeof providerResponse === "object" && !Array.isArray(providerResponse)
+      ? (providerResponse as Record<string, unknown>).model
+      : null;
+  const modelSource =
+    typeof reportedModel === "string" && reportedModel.trim()
+      ? "provider_response"
+      : "outbound_request";
+  const model = modelSource === "provider_response" ? reportedModel : outboundModel;
   if (typeof model !== "string" || !model.trim()) return null;
 
   const providerInstanceId = provider.trim();
@@ -37,6 +48,7 @@ export function resolveServedIdentity(
   return {
     provider: publicProvider,
     model: model.trim(),
+    modelSource,
     providerInstanceId: providerNode ? providerInstanceId : null,
   };
 }

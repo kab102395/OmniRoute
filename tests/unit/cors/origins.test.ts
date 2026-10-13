@@ -160,6 +160,7 @@ describe("cors/origins.applyCorsHeaders", () => {
     });
     applyCorsHeaders(res, req, true);
     const exposed = res.headers.get("Access-Control-Expose-Headers") || "";
+    assert.match(exposed, /X-OmniRoute-Served-Model-Source/);
     assert.match(exposed, /X-OmniRoute-Pricing-Retrieved-At/);
     assert.match(exposed, /X-OmniRoute-Pricing-Stale/);
     assert.match(exposed, /X-OmniRoute-Fallback-Attempts/);

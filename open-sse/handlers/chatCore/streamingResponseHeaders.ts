@@ -19,6 +19,7 @@ export function assembleStreamingResponseHeaders(
     pendingRequestId: string;
     servedProvider?: string | null;
     servedModel?: string | null;
+    servedModelSource?: "provider_response" | "outbound_request" | null;
     servedProviderInstanceId?: string | null;
     connectionId?: string | null;
     /** Number of additional upstream dispatches recorded before this response. */
@@ -40,6 +41,7 @@ export function assembleStreamingResponseHeaders(
       strategy: args.comboStrategy ?? "single",
       servedProvider: args.servedProvider,
       servedModel: args.servedModel,
+      servedModelSource: args.servedModelSource,
       servedProviderInstanceId: args.servedProviderInstanceId,
       connectionId: args.connectionId,
       accounting: { kind: "pending", usageKind: "unknown" },

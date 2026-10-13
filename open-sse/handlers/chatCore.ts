@@ -5331,7 +5331,7 @@ export async function handleChatCore({
       responseUsageRecord?.estimated === true || usageRecord?.estimated === true;
     const usageForAccounting =
       costUsage && usageWasEstimated ? { ...costUsage, estimated: true } : costUsage;
-    const servedIdentity = resolveServedIdentity(provider, finalBody);
+    const servedIdentity = resolveServedIdentity(provider, finalBody, undefined, responseBody);
     const pricingModel = servedIdentity?.model || currentModel || effectiveModel;
     const costAssessment = costUsage
       ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
@@ -5544,6 +5544,7 @@ export async function handleChatCore({
       requestId: pendingRequestId,
       servedProvider: servedIdentity?.provider || null,
       servedModel: servedIdentity?.model || null,
+      servedModelSource: servedIdentity?.modelSource || null,
       servedProviderInstanceId: servedIdentity?.providerInstanceId || null,
       connectionId: credentials?.connectionId ?? null,
       accounting,
@@ -5701,6 +5702,7 @@ export async function handleChatCore({
     pendingRequestId,
     servedProvider: streamServedIdentity?.provider || null,
     servedModel: streamServedIdentity?.model || null,
+    servedModelSource: streamServedIdentity?.modelSource || null,
     servedProviderInstanceId: streamServedIdentity?.providerInstanceId || null,
     connectionId: credentials?.connectionId ?? null,
     fallbackAttempts: Math.max(0, executionAttemptTotal - 1),
@@ -5909,7 +5911,12 @@ export async function handleChatCore({
       cacheSource: "upstream" as const,
     };
     if (normalizedStreamStatus === 200) {
-      const servedIdentity = resolveServedIdentity(provider, finalBody);
+      const servedIdentity = resolveServedIdentity(
+        provider,
+        finalBody,
+        undefined,
+        streamResponseBody
+      );
       const pricingModel = servedIdentity?.model || currentModel || effectiveModel;
       const costUsage = normalizeUsage(streamUsage as Record<string, unknown> | null | undefined);
       const usageForAccounting =

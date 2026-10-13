@@ -71,6 +71,17 @@ test("completion pricing freshness header uses its runtime string representation
   });
 });
 
+test("served model header documents the source used to identify the effective model", () => {
+  const header =
+    spec.paths["/api/v1/chat/completions"]?.post?.responses?.["200"]?.headers?.[
+      "X-OmniRoute-Served-Model-Source"
+    ];
+  assert.deepEqual(header?.schema, {
+    type: "string",
+    enum: ["provider_response", "outbound_request"],
+  });
+});
+
 test("OmniRoute keeps catalog and execution facts needed by external routers", () => {
   const modelProperties = spec.components.schemas.Model.properties;
   for (const field of [
@@ -91,6 +102,7 @@ test("OmniRoute keeps catalog and execution facts needed by external routers", (
     "X-OmniRoute-Request-Id",
     "X-OmniRoute-Served-Provider",
     "X-OmniRoute-Served-Model",
+    "X-OmniRoute-Served-Model-Source",
     "X-OmniRoute-Accounting-Kind",
     "X-OmniRoute-Response-Cost",
     "X-OmniRoute-Cost-Source",

@@ -1611,12 +1611,20 @@ paths:
               schema:
                 type: string
               description: >-
-                Selected upstream provider for a completion. Present on streaming and non-streaming
-                responses when known; a streaming response may still fail after headers are sent.
+                OmniRoute provider or aggregator used for the outbound dispatch. This does not assert
+                the aggregator's downstream host. Present on streaming and non-streaming responses
+                when known; a streaming response may still fail after headers are sent.
             X-OmniRoute-Served-Model:
               schema:
                 type: string
-              description: Concrete model in the selected outbound provider request; omitted if unavailable.
+              description: >-
+                Model reported by the provider response when available; otherwise the final model in
+                OmniRoute's outbound request. Use Served-Model-Source to distinguish those cases.
+            X-OmniRoute-Served-Model-Source:
+              schema:
+                type: string
+                enum: [provider_response, outbound_request]
+              description: Evidence source for Served-Model; outbound_request is used when no model is reported.
             X-OmniRoute-Served-Provider-Instance-Id:
               schema:
                 type: string

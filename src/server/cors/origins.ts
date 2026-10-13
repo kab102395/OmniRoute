@@ -190,6 +190,7 @@ export function applyCorsHeaders(
         "X-OmniRoute-Request-Id",
         "X-OmniRoute-Served-Provider",
         "X-OmniRoute-Served-Model",
+        "X-OmniRoute-Served-Model-Source",
         "X-OmniRoute-Served-Provider-Instance-Id",
         "X-OmniRoute-Connection-Id",
         "X-OmniRoute-Accounting-Kind",

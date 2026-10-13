@@ -21,6 +21,7 @@ export function buildNonStreamingResponseHeaders(
     requestId: string | null | undefined;
     servedProvider?: string | null;
     servedModel?: string | null;
+    servedModelSource?: "provider_response" | "outbound_request" | null;
     servedProviderInstanceId?: string | null;
     connectionId?: string | null;
     accounting?: {
@@ -53,6 +54,7 @@ export function buildNonStreamingResponseHeaders(
     requestId: args.requestId,
     servedProvider: args.servedProvider,
     servedModel: args.servedModel,
+    servedModelSource: args.servedModelSource,
     servedProviderInstanceId: args.servedProviderInstanceId,
     connectionId: args.connectionId,
     accounting: args.accounting,

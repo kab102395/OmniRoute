@@ -113,12 +113,14 @@ test("buildOmniRouteResponseMetaHeaders separates public served provider from in
   const headers = buildOmniRouteResponseMetaHeaders({
     servedProvider: "codex2-bridge",
     servedModel: "codex2",
+    servedModelSource: "provider_response",
     servedProviderInstanceId: "codex2-node-id",
     connectionId: "connection-2",
   });
 
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedProvider], "codex2-bridge");
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedModel], "codex2");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedModelSource], "provider_response");
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.servedProviderInstanceId], "codex2-node-id");
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.connectionId], "connection-2");
 });

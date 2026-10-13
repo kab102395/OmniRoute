@@ -82,6 +82,7 @@ test("meta preserves public served identity separately from node and connection 
     baseArgs({
       servedProvider: "codex-bridge",
       servedModel: "codex",
+      servedModelSource: "provider_response",
       servedProviderInstanceId: "codex-node-id",
       connectionId: "connection-1",
     }),
@@ -89,6 +90,7 @@ test("meta preserves public served identity separately from node and connection 
   );
   assert.equal(metaCalls[0].meta.servedProvider, "codex-bridge");
   assert.equal(metaCalls[0].meta.servedModel, "codex");
+  assert.equal(metaCalls[0].meta.servedModelSource, "provider_response");
   assert.equal(metaCalls[0].meta.servedProviderInstanceId, "codex-node-id");
   assert.equal(metaCalls[0].meta.connectionId, "connection-1");
 });

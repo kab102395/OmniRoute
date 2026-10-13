@@ -44,13 +44,26 @@ test("served identity follows the final successful outbound model after fallback
   assert.deepEqual(resolveServedIdentity("openai", { model: "provider-b/model-2" }), {
     provider: "openai",
     model: "provider-b/model-2",
+    modelSource: "outbound_request",
     providerInstanceId: null,
   });
   assert.deepEqual(resolveServedIdentity("anthropic", { model: "claude-sonnet-4-6" }), {
     provider: "anthropic",
     model: "claude-sonnet-4-6",
+    modelSource: "outbound_request",
     providerInstanceId: null,
   });
+  assert.deepEqual(
+    resolveServedIdentity("openrouter", { model: "openai/gpt-6-luna" }, undefined, {
+      model: "openai/gpt-6-luna-2026-10-06",
+    }),
+    {
+      provider: "openrouter",
+      model: "openai/gpt-6-luna-2026-10-06",
+      modelSource: "provider_response",
+      providerInstanceId: null,
+    }
+  );
   assert.equal(resolveServedIdentity("openai", null), null);
   assert.equal(resolveServedIdentity("openai", { model: " " }), null);
 });
@@ -66,16 +79,19 @@ test("served provider maps an exact internal node to its configured public prefi
   assert.deepEqual(resolveServedIdentity("codex-node-id", { model: "codex" }, lookup), {
     provider: "codex-bridge",
     model: "codex",
+    modelSource: "outbound_request",
     providerInstanceId: "codex-node-id",
   });
   assert.deepEqual(resolveServedIdentity("codex2-node-id", { model: "codex2" }, lookup), {
     provider: "codex2-bridge",
     model: "codex2",
+    modelSource: "outbound_request",
     providerInstanceId: "codex2-node-id",
   });
   assert.deepEqual(resolveServedIdentity("unknown-node-id", { model: "codex" }, lookup), {
     provider: "unknown-node-id",
     model: "codex",
+    modelSource: "outbound_request",
     providerInstanceId: null,
   });
 });
