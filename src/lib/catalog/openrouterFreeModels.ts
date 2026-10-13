@@ -18,13 +18,23 @@ export interface DiscoveredFreeModel {
   source: "openrouter";
   sourceUrl: string;
   lastSeenAt: string;
+  catalogRetrievedAt: string | null;
   catalogAvailability: "listed" | "stale";
   accountEligibility: "unknown";
   freeEligibility: "verified_free_variant" | "unknown_stale_catalog";
   contextWindow: number | null;
+  maxOutputTokens: number | null;
+  inputModalities: string[];
+  outputModalities: string[];
   modalities: string[];
+  supportedParameters: string[];
   supportsTools: boolean | null;
   supportsReasoning: boolean | null;
+  supportsStructuredOutput: boolean | null;
+}
+
+function positiveFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function isFree(entry: OpenRouterCatalogEntry): boolean {
@@ -65,16 +75,32 @@ export function discoverOpenRouterFreeModels(
       source: "openrouter",
       sourceUrl: `https://openrouter.ai/${modelId.split("/").map(encodeURIComponent).join("/")}`,
       lastSeenAt,
+      catalogRetrievedAt: lastSeenAt || null,
       catalogAvailability: stale ? "stale" : "listed",
       accountEligibility: "unknown",
       freeEligibility: stale ? "unknown_stale_catalog" : "verified_free_variant",
-      contextWindow: entry.context_length ?? null,
-      modalities:
-        entry.architecture?.output_modalities ?? entry.architecture?.input_modalities ?? [],
+      contextWindow: positiveFiniteNumber(entry.context_length),
+      maxOutputTokens: positiveFiniteNumber(entry.top_provider?.max_completion_tokens),
+      inputModalities: normalizeStringList(entry.architecture?.input_modalities),
+      outputModalities: normalizeStringList(entry.architecture?.output_modalities),
+      modalities: normalizeStringList(
+        entry.architecture?.output_modalities ?? entry.architecture?.input_modalities
+      ),
+      supportedParameters: normalizeStringList(entry.supported_parameters),
       supportsTools: entry.supported_parameters?.includes("tools") ?? null,
       supportsReasoning: entry.supported_parameters?.includes("reasoning") ?? null,
+      supportsStructuredOutput:
+        entry.supported_parameters === undefined
+          ? null
+          : entry.supported_parameters.includes("structured_outputs") ||
+            entry.supported_parameters.includes("response_format"),
     });
   }
 
   return result.sort((a, b) => a.modelId.localeCompare(b.modelId));
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 }
