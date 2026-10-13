@@ -184,6 +184,8 @@ export function computeCostFromPricing(
   const outputPrice = toNonNegativePrice(pricing.output);
   const reasoningPrice = toNonNegativePrice(pricing.reasoning) ?? outputPrice;
   const cacheCreationPrice = toNonNegativePrice(pricing.cache_creation) ?? inputPrice;
+  const inputAudioPrice = toNonNegativePrice(pricing.input_audio);
+  const outputAudioPrice = toNonNegativePrice(pricing.output_audio);
 
   let tokenCost = 0;
   const inputTokens = Math.max(
@@ -203,6 +205,8 @@ export function computeCostFromPricing(
     toNumber(tokens.output ?? tokens.completion_tokens ?? tokens.output_tokens, 0)
   );
   const reasoningTokens = Math.max(0, toNumber(tokens.reasoning ?? tokens.reasoning_tokens, 0));
+  const inputAudioTokens = Math.max(0, toNumber(tokens.input_audio_tokens, 0));
+  const outputAudioTokens = Math.max(0, toNumber(tokens.output_audio_tokens, 0));
   const requestCount = Math.max(0, Math.floor(toNumber(options.requestCount, 1)));
   const requestPriceReported = Object.hasOwn(pricing, "request");
   const requestPrice = toNonNegativePrice(pricing.request);
@@ -210,13 +214,18 @@ export function computeCostFromPricing(
   // prompt_tokens from extractors already includes cache_read + cache_creation,
   // so we must subtract BOTH cache types to avoid pricing cache at the full
   // input rate in addition to their dedicated cache_* rates below.
-  const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
+  const nonCachedInput = Math.max(
+    0,
+    inputTokens - cachedTokens - cacheCreationTokens - inputAudioTokens
+  );
   if (
     (nonCachedInput > 0 && inputPrice === null) ||
     (cachedTokens > 0 && cachedPrice === null) ||
     (cacheCreationTokens > 0 && cacheCreationPrice === null) ||
     (outputTokens > 0 && outputPrice === null) ||
     (reasoningTokens > 0 && outputPrice === null) ||
+    (inputAudioTokens > 0 && inputAudioPrice === null) ||
+    (outputAudioTokens > 0 && outputAudioPrice === null) ||
     (requestCount > 0 && requestPriceReported && requestPrice === null)
   ) {
     return 0;
@@ -224,7 +233,9 @@ export function computeCostFromPricing(
 
   tokenCost += nonCachedInput * ((inputPrice ?? 0) / 1_000_000);
   if (cachedTokens > 0) tokenCost += cachedTokens * ((cachedPrice ?? 0) / 1_000_000);
-  tokenCost += outputTokens * ((outputPrice ?? 0) / 1_000_000);
+  tokenCost += Math.max(0, outputTokens - outputAudioTokens) * ((outputPrice ?? 0) / 1_000_000);
+  if (inputAudioTokens > 0) tokenCost += inputAudioTokens * ((inputAudioPrice ?? 0) / 1_000_000);
+  if (outputAudioTokens > 0) tokenCost += outputAudioTokens * ((outputAudioPrice ?? 0) / 1_000_000);
 
   // completion_tokens is reasoning-inclusive. Reasoning is already billed at
   // the output rate above, so a dedicated price contributes only its premium.
@@ -373,6 +384,8 @@ export async function calculateCostWithEvidence(
           ["cached", routePricing.input_cache_read],
           ["cache_creation", routePricing.input_cache_write],
           ["reasoning", routePricing.internal_reasoning],
+          ["input_audio", routePricing.audio],
+          ["output_audio", routePricing.audio_output],
         ];
         for (const [key, value] of tokenDimensions) {
           const rate = perMillion(value);
@@ -391,6 +404,13 @@ export async function calculateCostWithEvidence(
             "cached",
             "cache_creation",
             "reasoning",
+            "input_audio",
+            "output_audio",
+            "image",
+            "image_output",
+            "image_token",
+            "video",
+            "internal_reasoning",
             "request",
           ]) {
             pricing[key] = 0;
@@ -504,7 +524,13 @@ export async function calculateCostWithEvidence(
       toNumber(tokens.output ?? tokens.completion_tokens ?? tokens.output_tokens)
     );
     const reasoningTokens = Math.max(0, toNumber(tokens.reasoning ?? tokens.reasoning_tokens));
-    const nonCachedInputTokens = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
+    const inputAudioTokens = Math.max(0, toNumber(tokens.input_audio_tokens));
+    const outputAudioTokens = Math.max(0, toNumber(tokens.output_audio_tokens));
+    const nonCachedInputTokens = Math.max(
+      0,
+      inputTokens - cachedTokens - cacheCreationTokens - inputAudioTokens
+    );
+    const textOutputTokens = Math.max(0, outputTokens - outputAudioTokens);
     const hasRate = (value: unknown) => toNonNegativePrice(value) !== null;
     const pricingEvidence = buildCostPricingEvidence(
       evidenceSource,
@@ -527,7 +553,9 @@ export async function calculateCostWithEvidence(
     if (cacheCreationTokens > 0) {
       usedRateFields.add(hasRate(pricingRecord.cache_creation) ? "cache_creation" : "input");
     }
-    if (outputTokens > 0) usedRateFields.add("output");
+    if (textOutputTokens > 0) usedRateFields.add("output");
+    if (inputAudioTokens > 0) usedRateFields.add("input_audio");
+    if (outputAudioTokens > 0) usedRateFields.add("output_audio");
     if (reasoningTokens > 0) {
       usedRateFields.add(hasRate(pricingRecord.reasoning) ? "reasoning" : "output");
     }
@@ -626,7 +654,9 @@ export async function calculateCostWithEvidence(
       (cacheCreationTokens === 0 ||
         hasRate(pricingRecord.cache_creation) ||
         hasRate(pricingRecord.input)) &&
-      (outputTokens === 0 || hasRate(pricingRecord.output)) &&
+      (textOutputTokens === 0 || hasRate(pricingRecord.output)) &&
+      (inputAudioTokens === 0 || hasRate(pricingRecord.input_audio)) &&
+      (outputAudioTokens === 0 || hasRate(pricingRecord.output_audio)) &&
       (reasoningTokens === 0 ||
         hasRate(pricingRecord.reasoning) ||
         hasRate(pricingRecord.output)) &&

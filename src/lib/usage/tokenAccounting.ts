@@ -114,6 +114,21 @@ export function getReasoningTokens(tokens: unknown): number {
   );
 }
 
+/** Audio tokens are reported separately from text tokens in OpenAI-shaped usage. */
+export function getInputAudioTokens(tokens: unknown): number {
+  const tokenRecord = asRecord(tokens);
+  const details = asRecord(tokenRecord.prompt_tokens_details ?? tokenRecord.input_tokens_details);
+  return toFiniteNumber(tokenRecord.input_audio_tokens ?? details.audio_tokens);
+}
+
+export function getOutputAudioTokens(tokens: unknown): number {
+  const tokenRecord = asRecord(tokens);
+  const details = asRecord(
+    tokenRecord.completion_tokens_details ?? tokenRecord.output_tokens_details
+  );
+  return toFiniteNumber(tokenRecord.output_audio_tokens ?? details.audio_tokens);
+}
+
 // Non-greedy, single-capture, no nested variable-length quantifiers → ReDoS-safe.
 const THINK_BLOCK_RE = /<think>([\s\S]*?)<\/think>/gi;
 

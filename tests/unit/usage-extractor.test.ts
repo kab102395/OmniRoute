@@ -16,6 +16,23 @@ test("normalizeUsage keeps only finite numeric fields for stream cost calculatio
   );
 });
 
+test("normalizeUsage preserves separately metered audio token counts", () => {
+  assert.deepEqual(
+    normalizeUsage({
+      prompt_tokens: 30,
+      completion_tokens: 20,
+      prompt_tokens_details: { audio_tokens: 12 },
+      completion_tokens_details: { audio_tokens: 8 },
+    }),
+    {
+      prompt_tokens: 30,
+      completion_tokens: 20,
+      input_audio_tokens: 12,
+      output_audio_tokens: 8,
+    }
+  );
+});
+
 test("extractUsageFromResponse reads OpenAI chat completion usage", () => {
   const usage = extractUsageFromResponse(
     {
@@ -35,6 +52,24 @@ test("extractUsageFromResponse reads OpenAI chat completion usage", () => {
     cached_tokens: 3,
     reasoning_tokens: 2,
   });
+});
+
+test("extractUsageFromResponse preserves OpenAI input/output audio token counts", () => {
+  const usage = extractUsageFromResponse(
+    {
+      usage: {
+        prompt_tokens: 30,
+        completion_tokens: 20,
+        prompt_tokens_details: { audio_tokens: 12 },
+        completion_tokens_details: { audio_tokens: 8 },
+      },
+    },
+    "openai"
+  );
+  assert.equal(usage.prompt_tokens, 30);
+  assert.equal(usage.completion_tokens, 20);
+  assert.equal(usage.input_audio_tokens, 12);
+  assert.equal(usage.output_audio_tokens, 8);
 });
 
 test("extractUsageFromResponse preserves an OpenRouter cost receipt when token counts are absent", () => {

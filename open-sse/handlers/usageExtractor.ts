@@ -1,4 +1,5 @@
 import { parseUsdTicks } from "@/lib/usage/usdDecimal";
+import { getInputAudioTokens, getOutputAudioTokens } from "@/lib/usage/tokenAccounting";
 
 /**
  * Extract usage from non-streaming response body
@@ -72,6 +73,16 @@ export function extractUsageFromResponse(responseBody, provider) {
         responseBody.usage.completion_tokens_details?.reasoning_tokens ??
         responseBody.usage.output_tokens_details?.reasoning_tokens ??
         responseBody.usage.reasoning_tokens,
+      ...(responseBody.usage.prompt_tokens_details?.audio_tokens !== undefined ||
+      responseBody.usage.input_tokens_details?.audio_tokens !== undefined ||
+      responseBody.usage.input_audio_tokens !== undefined
+        ? { input_audio_tokens: getInputAudioTokens(responseBody.usage) }
+        : {}),
+      ...(responseBody.usage.completion_tokens_details?.audio_tokens !== undefined ||
+      responseBody.usage.output_tokens_details?.audio_tokens !== undefined ||
+      responseBody.usage.output_audio_tokens !== undefined
+        ? { output_audio_tokens: getOutputAudioTokens(responseBody.usage) }
+        : {}),
       // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A —
       // @ryanngit). Only set the key when present so non-xAI OpenAI-shaped usage
       // (Codex, DeepSeek, etc.) is unaffected. Ticks → USD conversion happens in
@@ -137,6 +148,16 @@ export function extractUsageFromResponse(responseBody, provider) {
         responsesUsage.output_tokens_details?.reasoning_tokens ??
         responsesUsage.completion_tokens_details?.reasoning_tokens ??
         responsesUsage.reasoning_tokens,
+      ...(responsesUsage.prompt_tokens_details?.audio_tokens !== undefined ||
+      responsesUsage.input_tokens_details?.audio_tokens !== undefined ||
+      responsesUsage.input_audio_tokens !== undefined
+        ? { input_audio_tokens: getInputAudioTokens(responsesUsage) }
+        : {}),
+      ...(responsesUsage.completion_tokens_details?.audio_tokens !== undefined ||
+      responsesUsage.output_tokens_details?.audio_tokens !== undefined ||
+      responsesUsage.output_audio_tokens !== undefined
+        ? { output_audio_tokens: getOutputAudioTokens(responsesUsage) }
+        : {}),
     };
   }
 

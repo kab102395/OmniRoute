@@ -6,6 +6,8 @@ import { appendRequestLog } from "@/lib/usageDb";
 import {
   getLoggedInputTokens,
   getLoggedOutputTokens,
+  getInputAudioTokens,
+  getOutputAudioTokens,
   getNoCacheTokens,
   getPromptCacheCreationTokens,
   getPromptCacheReadTokens,
@@ -22,6 +24,8 @@ interface UsageTokenDetail {
   cache_creation_tokens?: number;
   cache_write_tokens?: number;
   reasoning_tokens?: number;
+  input_audio_tokens?: number;
+  output_audio_tokens?: number;
   thinking_tokens?: number;
   [field: string]: unknown;
 }
@@ -629,6 +633,22 @@ export function normalizeUsage(usage: UsageLike | null | undefined) {
   assignNumber("cached_tokens", usage?.cached_tokens);
   assignNumber("no_cache_tokens", usage?.no_cache_tokens);
   assignNumber("reasoning_tokens", usage?.reasoning_tokens);
+  const inputAudioTokens = getInputAudioTokens(usage);
+  const outputAudioTokens = getOutputAudioTokens(usage);
+  if (
+    usage.input_audio_tokens !== undefined ||
+    usage.prompt_tokens_details?.audio_tokens !== undefined ||
+    usage.input_tokens_details?.audio_tokens !== undefined
+  ) {
+    assignNumber("input_audio_tokens", inputAudioTokens);
+  }
+  if (
+    usage.output_audio_tokens !== undefined ||
+    usage.completion_tokens_details?.audio_tokens !== undefined ||
+    usage.output_tokens_details?.audio_tokens !== undefined
+  ) {
+    assignNumber("output_audio_tokens", outputAudioTokens);
+  }
   // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A —
   // @ryanngit). Ticks → USD conversion happens in costCalculator.ts, not here.
   const exactCostTicks = usage?.cost_in_usd_ticks;
@@ -788,6 +808,14 @@ export function extractUsage(chunk: UsagePayloadLike | null | undefined, provide
         usage.output_tokens_details?.reasoning_tokens ??
         usage.completion_tokens_details?.reasoning_tokens ??
         usage.reasoning_tokens,
+      input_audio_tokens:
+        usage.prompt_tokens_details?.audio_tokens ??
+        usage.input_tokens_details?.audio_tokens ??
+        usage.input_audio_tokens,
+      output_audio_tokens:
+        usage.completion_tokens_details?.audio_tokens ??
+        usage.output_tokens_details?.audio_tokens ??
+        usage.output_audio_tokens,
     });
   }
 
@@ -812,6 +840,14 @@ export function extractUsage(chunk: UsagePayloadLike | null | undefined, provide
         chunk.usage.completion_tokens_details?.reasoning_tokens ??
         chunk.usage.output_tokens_details?.reasoning_tokens ??
         chunk.usage.reasoning_tokens,
+      input_audio_tokens:
+        chunk.usage.prompt_tokens_details?.audio_tokens ??
+        chunk.usage.input_tokens_details?.audio_tokens ??
+        chunk.usage.input_audio_tokens,
+      output_audio_tokens:
+        chunk.usage.completion_tokens_details?.audio_tokens ??
+        chunk.usage.output_tokens_details?.audio_tokens ??
+        chunk.usage.output_audio_tokens,
       // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A).
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       ...openRouterCost,
