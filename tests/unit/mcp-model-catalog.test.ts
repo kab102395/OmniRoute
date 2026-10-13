@@ -142,6 +142,23 @@ test("explicit unknown tool support is not promoted by a legacy capability hint"
   assert.equal(result.models[0]?.toolCallingStatus, "unknown");
 });
 
+test("a model without declared endpoints is not advertised as chat-capable", async () => {
+  const result = await getMcpModelsCatalog(
+    { provider: "openrouter", capability: "chat" },
+    {
+      listProviderConnections: async () => [
+        { id: "conn-openrouter", provider: "openrouter", isActive: true },
+      ],
+      fetchJson: async () => ({
+        source: "api",
+        models: [{ id: "vendor/unknown-capabilities", owned_by: "openrouter" }],
+      }),
+    }
+  );
+
+  assert.deepEqual(result.models, []);
+});
+
 test("getMcpModelsCatalog exposes codex default thinking effort when no override is stored", async () => {
   const result = await getMcpModelsCatalog(
     { provider: "codex" },

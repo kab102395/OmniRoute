@@ -602,6 +602,9 @@ facts, and provider-specific routes when the source endpoint supplies them.
 `status` is `unknown` when the provider model listing does not declare a route status; a successful
 listing alone does not establish that the configured account can execute that model. For dispatch
 eligibility, require explicit `routeAvailability.accountEligibility == "eligible"` evidence.
+The `capabilities` list contains only capabilities declared by the provider catalog; an absent list
+does not imply chat support, and capability-filtered queries omit models whose required capability
+is unknown.
 
 ### 📋 Use Case 5: Tool-Capable Model Discovery
 

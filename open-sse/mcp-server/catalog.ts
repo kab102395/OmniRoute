@@ -101,17 +101,17 @@ function normalizeCapability(value: string): string {
 
 function getCatalogModelCapabilities(model: JsonRecord): string[] {
   if (Array.isArray(model.capabilities) && model.capabilities.length > 0) {
-    return toStringArray(model.capabilities, ["chat"]).map(normalizeCapability);
+    return toStringArray(model.capabilities).map(normalizeCapability);
   }
 
   if (Array.isArray(model.supportedEndpoints) && model.supportedEndpoints.length > 0) {
-    return toStringArray(model.supportedEndpoints, ["chat"]).map(normalizeCapability);
+    return toStringArray(model.supportedEndpoints).map(normalizeCapability);
   }
 
   const type = toString(model.type);
   if (type) return [normalizeCapability(type)];
 
-  return ["chat"];
+  return [];
 }
 
 function normalizeCatalogStatus(
