@@ -1920,7 +1920,7 @@ test("chatCore downgrades unsupported xhigh effort for assistant-prefill OpenAI-
   assert.equal(call.body.reasoning_effort, "max");
 });
 test("chatCore logs chat completions endpoint as OpenAI protocol", async () => {
-  const { call, result } = await invokeChatCore({
+  const { calls, result } = await invokeChatCore({
     provider: "openrouter",
     model: "deepseek/deepseek-v4-pro",
     endpoint: "/v1/chat/completions",
@@ -1938,7 +1938,11 @@ test("chatCore logs chat completions endpoint as OpenAI protocol", async () => {
   });
 
   assert.equal(result.success, true);
-  assert.equal(call.body.model, "deepseek/deepseek-v4-pro");
+  const inferenceCall = calls.find(
+    (candidate) => candidate.method === "POST" && candidate.body?.model
+  );
+  assert.ok(inferenceCall, "expected the OpenRouter inference request to be captured");
+  assert.equal(inferenceCall.body.model, "deepseek/deepseek-v4-pro");
 
   const logEntry = await waitFor(getLatestCallLog);
   assert.ok(logEntry, "expected call log to be persisted");
