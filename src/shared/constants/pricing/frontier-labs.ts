@@ -319,34 +319,33 @@ export const DEFAULT_PRICING_FRONTIER = {
       reasoning: 2.19,
       cache_creation: 0.55,
     },
-    // DeepSeek official API list prices, checked 2026-08-23. Superseded the
-    // prior 2026-08-13 flat prices below: DeepSeek switched v4-pro/v4-flash to
-    // peak/off-peak dynamic pricing on 2026-08-17 (peak = exactly 2x off-peak;
-    // peak hours 01:00-04:00 and 06:00-10:00 UTC, Monday through Friday — the
-    // whole weekend is off-peak, see
-    // https://api-docs.deepseek.com/quick_start/pricing/). That weekday clause
-    // is easy to miss: the Chinese page states it in Beijing time
-    // (「高峰时段为北京时间周一至周五 9:00 - 12:00、14:00 - 18:00」) while the English
-    // one attaches UTC to the hours and leaves the weekday unqualified. Peak is
-    // therefore 35 hours a week, not 49. This static table has
-    // no time-of-day dimension, so these are the OFF-PEAK (lower-bound) prices —
-    // a deliberate, documented undercount, never an overcount, and it now applies
-    // to 21% of the week rather than 29%. True peak-awareness would need a time
-    // dimension threaded through getPricingForModel() and every call site; out of
-    // scope for this fix.
+    // Peak-rate estimates checked against DeepSeek's official pricing page on
+    // 2026-10-13. The provider now prices deepseek-flash by UTC peak/off-peak
+    // window and has retired the v4-flash alias. The v4-pro alias has conflicting
+    // official descriptions (Pro price table versus temporary routing to Flash),
+    // so use the higher published Pro peak rates as the conservative estimate.
+    // These are estimates, not a provider billing ceiling; see the official
+    // schedule at https://api-docs.deepseek.com/quick_start/pricing/.
+    "deepseek-flash": {
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
+    },
     "deepseek-v4-pro": {
-      input: 0.66,
-      output: 1.98,
-      cached: 0.022,
-      reasoning: 1.98,
-      cache_creation: 0.66,
+      input: 1.32,
+      output: 3.96,
+      cached: 0.044,
+      reasoning: 3.96,
+      cache_creation: 1.32,
     },
     "deepseek-v4-flash": {
-      input: 0.22,
-      output: 0.66,
-      cached: 0.007,
-      reasoning: 0.66,
-      cache_creation: 0.22,
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
     },
   },
   blackbox: {

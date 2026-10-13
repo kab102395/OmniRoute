@@ -19,8 +19,18 @@ export const deepseekProvider: RegistryEntry = {
   ],
   models: [
     {
+      id: "deepseek-flash",
+      name: "DeepSeek V4.1 Flash",
+      contextLength: 1_000_000,
+      maxOutputTokens: 384_000,
+      supportsReasoning: true,
+      supportedThinkingEfforts: ["none", "low", "high", "max"],
+      toolCalling: true,
+      supportsVision: true,
+    },
+    {
       id: "deepseek-v4-pro",
-      name: "DeepSeek V4 Pro (0813)",
+      name: "DeepSeek V4 Pro (upstream route may resolve to V4.1 Flash)",
       contextLength: 1_000_000,
       maxOutputTokens: 384_000,
       supportsReasoning: true,
@@ -29,12 +39,13 @@ export const deepseekProvider: RegistryEntry = {
     },
     {
       id: "deepseek-v4-flash",
-      name: "DeepSeek V4 Flash (0731)",
+      name: "DeepSeek V4 Flash (legacy alias for V4.1 Flash)",
       contextLength: 1_000_000,
       maxOutputTokens: 384_000,
       supportsReasoning: true,
       supportedThinkingEfforts: ["none", "low", "high", "max"],
       toolCalling: true,
+      supportsVision: true,
     },
   ],
 };

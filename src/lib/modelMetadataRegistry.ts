@@ -25,6 +25,7 @@ import {
 } from "@/lib/modelsDevSync";
 import { getSyncedPricing } from "@/lib/pricingSync";
 import { getPricingForModel as getDefaultPricingForModel } from "@/shared/constants/pricing";
+import { getDeepseekPricingEvidence } from "@/lib/catalog/deepseekPricing";
 import {
   CANONICAL_EFFORT_VALUES,
   extendCodexGpt56EffortValues,
@@ -628,6 +629,16 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
 
   // A provider-specific pricing assessment (including an explicit unknown or
   // incomplete state) takes precedence over unrelated generic model prices.
+  const deepseekPricingEvidence =
+    provider === "deepseek" ? getDeepseekPricingEvidence(model, Date.now()) : null;
+  if (deepseekPricingEvidence && nextEntry.pricing_provenance == null) {
+    nextEntry.pricing_provenance = deepseekPricingEvidence;
+    if (nextEntry.pricing == null) {
+      const providerPrice = getDefaultPricingForModel(provider, model);
+      if (providerPrice) nextEntry.pricing = providerPrice;
+    }
+  }
+
   if (nextEntry.pricing == null && nextEntry.pricing_provenance == null) {
     const pricing = resolveCatalogPricing(provider, model, snapshot);
     if (pricing) nextEntry.pricing = pricing;

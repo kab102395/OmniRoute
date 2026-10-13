@@ -78,4 +78,39 @@ describe("catalog pricing surface (#8018)", () => {
       source: { id: "route-catalog" },
     });
   });
+
+  it("surfaces current provider pricing schedule and route uncertainty for native DeepSeek", () => {
+    const flash = enrichCatalogModelEntry({
+      id: "deepseek/deepseek-flash",
+      owned_by: "deepseek",
+      root: "deepseek-flash",
+    });
+    assert.deepEqual(flash.pricing, {
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
+    });
+    assert.equal(
+      (flash.pricing_provenance as { state?: string }).state,
+      "conditional_reported_pricing"
+    );
+    assert.equal((flash.pricing_provenance as { rateUnit?: string }).rateUnit, "USD / 1M tokens");
+
+    const pro = enrichCatalogModelEntry({
+      id: "deepseek/deepseek-v4-pro",
+      owned_by: "deepseek",
+      root: "deepseek-v4-pro",
+    });
+    assert.equal(
+      (pro.pricing_provenance as { state?: string }).state,
+      "ambiguous_route_and_pricing"
+    );
+    assert.equal(
+      (pro.pricing_provenance as { pricingCandidates?: unknown[] }).pricingCandidates?.length,
+      2
+    );
+    assert.equal((pro.pricing as CatalogPricing).output, 3.96);
+  });
 });
