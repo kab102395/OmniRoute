@@ -1,7 +1,8 @@
 import { getDbInstance } from "@/lib/db/core";
 import type { ProviderLimitsCacheEntry } from "@/lib/db/providerLimits";
 import { getProviderQuotaWindowStartIso } from "@/lib/db/quotaResetEvents";
-import { calculateCost } from "./costCalculator";
+import { toNumber } from "@/shared/utils/numeric";
+import { calculateCostWithEvidence } from "./costCalculator";
 import { buildErrorBody, sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
 
 const FORTALEZA_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -29,6 +30,8 @@ export interface ApiKeyUsageLimitStatus {
   weeklyResetAtIso: string | null;
   dailyExceeded: boolean;
   weeklyExceeded: boolean;
+  dailyPricingUnknown?: boolean;
+  weeklyPricingUnknown?: boolean;
 }
 
 export interface ApiKeyUsageLimitDeps {
@@ -61,15 +64,6 @@ interface QuotaSnapshotRow {
   remainingPercentage: number | null;
   nextResetAt: string | null;
   createdAt: string | null;
-}
-
-function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -373,8 +367,11 @@ async function getProviderWeeklyWindow(
   };
 }
 
-async function getApiKeyUsdSpendSince(apiKeyId: string, sinceIso: string): Promise<number> {
-  if (!apiKeyId) return 0;
+async function getApiKeyUsdSpendSince(
+  apiKeyId: string,
+  sinceIso: string
+): Promise<{ spentUsd: number; pricingUnknown: boolean }> {
+  if (!apiKeyId) return { spentUsd: 0, pricingUnknown: false };
   const db = getDbInstance();
   const rows = db
     .prepare(
@@ -398,12 +395,13 @@ async function getApiKeyUsdSpendSince(apiKeyId: string, sinceIso: string): Promi
     .all({ apiKeyId, sinceIso }) as UsageCostRow[];
 
   let total = 0;
+  let pricingUnknown = false;
   for (const row of rows) {
     const provider = typeof row.provider === "string" ? row.provider : "";
     const model = typeof row.model === "string" ? row.model : "";
     if (!provider || !model) continue;
 
-    total += await calculateCost(
+    const assessment = await calculateCostWithEvidence(
       provider,
       model,
       {
@@ -419,9 +417,11 @@ async function getApiKeyUsdSpendSince(apiKeyId: string, sinceIso: string): Promi
         serviceTier: row.serviceTier || "standard",
       }
     );
+    total += assessment.costUsd;
+    if (!assessment.costKnown) pricingUnknown = true;
   }
 
-  return roundUsd(total);
+  return { spentUsd: roundUsd(total), pricingUnknown };
 }
 
 export async function getApiKeyUsageLimitStatus(
@@ -443,10 +443,12 @@ export async function getApiKeyUsageLimitStatus(
   const weeklyLimitUsd = normalizeLimitUsd(metadata.weeklyUsageLimitUsd);
   const enabled = metadata.usageLimitEnabled === true;
 
-  const [dailySpentUsd, weeklySpentUsd] = await Promise.all([
+  const [dailySpend, weeklySpend] = await Promise.all([
     getApiKeyUsdSpendSince(metadata.id, dailyWindowStartIso),
     getApiKeyUsdSpendSince(metadata.id, weeklyWindowStartIso),
   ]);
+  const { spentUsd: dailySpentUsd, pricingUnknown: dailyPricingUnknown } = dailySpend;
+  const { spentUsd: weeklySpentUsd, pricingUnknown: weeklyPricingUnknown } = weeklySpend;
 
   return {
     enabled,
@@ -458,8 +460,14 @@ export async function getApiKeyUsageLimitStatus(
     dailyResetAtIso,
     weeklyWindowStartIso,
     weeklyResetAtIso,
-    dailyExceeded: enabled && dailyLimitUsd !== null && dailySpentUsd >= dailyLimitUsd,
-    weeklyExceeded: enabled && weeklyLimitUsd !== null && weeklySpentUsd >= weeklyLimitUsd,
+    dailyExceeded:
+      enabled && dailyLimitUsd !== null && (dailyPricingUnknown || dailySpentUsd >= dailyLimitUsd),
+    weeklyExceeded:
+      enabled &&
+      weeklyLimitUsd !== null &&
+      (weeklyPricingUnknown || weeklySpentUsd >= weeklyLimitUsd),
+    dailyPricingUnknown,
+    weeklyPricingUnknown,
   };
 }
 
@@ -471,17 +479,25 @@ export function buildApiKeyUsageLimitText(
     "Daily quota",
     formatUsd(status.dailyLimitUsd),
     "Daily spent",
-    formatUsd(status.dailySpentUsd),
+    status.dailyPricingUnknown
+      ? "Unknown (unpriced usage exists)"
+      : formatUsd(status.dailySpentUsd),
     "Daily used",
-    formatUsagePercent(getUsagePercent(status.dailySpentUsd, status.dailyLimitUsd)),
+    status.dailyPricingUnknown
+      ? "Unknown"
+      : formatUsagePercent(getUsagePercent(status.dailySpentUsd, status.dailyLimitUsd)),
     `Resets in ${formatResetIn(status.dailyResetAtIso, now)}`,
     "",
     "Weekly quota",
     formatUsd(status.weeklyLimitUsd),
     "Weekly spent",
-    formatUsd(status.weeklySpentUsd),
+    status.weeklyPricingUnknown
+      ? "Unknown (unpriced usage exists)"
+      : formatUsd(status.weeklySpentUsd),
     "Weekly used",
-    formatUsagePercent(getUsagePercent(status.weeklySpentUsd, status.weeklyLimitUsd)),
+    status.weeklyPricingUnknown
+      ? "Unknown"
+      : formatUsagePercent(getUsagePercent(status.weeklySpentUsd, status.weeklyLimitUsd)),
     `Resets in ${formatResetIn(status.weeklyResetAtIso, now)}`,
   ].join("\n");
 }
@@ -492,11 +508,15 @@ export function buildApiKeyUsageLimitPercentText(
 ): string {
   return [
     "Daily",
-    formatLeftPercent(getUsagePercent(status.dailySpentUsd, status.dailyLimitUsd)),
+    status.dailyPricingUnknown
+      ? "Unknown"
+      : formatLeftPercent(getUsagePercent(status.dailySpentUsd, status.dailyLimitUsd)),
     `⏱ reset in ${formatResetIn(status.dailyResetAtIso, now)}`,
     "",
     "Weekly",
-    formatLeftPercent(getUsagePercent(status.weeklySpentUsd, status.weeklyLimitUsd)),
+    status.weeklyPricingUnknown
+      ? "Unknown"
+      : formatLeftPercent(getUsagePercent(status.weeklySpentUsd, status.weeklyLimitUsd)),
     `⏱ reset in ${formatResetIn(status.weeklyResetAtIso, now)}`,
   ].join("\n");
 }
@@ -507,6 +527,12 @@ function buildUsageLimitExceededMessage(
   options: { showUsd?: boolean } = {}
 ): string {
   const showUsd = options.showUsd !== false;
+  if (status.dailyExceeded && status.dailyPricingUnknown) {
+    return "This API key has usage with unknown pricing in its daily budget window. Requests are blocked until the window resets or authoritative pricing is available.";
+  }
+  if (status.weeklyExceeded && status.weeklyPricingUnknown) {
+    return "This API key has usage with unknown pricing in its weekly budget window. Requests are blocked until the window resets or authoritative pricing is available.";
+  }
   if (status.dailyExceeded && status.dailyLimitUsd !== null) {
     const percent = formatUsagePercent(getUsagePercent(status.dailySpentUsd, status.dailyLimitUsd));
     if (!showUsd) {

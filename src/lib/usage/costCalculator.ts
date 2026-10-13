@@ -7,6 +7,7 @@
  * @module lib/usage/costCalculator
  */
 
+import { toNumber } from "@/shared/utils/numeric";
 import { isFlatRateProvider } from "./flatRateProviders";
 
 /**
@@ -47,6 +48,8 @@ export type CostPricingEvidence = {
 
 export type CostEstimate = {
   costUsd: number;
+  /** True only when an exact receipt or every used billable dimension is priced. */
+  costKnown: boolean;
   pricingEvidence: CostPricingEvidence;
 };
 
@@ -92,15 +95,6 @@ function extractExactCostUsd(
     return reportedCost;
   }
   return null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-  return fallback;
 }
 
 function toNonNegativePrice(value: unknown): number | null {
@@ -268,11 +262,13 @@ export async function calculateCostWithEvidence(
   options: CostCalculationOptions = {}
 ): Promise<CostEstimate> {
   const unknownEvidence = buildCostPricingEvidence(null, null, null, null);
-  if (!tokens || !provider || !model) return { costUsd: 0, pricingEvidence: unknownEvidence };
+  if (!tokens || !provider || !model)
+    return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
 
   // Short-circuit before any pricing DB lookup when a provider-reported amount is present.
   const exactCostUsd = extractExactCostUsd(tokens, provider);
-  if (exactCostUsd !== null) return { costUsd: exactCostUsd, pricingEvidence: unknownEvidence };
+  if (exactCostUsd !== null)
+    return { costUsd: exactCostUsd, costKnown: true, pricingEvidence: unknownEvidence };
 
   try {
     const { getPricingForModelWithSource } = await import("@/lib/db/settings");
@@ -292,7 +288,7 @@ export async function calculateCostWithEvidence(
         }
       }
     }
-    if (!resolvedPricing) return { costUsd: 0, pricingEvidence: unknownEvidence };
+    if (!resolvedPricing) return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
 
     const pricingRecord =
       resolvedPricing.pricing &&
@@ -313,22 +309,56 @@ export async function calculateCostWithEvidence(
       retrievedAt = status.lastSync;
       ttlMs = status.intervalMs;
     }
+    const inputTokens = Math.max(
+      0,
+      toNumber(tokens.input ?? tokens.prompt_tokens ?? tokens.input_tokens)
+    );
+    const cachedTokens = Math.max(
+      0,
+      toNumber(tokens.cacheRead ?? tokens.cached_tokens ?? tokens.cache_read_input_tokens)
+    );
+    const cacheCreationTokens = Math.max(
+      0,
+      toNumber(tokens.cacheCreation ?? tokens.cache_creation_input_tokens)
+    );
+    const outputTokens = Math.max(
+      0,
+      toNumber(tokens.output ?? tokens.completion_tokens ?? tokens.output_tokens)
+    );
+    const reasoningTokens = Math.max(0, toNumber(tokens.reasoning ?? tokens.reasoning_tokens));
+    const nonCachedInputTokens = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
+    const hasRate = (value: unknown) => toNonNegativePrice(value) !== null;
+    const pricingEvidence = buildCostPricingEvidence(
+      resolvedPricing.source,
+      resolvedPricing.modelKey,
+      retrievedAt,
+      ttlMs
+    );
+    const pricingFreshnessKnown =
+      resolvedPricing.source === "default" ||
+      resolvedPricing.source === "user" ||
+      (retrievedAt !== null && ttlMs !== null && pricingEvidence.stale === false);
+    const costKnown =
+      pricingFreshnessKnown &&
+      (nonCachedInputTokens === 0 || hasRate(pricingRecord.input)) &&
+      (cachedTokens === 0 || hasRate(pricingRecord.cached) || hasRate(pricingRecord.input)) &&
+      (cacheCreationTokens === 0 ||
+        hasRate(pricingRecord.cache_creation) ||
+        hasRate(pricingRecord.input)) &&
+      (outputTokens === 0 || hasRate(pricingRecord.output)) &&
+      (reasoningTokens === 0 || hasRate(pricingRecord.reasoning) || hasRate(pricingRecord.output));
     return {
       costUsd: computeCostFromPricing(pricingRecord, tokens, {
         provider,
         model,
         ...options,
       }),
-      pricingEvidence: buildCostPricingEvidence(
-        resolvedPricing.source,
-        resolvedPricing.modelKey,
-        retrievedAt,
-        ttlMs
-      ),
+      costKnown,
+      pricingEvidence,
     };
   } catch (error) {
     console.error("Error calculating cost:", error);
-    return { costUsd: 0, pricingEvidence: unknownEvidence };
+    return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
   }
 }
 

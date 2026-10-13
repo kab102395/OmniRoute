@@ -56,6 +56,118 @@ test("API key USD usage limits persist and default off", async () => {
   assert.equal(metadata?.weeklyUsageLimitUsd, 50);
 });
 
+test("unknown-priced usage fails closed under finite API-key USD limits", async () => {
+  const created = await apiKeysDb.createApiKey("Unknown Price Key", "machine-limit-unknown");
+  await apiKeysDb.updateApiKeyPermissions(created.id, {
+    usageLimitEnabled: true,
+    dailyUsageLimitUsd: 10,
+    weeklyUsageLimitUsd: 50,
+  });
+  await usageHistory.saveRequestUsage({
+    provider: "unlisted-provider",
+    model: "unlisted-model-with-unknown-price",
+    apiKeyId: created.id,
+    apiKeyName: "Unknown Price Key",
+    tokens: { input: 100_000, output: 50_000 },
+    success: true,
+    timestamp: "2026-06-19T12:00:00.000Z",
+  });
+
+  const status = await usageLimits.getApiKeyUsageLimitStatus(
+    {
+      id: created.id,
+      usageLimitEnabled: true,
+      dailyUsageLimitUsd: 10,
+      weeklyUsageLimitUsd: 50,
+    },
+    { now: () => NOW }
+  );
+
+  assert.equal(status.dailyPricingUnknown, true);
+  assert.equal(status.weeklyPricingUnknown, true);
+  assert.equal(status.dailyExceeded, true);
+  assert.equal(status.weeklyExceeded, true);
+  assert.equal(status.dailySpentUsd, 0, "unknown cost is not fabricated as a numeric charge");
+  const rejection = usageLimits.buildApiKeyUsageLimitRejection(
+    new Request("http://localhost/v1/chat/completions"),
+    status,
+    NOW,
+    { showUsd: false }
+  );
+  const body = (await rejection.json()) as { error?: { message?: string } };
+  assert.match(body.error?.message ?? "", /unknown pricing.*Requests are blocked/i);
+});
+
+test("incomplete billable dimensions fail closed under finite API-key USD limits", async () => {
+  await localDb.updatePricing({
+    partial: {
+      "partial-price-model": { input: 1 },
+    },
+  });
+  const created = await apiKeysDb.createApiKey("Partial Price Key", "machine-limit-partial");
+  await apiKeysDb.updateApiKeyPermissions(created.id, {
+    usageLimitEnabled: true,
+    dailyUsageLimitUsd: 10,
+  });
+  await usageHistory.saveRequestUsage({
+    provider: "partial",
+    model: "partial-price-model",
+    apiKeyId: created.id,
+    tokens: { input: 100_000, output: 50_000 },
+    success: true,
+    timestamp: "2026-06-19T12:00:00.000Z",
+  });
+
+  const status = await usageLimits.getApiKeyUsageLimitStatus(
+    {
+      id: created.id,
+      usageLimitEnabled: true,
+      dailyUsageLimitUsd: 10,
+    },
+    { now: () => NOW }
+  );
+
+  assert.equal(status.dailyPricingUnknown, true);
+  assert.equal(status.dailyExceeded, true);
+});
+
+test("complete explicit zero rates remain known and do not trip finite USD limits", async () => {
+  await localDb.updatePricing({
+    verifiedfree: {
+      "verified-free-route": { input: 0, output: 0 },
+    },
+  });
+  const created = await apiKeysDb.createApiKey("Verified Free Key", "machine-limit-free");
+  await apiKeysDb.updateApiKeyPermissions(created.id, {
+    usageLimitEnabled: true,
+    dailyUsageLimitUsd: 10,
+    weeklyUsageLimitUsd: 50,
+  });
+  await usageHistory.saveRequestUsage({
+    provider: "verifiedfree",
+    model: "verified-free-route",
+    apiKeyId: created.id,
+    tokens: { input: 100_000, output: 50_000 },
+    success: true,
+    timestamp: "2026-06-19T12:00:00.000Z",
+  });
+
+  const status = await usageLimits.getApiKeyUsageLimitStatus(
+    {
+      id: created.id,
+      usageLimitEnabled: true,
+      dailyUsageLimitUsd: 10,
+      weeklyUsageLimitUsd: 50,
+    },
+    { now: () => NOW }
+  );
+
+  assert.equal(status.dailyPricingUnknown, false);
+  assert.equal(status.weeklyPricingUnknown, false);
+  assert.equal(status.dailyExceeded, false);
+  assert.equal(status.weeklyExceeded, false);
+});
+
 test("getApiKeyUsageLimitStatus aligns weekly USD spend with provider resetAt when available", async () => {
   await localDb.updatePricing({
     claude: {
