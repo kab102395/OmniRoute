@@ -117,6 +117,28 @@ test("a model absent from the catalog is not-in-catalog", () => {
   assert.equal(classify(candidate(), undefined, () => state()).outcome, "not-in-catalog");
 });
 
+test("a currently listed exact OpenRouter free route passes without a static budget entry", () => {
+  const freeRoute = candidate({
+    provider: "openrouter",
+    model: "vendor/exact-model:free",
+    connectionId: null,
+    allowedConnectionIds: ["or-connection"],
+  });
+  const verdict = classifyStrictZeroCostCandidate(freeRoute, undefined, () => undefined, {
+    ...OPTS,
+    verifiedOpenRouterFreeRoutes: new Set(["vendor/exact-model:free"]),
+  });
+  assert.deepEqual(verdict, { outcome: "safe", safeConnectionIds: ["or-connection"] });
+});
+
+test("an OpenRouter free-looking suffix without current catalog membership is not eligible", () => {
+  const freeLooking = candidate({
+    provider: "openrouter",
+    model: "vendor/retired-model:free",
+  });
+  assert.equal(classify(freeLooking, undefined, () => state()).outcome, "not-in-catalog");
+});
+
 test("a catalogued model whose regime is not free is regime-not-free", () => {
   const paid = entry({ freeType: "discontinued" as FreeModelBudget["freeType"] });
   assert.equal(classify(candidate(), paid, () => state()).outcome, "regime-not-free");

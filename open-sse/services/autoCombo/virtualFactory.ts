@@ -737,7 +737,10 @@ export async function prepareVirtualAutoComboInputs(
   // stale-if-error snapshots remain useful for display, but cannot authorize a
   // hide-paid candidate.
   let currentOpenRouterFreeRoutes: Set<string> | undefined;
-  if (settings.hidePaidModels === true && connectedProviders.has("openrouter")) {
+  if (
+    (settings.hidePaidModels === true || settings.freeAccessPolicy === "strict") &&
+    connectedProviders.has("openrouter")
+  ) {
     currentOpenRouterFreeRoutes = (await getCurrentOpenRouterFreeRouteIds()) ?? undefined;
   }
   const buildPreparedPool = (bypassNoAuthAllowlist: boolean) => {
@@ -791,6 +794,7 @@ export async function prepareVirtualAutoComboInputs(
       // already honours through `skip`. Dispatch (`skip === false`) is unaffected.
       enabled: strictZeroCostOn && !skip,
       resolveFreeAccessState,
+      verifiedOpenRouterFreeRoutes: currentOpenRouterFreeRoutes,
       ...strictZeroCostThresholds,
     });
     if (strictFilteredPool !== pool) pool = strictFilteredPool;
@@ -804,7 +808,7 @@ export async function prepareVirtualAutoComboInputs(
           candidate,
           findBudgetEntry(candidate),
           resolveFreeAccessState,
-          strictZeroCostThresholds
+          { ...strictZeroCostThresholds, verifiedOpenRouterFreeRoutes: currentOpenRouterFreeRoutes }
         );
         return {
           ...candidate,

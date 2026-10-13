@@ -1,7 +1,7 @@
 ---
 title: "STRICT_ZERO_COST"
-version: 3.8.50
-lastUpdated: 2026-08-20
+version: 3.8.51
+lastUpdated: 2026-10-12
 ---
 
 # STRICT_ZERO_COST
@@ -13,9 +13,8 @@ lastUpdated: 2026-08-20
 
 ## Why this exists, and why `hidePaidModels` alone isn't enough
 
-`hidePaidModels` answers "is this model classified free in `FREE_MODEL_BUDGETS` right now?" —
-a point-in-time catalog fact, checked via `isFreeModel()`/`providerHasFreeModels()`
-(`src/shared/utils/freeModels.ts`). It says nothing about two real risks:
+`hidePaidModels` uses curated free-tier entries and provider-specific current route catalogs
+(including OpenRouter's exact, rotating free variants). It says nothing about two real risks:
 
 1. A `recurring-*`/`one-time-initial` free tier's allowance can be **exhausted** — the catalog
    still lists the model as free, but the account behind it has no headroom left.
@@ -32,8 +31,12 @@ dispatch — never after a request has already gone out.
 For every candidate in the pool (`open-sse/services/autoCombo/virtualFactory.ts::buildPreparedPool`,
 right after `filterPaidOnlyCandidates`):
 
-1. **Not in `FREE_MODEL_BUDGETS` at all** → excluded. This covers genuinely paid models and any
-   provider/model OmniRoute hasn't classified yet — new candidates start excluded, not included.
+1. **Not in `FREE_MODEL_BUDGETS` or a fresh authoritative OpenRouter free-route snapshot** →
+   excluded. This covers paid models and any route OmniRoute has not verified — new candidates
+   start excluded, not included.
+   An exact OpenRouter route in a fresh free catalog snapshot passes as zero-priced even when
+   redundant numeric prices are omitted. The catalog's `:free` router is not an exact model route
+   and does not qualify for this exception.
 2. **`freeType: "keyless"`** → passes immediately, **but only for a candidate that genuinely
    arrived via the no-auth path** (`connectionId === SYNTHETIC_NOAUTH_CONNECTION_ID`,
    `open-sse/services/autoCombo/resilienceCandidateFilter.ts`). No credential exists for that
@@ -125,7 +128,7 @@ leaves the field `null` everywhere and costs nothing.
 
 | `freeAccessExclusion`  | What it means                                                                                                 | What to do about it                                                                                                                 |
 | :--------------------- | :------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------- |
-| `not-in-catalog`       | The provider/model pair is absent from `FREE_MODEL_BUDGETS`.                                                  | Add a curated entry, or accept that new pairs start excluded — that is the design.                                                  |
+| `not-in-catalog`       | The pair is absent from `FREE_MODEL_BUDGETS` and is not an exact route in the fresh OpenRouter free catalog.  | Add a curated entry, or wait for authoritative catalog synchronization.                                                             |
 | `regime-not-free`      | Catalogued, but its `freeType` is not one that grants free access (a discontinued tier, for instance).        | Nothing to fix. The model costs money.                                                                                              |
 | `no-hard-stop`         | Free regime, but `hardStopGuaranteed` is not `true`, so exceeding the allowance might silently start billing. | Verify the provider's terms and set the flag with the source in a comment — never to grow the catalog.                              |
 | `contradictory-noauth` | A no-auth candidate whose catalog entry is not `keyless`. Fail-closed on inconsistent metadata.               | Fix the catalog entry; the two facts disagree.                                                                                      |

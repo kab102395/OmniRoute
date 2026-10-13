@@ -120,6 +120,8 @@ export interface StrictZeroCostOptions {
    * ignored — fixed alongside the connection-safety review).
    */
   catalog?: readonly FreeModelBudget[];
+  /** Fresh, exact OpenRouter free routes from the authoritative model catalog. */
+  verifiedOpenRouterFreeRoutes?: ReadonlySet<string>;
 }
 
 export function findBudgetEntry(
@@ -158,7 +160,10 @@ export function classifyConnectionState(
   provider: string,
   connectionId: string,
   resolveFreeAccessState: StrictZeroCostOptions["resolveFreeAccessState"],
-  options: Pick<StrictZeroCostOptions, "minRemainingAllowance" | "maxStateAgeMs" | "now">
+  options: Pick<
+    StrictZeroCostOptions,
+    "minRemainingAllowance" | "maxStateAgeMs" | "now" | "verifiedOpenRouterFreeRoutes"
+  >
 ): "safe" | "exhausted" | "state-unknown" {
   const state = resolveFreeAccessState(provider, connectionId);
   if (!state) return "state-unknown"; // no usage adapter for this provider, or lookup never ran
@@ -214,8 +219,21 @@ export function classifyStrictZeroCostCandidate(
   candidate: StrictZeroCostCandidate,
   budgetEntry: FreeModelBudget | undefined,
   resolveFreeAccessState: StrictZeroCostOptions["resolveFreeAccessState"],
-  options: Pick<StrictZeroCostOptions, "minRemainingAllowance" | "maxStateAgeMs" | "now">
+  options: Pick<
+    StrictZeroCostOptions,
+    "minRemainingAllowance" | "maxStateAgeMs" | "now" | "verifiedOpenRouterFreeRoutes"
+  >
 ): StrictZeroCostVerdict {
+  if (
+    candidate.provider === "openrouter" &&
+    options.verifiedOpenRouterFreeRoutes?.has(candidate.model)
+  ) {
+    const currentConnections = candidate.connectionId
+      ? [candidate.connectionId]
+      : (candidate.allowedConnectionIds ?? []);
+    if (currentConnections.length === 0) return { outcome: "no-connection" };
+    return { outcome: "safe", safeConnectionIds: currentConnections };
+  }
   if (!budgetEntry) return { outcome: "not-in-catalog" }; // paid, or genuinely unknown
 
   const isGenuineNoAuthCandidate = candidate.connectionId === SYNTHETIC_NOAUTH_CONNECTION_ID;
