@@ -1318,6 +1318,8 @@ async function buildUnifiedModelsResponseCore(
             ...(typeof sm.outputTokenLimit === "number"
               ? { max_output_tokens: sm.outputTokenLimit }
               : {}),
+            ...(sm.inputModalities?.length ? { input_modalities: sm.inputModalities } : {}),
+            ...(sm.outputModalities?.length ? { output_modalities: sm.outputModalities } : {}),
             ...(endpoints.length > 1 || !endpoints.includes("chat")
               ? { supported_endpoints: endpoints }
               : {}),

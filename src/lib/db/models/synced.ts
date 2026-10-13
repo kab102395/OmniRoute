@@ -19,6 +19,8 @@ export interface SyncedAvailableModel {
   alwaysThinking?: boolean;
   supportsTools?: boolean;
   supportsVideo?: boolean;
+  inputModalities?: string[];
+  outputModalities?: string[];
   // #4264: image-input capability captured at sync time (e.g. OpenRouter
   // `architecture.input_modalities`/`modality`) so the catalog can surface vision.
   supportsVision?: boolean;
@@ -65,6 +67,18 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
         )
       ).sort()
     : undefined;
+  const normalizeModalities = (value: unknown) =>
+    Array.isArray(value)
+      ? Array.from(
+          new Set(
+            value
+              .map((modality) => toNonEmptyString(modality)?.toLowerCase())
+              .filter((modality): modality is string => Boolean(modality))
+          )
+        )
+      : undefined;
+  const inputModalities = normalizeModalities(record.inputModalities ?? record.input_modalities);
+  const outputModalities = normalizeModalities(record.outputModalities ?? record.output_modalities);
   const rawProviderRoutes = record.providerRoutes ?? record.provider_routes;
   const providerRoutes = Array.isArray(rawProviderRoutes)
     ? rawProviderRoutes.flatMap((value): SyncedProviderRoute[] => {
@@ -128,6 +142,8 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
       ? { upstreamProtocol: toNonEmptyString(record.upstreamProtocol)! }
       : {}),
     ...(supportedEndpoints && supportedEndpoints.length > 0 ? { supportedEndpoints } : {}),
+    ...(inputModalities && inputModalities.length > 0 ? { inputModalities } : {}),
+    ...(outputModalities && outputModalities.length > 0 ? { outputModalities } : {}),
     ...(Array.isArray(record.supportedThinkingEfforts)
       ? {
           supportedThinkingEfforts: record.supportedThinkingEfforts.filter(

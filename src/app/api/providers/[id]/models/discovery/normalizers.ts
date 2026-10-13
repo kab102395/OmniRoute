@@ -244,6 +244,8 @@ export function normalizeOpenAiLikeModelsResponse(
   id: string;
   name: string;
   owned_by: string;
+  input_modalities?: string[];
+  output_modalities?: string[];
   provider_routes?: Array<Record<string, unknown>>;
   provider_routes_retrieved_at?: string;
 }> {
@@ -269,12 +271,21 @@ export function normalizeOpenAiLikeModelsResponse(
         id;
       const ownedBy =
         toNonEmptyString(item.owned_by) || toNonEmptyString(item.provider) || fallbackOwner;
+      const architecture = asRecord(item.architecture);
+      const inputModalities = normalizeStringList(
+        item.input_modalities ?? architecture.input_modalities
+      );
+      const outputModalities = normalizeStringList(
+        item.output_modalities ?? architecture.output_modalities
+      );
       const providerRoutes =
         fallbackOwner === "huggingface" ? normalizeHuggingFaceProviderRoutes(item.providers) : [];
       return {
         id,
         name,
         owned_by: ownedBy,
+        ...(inputModalities.length > 0 ? { input_modalities: inputModalities } : {}),
+        ...(outputModalities.length > 0 ? { output_modalities: outputModalities } : {}),
         ...(providerRoutes.length > 0
           ? {
               provider_routes: providerRoutes,
@@ -284,6 +295,17 @@ export function normalizeOpenAiLikeModelsResponse(
       };
     })
     .filter((value): value is { id: string; name: string; owned_by: string } => Boolean(value));
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => toNonEmptyString(entry)?.toLowerCase())
+        .filter((entry): entry is string => Boolean(entry))
+    )
+  );
 }
 
 function normalizeHuggingFaceProviderRoutes(value: unknown): Array<Record<string, unknown>> {

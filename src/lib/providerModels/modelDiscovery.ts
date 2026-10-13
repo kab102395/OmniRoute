@@ -19,6 +19,18 @@ function toNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeModalities(...values: unknown[]): string[] | undefined {
+  const result = Array.from(
+    new Set(
+      values
+        .flatMap((value) => (Array.isArray(value) ? value : []))
+        .map((value) => toNonEmptyString(value)?.toLowerCase())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  return result.length > 0 ? result : undefined;
+}
+
 /**
  * Resolve a positive integer token limit from a list of candidate values.
  * Used to fall back across the differently-named context/output fields that
@@ -353,6 +365,7 @@ export function normalizeDiscoveredModels(
       : undefined;
 
     const topProvider = asRecord(record.top_provider);
+    const architecture = asRecord(record.architecture);
 
     // OpenRouter (and similar passthrough catalogs) report the context window as
     // `context_length` / `top_provider.context_length`, not `inputTokenLimit`.
@@ -376,6 +389,16 @@ export function normalizeDiscoveredModels(
     // models reached the catalog with no vision flag and vision-capable models
     // (which work at request time) showed up as non-vision after import.
     const supportsVision = detectVisionInput(record);
+    const inputModalities = normalizeModalities(
+      record.inputModalities,
+      record.input_modalities,
+      architecture.input_modalities
+    );
+    const outputModalities = normalizeModalities(
+      record.outputModalities,
+      record.output_modalities,
+      architecture.output_modalities
+    );
     // OpenRouter's /models catalog publishes tool capability as a list of
     // supported request parameters. Preserve an explicit catalog verdict when
     // normalizing the raw model, while leaving it unknown when the upstream
@@ -423,6 +446,8 @@ export function normalizeDiscoveredModels(
       ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
       ...(typeof supportsTools === "boolean" ? { supportsTools } : {}),
       ...(typeof record.supportsVideo === "boolean" ? { supportsVideo: record.supportsVideo } : {}),
+      ...(inputModalities ? { inputModalities } : {}),
+      ...(outputModalities ? { outputModalities } : {}),
       ...(supportsVision ? { supportsVision: true } : {}),
       ...(providerRoutes ? { providerRoutes } : {}),
       ...(providerRoutesRetrievedAt ? { providerRoutesRetrievedAt } : {}),

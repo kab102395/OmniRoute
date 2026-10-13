@@ -113,6 +113,10 @@ test("Hugging Face normalization preserves provider-specific route facts and fil
       data: [
         {
           id: "zai-org/GLM-5.2",
+          architecture: {
+            input_modalities: ["text", "image", "image"],
+            output_modalities: ["text"],
+          },
           providers: [
             {
               provider: "together",
@@ -150,6 +154,8 @@ test("Hugging Face normalization preserves provider-specific route facts and fil
     },
     { provider: "broken" },
   ]);
+  assert.deepEqual(out[0]?.input_modalities, ["text", "image"]);
+  assert.deepEqual(out[0]?.output_modalities, ["text"]);
   assert.match(out[0]?.provider_routes_retrieved_at ?? "", /^\d{4}-\d\d-\d\dT/);
 });
 

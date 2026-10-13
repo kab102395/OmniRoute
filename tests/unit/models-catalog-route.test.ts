@@ -18,6 +18,9 @@ const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const featureFlagsDb = await import("../../src/lib/db/featureFlags.ts");
 const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
 const v1ModelsCatalog = await import("../../src/app/api/v1/models/catalog.ts");
+const { normalizeOpenAiLikeModelsResponse } =
+  await import("../../src/app/api/providers/[id]/models/discovery/normalizers.ts");
+const { persistDiscoveredModels } = await import("../../src/lib/providerModels/modelDiscovery.ts");
 
 async function resetStorage() {
   core.resetDbInstance();
@@ -1085,6 +1088,44 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
   assert.equal(staleModel.provider_routes_provenance?.stale, true);
   assert.equal(staleModel.provider_routes?.[0]?.is_free, true);
   assert.equal(staleModel.provider_routes?.[0]?.free_catalog_eligible, false);
+});
+
+test("Hugging Face model modalities survive discovery sync and reach the unified catalog", async () => {
+  const connection = await seedConnection("huggingface");
+  const discovered = normalizeOpenAiLikeModelsResponse(
+    {
+      data: [
+        {
+          id: "fixture-org/vision-route",
+          architecture: {
+            input_modalities: ["text", "image"],
+            output_modalities: ["text"],
+          },
+        },
+      ],
+    },
+    "huggingface"
+  );
+
+  await persistDiscoveredModels("huggingface", connection.id as string, discovered);
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models")
+  );
+  const body = (await response.json()) as {
+    data: Array<{
+      id: string;
+      input_modalities?: string[];
+      output_modalities?: string[];
+      capabilities?: { vision?: boolean };
+    }>;
+  };
+  const model = body.data.find((entry) => entry.id === "hf/fixture-org/vision-route");
+
+  assert.equal(response.status, 200);
+  assert.ok(model);
+  assert.deepEqual(model.input_modalities, ["text", "image"]);
+  assert.deepEqual(model.output_modalities, ["text"]);
+  assert.equal(model.capabilities?.vision, true);
 });
 
 test("v1 models catalog does not final-enrich combo names as real models", async () => {
