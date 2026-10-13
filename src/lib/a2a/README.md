@@ -122,10 +122,25 @@ curl -X POST http://localhost:20128/a2a \
     "metadata": {
       "routing_explanation": "Selected claude-sonnet via provider \"anthropic\" (latency: 1200ms, cost: $0.0030)",
       "cost_envelope": { "estimated": 0.005, "actual": 0.003, "currency": "USD" },
+      "execution": {
+        "request_id": "req_...",
+        "requested_model": "auto",
+        "served_model": "claude-sonnet",
+        "served_provider": "anthropic",
+        "accounting_kind": "provider_reported_billed_cost",
+        "accounting_source": "provider_usage.cost_in_usd_ticks",
+        "pricing_retrieved_at": null,
+        "pricing_stale": null,
+        "fallback_attempts": 0
+      },
       "resilience_trace": [
         { "event": "primary_selected", "provider": "anthropic", "timestamp": "2026-03-04T..." }
       ],
-      "policy_verdict": { "allowed": true, "reason": "within budget and quota limits" }
+      "policy_verdict": {
+        "allowed": true,
+        "evaluated_after_execution": true,
+        "reason": "execution completed at reported or estimated cost $0.003; this post-execution observation is not admission control"
+      }
     }
   }
 }
@@ -192,18 +207,19 @@ Routes prompts through OmniRoute's intelligent pipeline with full observability.
 | --------- | -------- | ------------ | ---------------------------------------------------------------------------------------- |
 | `model`   | `string` | `"auto"`     | Target model (e.g., `claude-sonnet-4`, `gpt-4o`, `auto`)                                 |
 | `combo`   | `string` | active combo | Specific combo to route through                                                          |
-| `budget`  | `number` | none         | Maximum cost in USD for this request                                                     |
+| `budget`  | `number` | none         | Post-execution cost comparison in USD; does not authorize or cap inference spending      |
 | `role`    | `string` | none         | Task role hint: `coding`, `review`, `planning`, `analysis`, `debugging`, `documentation` |
 
 **Returns:**
 
-| Field                          | Description                                               |
-| ------------------------------ | --------------------------------------------------------- |
-| `artifacts[].content`          | The LLM response text                                     |
-| `metadata.routing_explanation` | Human-readable explanation of routing decision            |
-| `metadata.cost_envelope`       | Estimated vs actual cost with currency                    |
-| `metadata.resilience_trace`    | Array of events (primary_selected, fallback_needed, etc.) |
-| `metadata.policy_verdict`      | Whether the request was allowed and why                   |
+| Field                          | Description                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `artifacts[].content`          | The LLM response text                                                                   |
+| `metadata.routing_explanation` | Human-readable explanation of routing decision                                          |
+| `metadata.cost_envelope`       | Estimated and provider-reported cost; unavailable values are `null`                     |
+| `metadata.execution`           | Requested and served route, accounting source/freshness, request id, and fallback count |
+| `metadata.resilience_trace`    | Array of events (primary_selected, fallback_needed, etc.)                               |
+| `metadata.policy_verdict`      | Post-execution budget observation. It does not authorize or prevent the request         |
 
 ### `quota-management`
 

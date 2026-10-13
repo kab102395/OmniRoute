@@ -11,24 +11,65 @@ import { resolveOmniRouteBaseUrl } from "@/shared/utils/resolveOmniRouteBaseUrl"
 const OMNIROUTE_BASE_URL = resolveOmniRouteBaseUrl();
 const OMNIROUTE_API_KEY = process.env.OMNIROUTE_API_KEY || "";
 
-async function routeFetch(path: string, options: RequestInit = {}): Promise<any> {
-  const url = `${OMNIROUTE_BASE_URL}${path}`;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(OMNIROUTE_API_KEY ? { Authorization: `Bearer ${OMNIROUTE_API_KEY}` } : {}),
-  };
-  const res = await fetch(url, { ...options, headers, signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`API [${res.status}]: ${await res.text().catch(() => "error")}`);
-  return res.json();
-}
-
 export interface SmartRoutingResult {
   artifacts: TaskArtifact[];
   metadata: {
     routing_explanation: string;
-    cost_envelope: { estimated: number; actual: number; currency: string };
+    cost_envelope: { estimated: number | null; actual: number | null; currency: string | null };
+    execution: {
+      request_id: string | null;
+      requested_model: string;
+      served_model: string | null;
+      served_provider: string | null;
+      accounting_kind: string | null;
+      accounting_source: string | null;
+      pricing_retrieved_at: string | null;
+      pricing_stale: boolean | null;
+      fallback_attempts: number;
+    };
     resilience_trace: Array<{ event: string; provider: string; timestamp: string }>;
-    policy_verdict: { allowed: boolean; reason: string };
+    policy_verdict: { allowed: boolean; evaluated_after_execution: true; reason: string };
+  };
+}
+
+function finiteHeaderNumber(headers: Headers, name: string): number | null {
+  const value = headers.get(name);
+  if (value === null || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function booleanHeader(headers: Headers, name: string): boolean | null {
+  const value = headers.get(name)?.toLowerCase();
+  return value === "true" ? true : value === "false" ? false : null;
+}
+
+export function readSmartRoutingReceipt(response: Response, requestedModel: string) {
+  const headers = response.headers;
+  const kind = headers.get("X-OmniRoute-Accounting-Kind");
+  const responseCost = finiteHeaderNumber(headers, "X-OmniRoute-Response-Cost");
+  const knownCost =
+    kind === "estimated_cost"
+      ? "estimated"
+      : kind === "provider_reported_billed_cost" || kind === "zero_cost"
+        ? "actual"
+        : null;
+  const fallbackAttempts = finiteHeaderNumber(headers, "X-OmniRoute-Fallback-Attempts");
+
+  return {
+    estimated: knownCost === "estimated" ? responseCost : null,
+    actual: knownCost === "actual" ? responseCost : null,
+    currency: responseCost === null ? null : headers.get("X-OmniRoute-Cost-Currency") || "USD",
+    accountingKind: kind,
+    accountingSource: headers.get("X-OmniRoute-Cost-Source"),
+    pricingRetrievedAt: headers.get("X-OmniRoute-Pricing-Retrieved-At"),
+    pricingStale: booleanHeader(headers, "X-OmniRoute-Pricing-Stale"),
+    requestId: headers.get("X-OmniRoute-Request-Id"),
+    servedModel: headers.get("X-OmniRoute-Served-Model"),
+    servedProvider:
+      headers.get("X-OmniRoute-Served-Provider") || headers.get("X-OmniRoute-Provider"),
+    fallbackAttempts: fallbackAttempts === null ? 0 : Math.floor(fallbackAttempts),
+    requestedModel,
   };
 }
 
@@ -42,37 +83,56 @@ export async function executeSmartRouting(task: A2ATask): Promise<SmartRoutingRe
   const body: Record<string, unknown> = { model, messages, stream: false };
   if (combo) body["x-combo"] = combo;
 
-  const raw = await routeFetch("/v1/chat/completions", {
+  const response = await fetch(`${OMNIROUTE_BASE_URL}/v1/chat/completions`, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(OMNIROUTE_API_KEY ? { Authorization: `Bearer ${OMNIROUTE_API_KEY}` } : {}),
+    },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
   });
+  if (!response.ok)
+    throw new Error(`API [${response.status}]: ${await response.text().catch(() => "error")}`);
+  const raw = await response.json();
   const latencyMs = Date.now() - start;
 
   const content = raw?.choices?.[0]?.message?.content || "";
-  const provider = raw?.provider || "unknown";
-  const actualCost = raw?.cost || 0;
-  const promptTokens = raw?.usage?.prompt_tokens || 0;
-  const estimatedCost = (promptTokens / 1_000_000) * 3.0; // rough estimate
+  const receipt = readSmartRoutingReceipt(response, model);
+  const provider = receipt.servedProvider || "unknown";
 
-  // Budget policy check
-  const withinBudget = budget ? actualCost <= budget : true;
+  // This is a post-execution observation only; admission belongs to the caller.
+  const observedCost = receipt.actual ?? receipt.estimated;
+  const withinBudget = budget === undefined || (observedCost !== null && observedCost <= budget);
 
   return {
     artifacts: [{ type: "text", content }],
     metadata: {
-      routing_explanation: `Selected ${raw?.model || model} via provider "${provider}" (latency: ${latencyMs}ms, cost: $${actualCost.toFixed(4)})`,
+      routing_explanation: `Selected ${receipt.servedModel || raw?.model || model} via provider "${provider}" (latency: ${latencyMs}ms${observedCost === null ? ", cost unknown" : `, cost: $${observedCost.toFixed(4)}`})`,
       cost_envelope: {
-        estimated: Math.round(estimatedCost * 10000) / 10000,
-        actual: Math.round(actualCost * 10000) / 10000,
-        currency: "USD",
+        estimated:
+          receipt.estimated === null ? null : Math.round(receipt.estimated * 10000) / 10000,
+        actual: receipt.actual === null ? null : Math.round(receipt.actual * 10000) / 10000,
+        currency: receipt.currency,
+      },
+      execution: {
+        request_id: receipt.requestId,
+        requested_model: receipt.requestedModel,
+        served_model: receipt.servedModel,
+        served_provider: receipt.servedProvider,
+        accounting_kind: receipt.accountingKind,
+        accounting_source: receipt.accountingSource,
+        pricing_retrieved_at: receipt.pricingRetrievedAt,
+        pricing_stale: receipt.pricingStale,
+        fallback_attempts: receipt.fallbackAttempts,
       },
       resilience_trace: [
         { event: "primary_selected", provider, timestamp: new Date().toISOString() },
-        ...(raw?.fallbacksTriggered
+        ...(receipt.fallbackAttempts > 0
           ? [
               {
-                event: "fallback_needed",
-                provider: "secondary",
+                event: "fallback_attempts_observed",
+                provider,
                 timestamp: new Date().toISOString(),
               },
             ]
@@ -80,9 +140,12 @@ export async function executeSmartRouting(task: A2ATask): Promise<SmartRoutingRe
       ],
       policy_verdict: {
         allowed: withinBudget,
+        evaluated_after_execution: true,
         reason: withinBudget
-          ? "within budget and quota limits"
-          : `cost $${actualCost} exceeds budget $${budget}`,
+          ? observedCost === null
+            ? "execution completed; cost is unknown and this post-execution observation is not admission control"
+            : `execution completed at reported or estimated cost $${observedCost}; this post-execution observation is not admission control`
+          : `observed cost $${observedCost} exceeds budget $${budget}; execution already completed`,
       },
     },
   };
