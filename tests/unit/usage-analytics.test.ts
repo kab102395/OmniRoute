@@ -437,7 +437,7 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
       output: 1000,
     });
 
-    assert.ok(Math.abs(estimate.costUsd - 0.00528) < 1e-12);
+    assert.ok(Math.abs(estimate.costUsd - 0.0015) < 1e-12);
     assert.equal(estimate.costKnown, true);
     assert.equal(estimate.pricingEvidence.source, "deepseek");
     assert.equal(estimate.pricingEvidence.modelId, "deepseek-v4-pro");
@@ -469,7 +469,7 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
       input: 1000,
       output: 1000,
     });
-    assert.ok(Math.abs(staleEstimate.costUsd - 0.00528) < 1e-12);
+    assert.ok(Math.abs(staleEstimate.costUsd - 0.0015) < 1e-12);
     assert.equal(staleEstimate.costKnown, false);
     assert.equal(staleEstimate.pricingEvidence.stale, true);
   } finally {

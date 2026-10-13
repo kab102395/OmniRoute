@@ -1,6 +1,6 @@
 // #9320 — Tunnel exposure: /v1/models leaks full model catalog without an API key
 //
-// Regression guard: when management auth is configured (isAuthRequired === true),
+// Regression guard: when REQUIRE_API_KEY and management auth are configured,
 // GET /v1/models must require an API key or dashboard session. Anonymous requests
 // should get a 401 status, not the full catalog.
 //
@@ -18,6 +18,10 @@ import path from "node:path";
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-9320-models-auth-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
 process.env.API_KEY_SECRET = process.env.API_KEY_SECRET || "test-secret-9320";
+// This regression exercises the protected catalog path. The endpoint follows
+// the client API auth policy, so management login alone does not protect it
+// when REQUIRE_API_KEY is explicitly disabled (the documented local mode).
+process.env.REQUIRE_API_KEY = "true";
 
 const core = await import("../../src/lib/db/core.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
