@@ -25,7 +25,7 @@ test("discoverOpenRouterFreeModels follows exact free variants regardless of num
 
   assert.deepEqual(
     models.map((model) => model.modelId),
-    ["provider/suffix:free", "provider/unpriced:free"]
+    ["provider/suffix:free", "provider/unpriced:free", "provider/zero-priced"]
   );
   assert.equal(models[0]?.poolKey, "openrouter-free");
   assert.equal(models[0]?.supportsTools, true);
