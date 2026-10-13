@@ -41,4 +41,24 @@ describe("specialty catalog surfaces (#8016)", () => {
     assert.equal(caps.tool_calling, false);
     assert.equal(caps.reasoning, false);
   });
+
+  it("keeps OpenRouter route tool support unknown without route-specific parameters", () => {
+    const enriched = enrichCatalogModelEntry({
+      id: "openrouter/anthropic/claude-3.5-sonnet",
+      owned_by: "openrouter",
+      root: "anthropic/claude-3.5-sonnet",
+      pricing_provenance: { source: { id: "openrouter.models_api" } },
+    });
+    const caps = (enriched.capabilities || {}) as Record<string, unknown>;
+    const capabilityStatus = (enriched.capability_status || {}) as Record<
+      string,
+      { status?: string; source?: string }
+    >;
+
+    assert.equal(caps.tool_calling, undefined);
+    assert.deepEqual(capabilityStatus.tool_calling, {
+      status: "unknown",
+      source: "unknown",
+    });
+  });
 });

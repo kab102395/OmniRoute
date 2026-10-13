@@ -582,6 +582,8 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
                 metadata.model,
                 CANONICAL_EFFORT_VALUES
               );
+  const openRouterParametersKnown =
+    publicProvider === "openrouter" && Array.isArray(entry.supported_parameters);
   const capabilityFields = {
     ...(typeof metadata.capabilities.vision === "boolean"
       ? { vision: metadata.capabilities.vision }
@@ -589,15 +591,18 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     // #8016: never invent chat tool/reasoning defaults onto specialty surfaces.
     // Only copy boolean true when authoritative metadata says so; specialty rows
     // default to false instead of optimistic chat heuristics.
-    tool_calling:
-      publicProvider === "openrouter" && Array.isArray(entry.supported_parameters)
-        ? entry.supported_parameters.includes("tools")
-        : specialtySurface
-          ? metadata.capabilities.supportsTools === true ||
-            metadata.capabilities.toolCalling === true
-            ? true
-            : false
-          : metadata.capabilities.toolCalling,
+    ...(publicProvider === "openrouter"
+      ? openRouterParametersKnown
+        ? { tool_calling: entry.supported_parameters.includes("tools") }
+        : {}
+      : {
+          tool_calling: specialtySurface
+            ? metadata.capabilities.supportsTools === true ||
+              metadata.capabilities.toolCalling === true
+              ? true
+              : false
+            : metadata.capabilities.toolCalling,
+        }),
     reasoning: specialtySurface
       ? metadata.capabilities.supportsThinking === true || metadata.capabilities.reasoning === true
         ? true
@@ -629,16 +634,22 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       : {}),
   };
 
+  const existingCapabilitiesForMerge = { ...existingCapabilities };
+  if (publicProvider === "openrouter" && !openRouterParametersKnown) {
+    // A canonical model's generic tool support does not prove that this exact
+    // OpenRouter route exposes tools. Drop any stale/synchronized boolean too.
+    delete existingCapabilitiesForMerge.tool_calling;
+  }
   nextEntry.capabilities = {
-    ...existingCapabilities,
+    ...existingCapabilitiesForMerge,
     ...capabilityFields,
   };
 
-  const openRouterParametersKnown =
-    publicProvider === "openrouter" && Array.isArray(entry.supported_parameters);
   const toolCallingSupport = openRouterParametersKnown
     ? entry.supported_parameters.includes("tools")
-    : metadata.capabilities.supportsTools;
+    : publicProvider === "openrouter"
+      ? null
+      : metadata.capabilities.supportsTools;
   nextEntry.capability_status = {
     ...(entry.capability_status && typeof entry.capability_status === "object"
       ? (entry.capability_status as JsonRecord)
@@ -652,7 +663,9 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
             : "unknown",
       source: openRouterParametersKnown
         ? "openrouter.models_api"
-        : metadata.capabilities.supportsToolsSource,
+        : publicProvider === "openrouter"
+          ? "unknown"
+          : metadata.capabilities.supportsToolsSource,
     },
   };
 

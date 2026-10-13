@@ -688,6 +688,11 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       status: "unknown",
       source: "unknown",
     });
+    assert.equal(
+      unknownToolsRoute?.capabilities?.tool_calling,
+      undefined,
+      "unknown route capability must not inherit a canonical-model boolean"
+    );
   } finally {
     globalThis.fetch = REAL_FETCH;
   }
