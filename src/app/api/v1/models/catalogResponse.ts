@@ -59,6 +59,10 @@ function hasVerifiedToolCalling(model: Record<string, unknown>): boolean {
   );
 }
 
+function positiveFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 function preservePinnedHuggingFaceRouteFacts(
   listedModel: Record<string, unknown>,
   sourceModel: Record<string, unknown>
@@ -93,6 +97,8 @@ function preservePinnedHuggingFaceRouteFacts(
     ...listedModel,
     ...(typeof sourceModel.free === "boolean" ? { free: sourceModel.free } : {}),
     ...(sourceModel.pricing !== undefined ? { pricing: sourceModel.pricing } : {}),
+    context_length: positiveFiniteNumber(route.context_length),
+    max_output_tokens: undefined,
     capabilities,
     capability_status: {
       ...(isRecord(listedModel.capability_status) ? listedModel.capability_status : {}),

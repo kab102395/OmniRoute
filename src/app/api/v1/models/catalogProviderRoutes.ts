@@ -81,9 +81,14 @@ export function expandHuggingFaceProviderRoutes(
         root: routeId,
         name: `${typeof model.name === "string" ? model.name : model.id} · ${provider}`,
         pricing: pricing ?? model.pricing,
-        ...(positiveFiniteNumber(rawRoute.context_length)
-          ? { context_length: rawRoute.context_length }
-          : {}),
+        // A pinned host can impose a smaller context limit than the aggregate
+        // model row. Never carry the aggregate fallback into an exact route when
+        // the host did not publish its own limit.
+        context_length: positiveFiniteNumber(rawRoute.context_length),
+        // Hugging Face's provider mapping does not currently supply a host-level
+        // output limit. Preserve that uncertainty instead of inheriting a
+        // model-family fallback from the aggregate catalog row.
+        max_output_tokens: undefined,
         capabilities,
         capability_status: {
           ...(isRecord(model.capability_status) ? model.capability_status : {}),

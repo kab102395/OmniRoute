@@ -1111,6 +1111,8 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
     data: Array<{
       id?: string;
       free?: boolean;
+      context_length?: number;
+      max_output_tokens?: number;
       capabilities?: Record<string, boolean>;
       capability_status?: { tool_calling?: { status?: string; source?: string } };
       route_selection?: { kind?: string; exactModelIdentity?: boolean };
@@ -1126,6 +1128,16 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
   );
   assert.ok(freeToolRoute, "current HF free host should be a selectable exact route");
   assert.equal(freeToolRoute.free, true);
+  assert.equal(
+    freeToolRoute.context_length,
+    undefined,
+    "a pinned host without its own context limit must not inherit the aggregate limit"
+  );
+  assert.equal(
+    freeToolRoute.max_output_tokens,
+    undefined,
+    "a pinned host without an output limit must not inherit the aggregate limit"
+  );
   assert.equal(freeToolRoute.capabilities?.tool_calling, true);
   assert.deepEqual(freeToolRoute.capability_status?.tool_calling, {
     status: "supported",
