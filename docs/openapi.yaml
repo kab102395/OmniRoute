@@ -14547,6 +14547,18 @@ components:
           example: model
         owned_by:
           type: string
+        route_selection:
+          type: object
+          description: >-
+            Describes whether the model id pins an exact route. OpenRouter catalog model variants
+            use exact_model; the openrouter/free router uses dynamic_free_model and does not pin
+            the model selected by OpenRouter.
+          properties:
+            kind:
+              type: string
+              enum: [exact_model, dynamic_free_model]
+            exactModelIdentity:
+              type: boolean
         route_availability:
           type: object
           description: >-

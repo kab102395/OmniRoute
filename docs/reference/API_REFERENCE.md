@@ -424,8 +424,11 @@ Incomplete OpenRouter prices do not fall back to a different provider's generic 
 OpenRouter selects the downstream host, so catalog prices do not prove which host will serve a
 future request and are not a guaranteed upper cost bound. Exact `:free` variants listed in the
 current OpenRouter catalog are selectable free routes even when numeric prices are omitted. Their
-paid sibling routes retain their own pricing. `openrouter/free` is a separate dynamic multi-model
-router and does not guarantee an exact model identity for a request.
+paid sibling routes retain their own pricing. OpenRouter catalog model rows expose
+`route_selection: { kind: "exact_model", exactModelIdentity: true }`. `openrouter/free` is a
+separate dynamic multi-model router and exposes
+`route_selection: { kind: "dynamic_free_model", exactModelIdentity: false }`; it does not guarantee
+an exact model identity for a request.
 
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.
