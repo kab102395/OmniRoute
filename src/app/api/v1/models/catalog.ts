@@ -135,7 +135,7 @@ import { isFreeModel } from "@/shared/utils/freeModels";
 import { isModelExposureAllowed } from "@/shared/utils/modelExposureList";
 import { isCodexDiscoveryModelExcluded } from "@/shared/services/codexDiscoveryPolicy";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
-import { isExplicitOpenRouterFreeCatalogModel } from "./freeOnlyCatalog";
+import { isFreeOnlyCatalogModel } from "./freeOnlyCatalog";
 import { getCatalogFreeAccess } from "./catalogFreeAccess";
 
 // Public API of this module is preserved after the catalog helper extraction:
@@ -2180,7 +2180,7 @@ async function buildUnifiedModelsResponseCore(
       hideNoThinkVariants: settings.hideNoThinkVariants === true,
     });
     if (freeOnlyCatalog) {
-      finalModels = finalModels.filter(isExplicitOpenRouterFreeCatalogModel);
+      finalModels = finalModels.filter(isFreeOnlyCatalogModel);
     }
 
     const getDefaultContextFallback = (model: any): number | undefined => {

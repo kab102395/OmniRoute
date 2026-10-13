@@ -788,6 +788,38 @@ test("v1 models exposes other providers' curated free-tier facts without claimin
   assert.equal(freeTierRoute.free_access?.source?.retrievedAt, null);
 });
 
+test("v1 models free-only mode includes exact provider routes with guaranteed free-tier hard stops", async () => {
+  await seedConnection("groq");
+
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models?free_only=true")
+  );
+  const body = (await response.json()) as {
+    data: Array<{
+      id?: string;
+      owned_by?: string;
+      free?: boolean;
+      free_access?: {
+        hardStopGuaranteed?: boolean | null;
+        zeroCostOnExhaustion?: string;
+      };
+    }>;
+  };
+  const routeIds = body.data.map((model) => model.id);
+
+  assert.equal(response.status, 200);
+  assert.ok(routeIds.includes("groq/openai/gpt-oss-120b"));
+  assert.ok(
+    body.data.every(
+      (model) =>
+        (model.owned_by === "openrouter" && model.free === true) ||
+        (model.free_access?.hardStopGuaranteed === true &&
+          model.free_access.zeroCostOnExhaustion === "provider_hard_stop")
+    ),
+    "free-only candidates must have current OpenRouter free-route evidence or a guaranteed provider hard stop"
+  );
+});
+
 test("v1 models removes a retired synchronized OpenRouter free route in free-only mode", async () => {
   const connection = await seedConnection("openrouter");
   await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [

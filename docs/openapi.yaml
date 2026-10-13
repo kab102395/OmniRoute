@@ -2145,9 +2145,10 @@ paths:
       description: >-
         Returns the unified model catalog. `free_only=true` filters to exact OpenRouter free
         variants and the optional dynamic OpenRouter free router, based on a fresh upstream
-        catalog. It does not filter to other providers' documented quota-based free tiers; those
-        are reported as `free_access` facts. None of these catalog filters establishes that an
-        account currently has quota or can execute successfully.
+        catalog, plus exact provider routes whose `free_access.hardStopGuaranteed` metadata says
+        the documented tier stops before paid overage. Other quota-based tiers are excluded from
+        this filter. Catalog inclusion does not establish that an account currently has quota or
+        can execute successfully.
       security:
         - BearerAuth: []
       parameters:
@@ -2177,9 +2178,10 @@ paths:
             default: false
           description: >-
             Keep exact currently free OpenRouter variants and the dynamic OpenRouter free router
-            only while the upstream catalog is fresh. Does not include provider free tiers from
-            other providers; inspect each model's `free_access` metadata for those distinct
-            quota-based offerings.
+            only while the upstream catalog is fresh. Also includes exact provider routes whose
+            `free_access.hardStopGuaranteed` is true, so a free quota cannot transition to paid
+            overage. Other provider free tiers are excluded. Account quota and execution
+            eligibility remain unknown unless established separately.
       responses:
         "200":
           description: Model list

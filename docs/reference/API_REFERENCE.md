@@ -406,9 +406,10 @@ Catalog query filters:
   connection's model rules. It does not prove current quota, account eligibility, or execution
   health.
 - `free_only=true` keeps exact OpenRouter free variants and the dynamic `openrouter/free` router
-  only when a fresh OpenRouter catalog confirms free routes. It does not include other providers'
-  quota-based free tiers; those are described by each model's `free_access` metadata and remain
-  subject to provider/account limits.
+  only when a fresh OpenRouter catalog confirms free routes. It also includes exact provider routes
+  whose `free_access.hardStopGuaranteed` is true, so exhausted quota cannot transition to paid
+  overage. Other provider free tiers remain excluded. Catalog inclusion does not establish current
+  account quota or successful execution.
 
 ### Model id prefixes (`?prefix=`)
 
