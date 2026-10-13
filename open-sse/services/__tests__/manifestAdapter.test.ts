@@ -107,6 +107,11 @@ describe("ManifestAdapter", () => {
       expect(cost, "gpt-4o should have non-zero cost").toBeGreaterThan(0);
     });
 
+    it("returns unknown when either rate is unavailable", () => {
+      const target = makeTarget("unknown-provider", "unknown-model");
+      expect(estimateRequestCost(target, 1000, 500)).toBeNull();
+    });
+
     it("handles zero tokens", () => {
       const target = makeTarget("openai", "gpt-4o");
       const cost = estimateRequestCost(target, 0, 0);

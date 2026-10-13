@@ -46,3 +46,11 @@ test("tier pricing reads the exact Devin provider/model rate", () => {
     isFree: false,
   });
 });
+
+test("unknown model pricing stays unknown instead of receiving a synthetic default rate", () => {
+  assert.deepEqual(getModelPricing("unknown-provider", "unknown-model"), {
+    inputCostPer1M: null,
+    outputCostPer1M: null,
+    isFree: null,
+  });
+});

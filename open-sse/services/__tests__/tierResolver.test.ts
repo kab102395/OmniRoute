@@ -63,7 +63,7 @@ describe("TierResolver", () => {
     it("classifies Cerebras as not free after the no-card trial ended (#11773)", () => {
       const result = classifyTier("cerebras", "llama-3.1-70b");
       expect(result.tier).not.toBe(PROVIDER_TIER.FREE);
-      expect(result.hasFreeTier).toBe(false);
+      expect(result.hasFreeTier).toBeNull();
     });
 
     it("classifies Groq as free", () => {
@@ -110,10 +110,13 @@ describe("TierResolver", () => {
       expect(result.costPer1MInput).toBeGreaterThan(1.0);
     });
 
-    it("defaults unknown providers to premium", () => {
+    it("uses a conservative premium task tier without inventing unknown pricing", () => {
       const result = classifyTier("unknown-provider", "unknown-model");
       expect(result.tier).toBe(PROVIDER_TIER.PREMIUM);
-      expect(result.costPer1MInput).toBe(5.0); // default premium pricing
+      expect(result.costPer1MInput).toBeNull();
+      expect(result.costPer1MOutput).toBeNull();
+      expect(result.hasFreeTier).toBeNull();
+      expect(result.reason).toMatch(/Pricing unknown/);
     });
   });
 
@@ -197,7 +200,7 @@ describe("TierResolver", () => {
         { provider: "openai", model: "gpt-4o" },
         { provider: "openai", model: "gpt-4o" },
       ]);
-// Observable effect of the cache: the duplicate resolves to the same tier and only
+      // Observable effect of the cache: the duplicate resolves to the same tier and only
       // ONE entry is memoized (getTierStats counts cache entries, not classify calls).
       expect(results).toHaveLength(2);
       expect(results[0].tier).toBe(results[1].tier);

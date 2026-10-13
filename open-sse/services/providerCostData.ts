@@ -2,9 +2,9 @@ import { getPricingForModel as getDefaultPricingForModel } from "@/shared/consta
 import type { TierConfig } from "./tierTypes";
 
 export interface ModelPricing {
-  inputCostPer1M: number;
-  outputCostPer1M: number;
-  isFree: boolean;
+  inputCostPer1M: number | null;
+  outputCostPer1M: number | null;
+  isFree: boolean | null;
   freeQuotaLimit?: number;
 }
 
@@ -58,7 +58,7 @@ export function getModelPricing(provider: string, model: string): ModelPricing {
   if (KNOWN_MODEL_PRICING[directKey]) {
     return KNOWN_MODEL_PRICING[directKey];
   }
-  return { inputCostPer1M: 5.0, outputCostPer1M: 15.0, isFree: false };
+  return { inputCostPer1M: null, outputCostPer1M: null, isFree: null };
 }
 
 export function isExplicitlyFree(provider: string, config: TierConfig): boolean {

@@ -11,9 +11,9 @@ export interface TierAssignment {
   model: string;
   tier: ProviderTier;
   reason: string;
-  costPer1MInput: number;
-  costPer1MOutput: number;
-  hasFreeTier: boolean;
+  costPer1MInput: number | null;
+  costPer1MOutput: number | null;
+  hasFreeTier: boolean | null;
   freeQuotaLimit?: number;
 }
 

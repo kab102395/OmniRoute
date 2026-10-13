@@ -11,12 +11,7 @@ import type { RuleInput } from "./specificityTypes";
 import type { ResolvedComboTarget } from "./combo";
 
 export type StrategyModifier =
-  | "default"
-  | "prefer-free"
-  | "prefer-cheap"
-  | "require-premium"
-  | "cost-save"
-  | "quality-first";
+  "default" | "prefer-free" | "prefer-cheap" | "require-premium" | "cost-save" | "quality-first";
 
 export interface RoutingHint {
   tierAssignments: Map<string, TierAssignment>;
@@ -108,8 +103,9 @@ export function estimateRequestCost(
   target: ResolvedComboTarget,
   inputTokens: number,
   estimatedOutputTokens: number
-): number {
+): number | null {
   const pricing = getTargetTier(target);
+  if (pricing.costPer1MInput === null || pricing.costPer1MOutput === null) return null;
   const inputCost = (inputTokens / 1_000_000) * pricing.costPer1MInput;
   const outputCost = (estimatedOutputTokens / 1_000_000) * pricing.costPer1MOutput;
   return inputCost + outputCost;

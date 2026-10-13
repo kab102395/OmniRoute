@@ -81,12 +81,22 @@ export function classifyTier(provider: string, model: string): TierAssignment {
   let tier: ProviderTier;
   let reason: string;
 
-  if (pricing.isFree || pricing.inputCostPer1M <= currentConfig.defaults.freeThreshold) {
+  if (
+    pricing.isFree === true ||
+    (pricing.inputCostPer1M !== null &&
+      pricing.inputCostPer1M <= currentConfig.defaults.freeThreshold)
+  ) {
     tier = PROVIDER_TIER.FREE;
     reason = `Cost-based: $${pricing.inputCostPer1M}/M input ≤ free threshold ($${currentConfig.defaults.freeThreshold}/M)`;
-  } else if (pricing.inputCostPer1M <= currentConfig.defaults.cheapThreshold) {
+  } else if (
+    pricing.inputCostPer1M !== null &&
+    pricing.inputCostPer1M <= currentConfig.defaults.cheapThreshold
+  ) {
     tier = PROVIDER_TIER.CHEAP;
     reason = `Cost-based: $${pricing.inputCostPer1M}/M input ≤ cheap threshold ($${currentConfig.defaults.cheapThreshold}/M)`;
+  } else if (pricing.inputCostPer1M === null || pricing.outputCostPer1M === null) {
+    tier = PROVIDER_TIER.PREMIUM;
+    reason = "Pricing unknown; conservatively classified as premium for tier selection";
   } else {
     tier = PROVIDER_TIER.PREMIUM;
     reason = `Cost-based: $${pricing.inputCostPer1M}/M input > cheap threshold ($${currentConfig.defaults.cheapThreshold}/M)`;
