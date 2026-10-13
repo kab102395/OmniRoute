@@ -666,6 +666,42 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
   }
 });
 
+test("v1 models exposes other providers' curated free-tier facts without claiming account eligibility", async () => {
+  await seedConnection("groq");
+
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models")
+  );
+  const body = (await response.json()) as {
+    data: Array<{
+      id?: string;
+      free?: boolean;
+      free_access?: {
+        classification?: string;
+        freeType?: string;
+        monthlyTokens?: number;
+        hardStopGuaranteed?: boolean | null;
+        accountEligibility?: string;
+        zeroCostOnExhaustion?: string;
+        source?: { id?: string; freshness?: string; retrievedAt?: string | null };
+      };
+    }>;
+  };
+  const freeTierRoute = body.data.find((model) => model.id === "groq/openai/gpt-oss-120b");
+
+  assert.ok(freeTierRoute, "the exact configured Groq route should be listed");
+  assert.equal(freeTierRoute.free, undefined, "free-tier offering is not a zero-price assertion");
+  assert.equal(freeTierRoute.free_access?.classification, "documented_free_tier");
+  assert.equal(freeTierRoute.free_access?.freeType, "recurring-daily");
+  assert.equal(freeTierRoute.free_access?.monthlyTokens, 6_000_000);
+  assert.equal(freeTierRoute.free_access?.hardStopGuaranteed, true);
+  assert.equal(freeTierRoute.free_access?.zeroCostOnExhaustion, "provider_hard_stop");
+  assert.equal(freeTierRoute.free_access?.accountEligibility, "unknown");
+  assert.equal(freeTierRoute.free_access?.source?.id, "omniroute.free_model_catalog");
+  assert.equal(freeTierRoute.free_access?.source?.freshness, "release_catalog");
+  assert.equal(freeTierRoute.free_access?.source?.retrievedAt, null);
+});
+
 test("v1 models removes a retired synchronized OpenRouter free route in free-only mode", async () => {
   const connection = await seedConnection("openrouter");
   await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [

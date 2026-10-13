@@ -136,6 +136,7 @@ import { isModelExposureAllowed } from "@/shared/utils/modelExposureList";
 import { isCodexDiscoveryModelExcluded } from "@/shared/services/codexDiscoveryPolicy";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
 import { isExplicitOpenRouterFreeCatalogModel } from "./freeOnlyCatalog";
+import { getCatalogFreeAccess } from "./catalogFreeAccess";
 
 // Public API of this module is preserved after the catalog helper extraction:
 // `isVisionModelId` (vision-detection-consistency.test.ts) and
@@ -2059,6 +2060,19 @@ async function buildUnifiedModelsResponseCore(
         finalModels = filtered;
       }
     }
+    finalModels = finalModels.map((model) => {
+      if (!model || typeof model !== "object" || model.owned_by === "combo") return model;
+      const provider =
+        typeof model.owned_by === "string"
+          ? aliasToProviderId[model.owned_by] || model.owned_by
+          : null;
+      const modelId = typeof model.root === "string" ? model.root : null;
+      if (!provider || !modelId) return model;
+
+      const freeAccess = getCatalogFreeAccess(provider, modelId);
+      if (!freeAccess) return model;
+      return { ...model, free_access: freeAccess };
+    });
     // ?configuredOnly — hide models that have no eligible DB connection.
     finalModels = await applyCatalogPostFilters(request, finalModels, {
       connections,
