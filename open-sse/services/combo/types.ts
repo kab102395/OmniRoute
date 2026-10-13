@@ -197,6 +197,8 @@ export type ResolvedComboTarget = {
   providerId: string | null;
   connectionId: string | null;
   allowedConnectionIds?: string[] | null;
+  /** Exact provider-catalog tool support carried by dynamic candidates, when available. */
+  resolvedSupportsTools?: boolean | null;
   weight: number;
   label: string | null;
   prompt?: string | null;

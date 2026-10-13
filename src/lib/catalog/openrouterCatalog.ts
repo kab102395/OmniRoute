@@ -121,22 +121,36 @@ export function isOpenRouterZeroPriceRoute(model: { pricing?: OpenRouterPricing 
   );
 }
 
+export type CurrentOpenRouterFreeRoute = {
+  /** Omitted when the live catalog did not report `supported_parameters`. */
+  supportsTools?: boolean;
+};
+
+/** Exact OpenRouter free routes and reported capability facts, or null when unverified. */
+export async function getCurrentOpenRouterFreeRouteMetadata(options?: {
+  requireTools?: boolean;
+}): Promise<Map<string, CurrentOpenRouterFreeRoute> | null> {
+  const catalog = await getOpenRouterCatalog();
+  if (catalog.stale) return null;
+  const routes = new Map<string, CurrentOpenRouterFreeRoute>();
+  for (const entry of catalog.data) {
+    const free = isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
+    if (!free) continue;
+    const supportsTools = Array.isArray(entry.supported_parameters)
+      ? entry.supported_parameters.includes("tools")
+      : undefined;
+    if (options?.requireTools === true && supportsTools !== true) continue;
+    routes.set(entry.id, supportsTools === undefined ? {} : { supportsTools });
+  }
+  return routes;
+}
+
 /** Exact OpenRouter routes currently advertised as free, or null when unverified. */
 export async function getCurrentOpenRouterFreeRouteIds(options?: {
   requireTools?: boolean;
 }): Promise<Set<string> | null> {
-  const catalog = await getOpenRouterCatalog();
-  if (catalog.stale) return null;
-  return new Set(
-    catalog.data
-      .filter((entry) => {
-        const free = isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
-        const tools =
-          options?.requireTools !== true || entry.supported_parameters?.includes("tools") === true;
-        return free && tools;
-      })
-      .map((entry) => entry.id)
-  );
+  const routes = await getCurrentOpenRouterFreeRouteMetadata(options);
+  return routes === null ? null : new Set(routes.keys());
 }
 
 interface CacheFile {

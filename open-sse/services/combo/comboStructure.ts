@@ -136,6 +136,9 @@ function normalizeRuntimeStep(
     ...(Array.isArray(step.allowedConnectionIds) && step.allowedConnectionIds.length > 0
       ? { allowedConnectionIds: step.allowedConnectionIds }
       : {}),
+    ...(step.kind === "model" && step.resolvedSupportsTools !== undefined
+      ? { resolvedSupportsTools: step.resolvedSupportsTools }
+      : {}),
     weight,
     label,
     // `prompt` is a per-step pipeline input and only exists on a model step —
@@ -585,7 +588,9 @@ function getTargetCompatibilityFailures(
 
   if (
     requirements.requiresTools &&
-    (capabilities.supportsTools === false || !capabilities.toolCalling) &&
+    (target.resolvedSupportsTools !== undefined
+      ? target.resolvedSupportsTools !== true
+      : capabilities.supportsTools === false || !capabilities.toolCalling) &&
     // #5240: prompt-emulated tool providers remain eligible under fail-closed.
     !providerSupportsEmulatedToolCalling(target.provider)
   ) {

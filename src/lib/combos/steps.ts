@@ -21,6 +21,8 @@ export interface ComboModelStep {
    * Reuses the `allowedConnectionIds` plumbing tag routing already populates.
    */
   allowedConnectionIds?: string[] | null;
+  /** Build-local authoritative tool-support fact from a live provider catalog. */
+  resolvedSupportsTools?: boolean | null;
   weight: number;
   label?: string;
   prompt?: string | null;
@@ -290,6 +292,12 @@ export function normalizeComboStep(
   const label = toTrimmedString(value.label);
   const prompt = toTrimmedString(value.prompt);
   const fallbackOnlyOnQuotaExhaustion = value.fallbackOnlyOnQuotaExhaustion === true;
+  const resolvedSupportsTools =
+    value.resolvedSupportsTools === true || value.resolvedSupportsTools === false
+      ? value.resolvedSupportsTools
+      : value.resolvedSupportsTools === null
+        ? null
+        : undefined;
 
   if (value.kind === "combo-ref") {
     const comboRefName = toTrimmedString(value.comboName);
@@ -413,6 +421,7 @@ export function normalizeComboStep(
     ...(prompt ? { prompt } : {}),
     ...(tags && tags.length > 0 ? { tags } : {}),
     ...(allowedConnectionIds && allowedConnectionIds.length > 0 ? { allowedConnectionIds } : {}),
+    ...(resolvedSupportsTools !== undefined ? { resolvedSupportsTools } : {}),
     ...(fallbackOnlyOnQuotaExhaustion ? { fallbackOnlyOnQuotaExhaustion: true } : {}),
   };
 }

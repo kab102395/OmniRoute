@@ -16,6 +16,7 @@ const {
   filterTargetsByRequestCompatibility,
   describeCapabilityFilterExhaustion,
   providerSupportsEmulatedToolCalling,
+  resolveComboTargets,
 } = await import("../../open-sse/services/combo/comboStructure.ts");
 const { resolveAutoStrategyOrder } =
   await import("../../open-sse/services/combo/resolveAutoStrategy.ts");
@@ -119,6 +120,53 @@ test("#8488 filter: zero tool-capable targets → empty (fail closed)", () => {
   assert.match(exhaustion!.message, /supports tool calling/i);
   assert.equal(exhaustion!.terminalReason, "capability_mismatch");
   assert.ok(exhaustion!.excluded.some((e) => e.reason.includes("tools")));
+});
+
+test("live OpenRouter route tool support overrides optimistic family heuristics", () => {
+  const targets = resolveComboTargets(
+    {
+      name: "dynamic-openrouter-free",
+      models: [
+        {
+          id: "exact-free-route",
+          kind: "model",
+          model: "openrouter/vendor/tool-capability-test:free",
+          providerId: "openrouter",
+          resolvedSupportsTools: false,
+          weight: 1,
+        },
+        {
+          id: "exact-unknown-route",
+          kind: "model",
+          model: "openrouter/vendor/unknown-capability-test:free",
+          providerId: "openrouter",
+          resolvedSupportsTools: null,
+          weight: 1,
+        },
+        {
+          id: "exact-tool-route",
+          kind: "model",
+          model: "openrouter/vendor/tool-capable-test:free",
+          providerId: "openrouter",
+          resolvedSupportsTools: true,
+          weight: 1,
+        },
+      ],
+    },
+    null
+  );
+  const compatible = filterTargetsByRequestCompatibility(
+    targets,
+    {
+      messages: [{ role: "user", content: "use a tool" }],
+      tools: [{ type: "function", function: { name: "lookup", parameters: {} } }],
+    },
+    log
+  );
+  assert.deepEqual(
+    compatible.map((entry) => entry.modelStr),
+    ["openrouter/vendor/tool-capable-test:free"]
+  );
 });
 
 test("#8488 filter: Gemini Web emulation stays eligible for tools (#5240)", () => {

@@ -344,6 +344,14 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
     ["provider/replacement:free"],
     "tool-required routing keeps only current free routes whose catalog metadata supports tools"
   );
+  const currentFreeMetadata = await openRouterCatalog.getCurrentOpenRouterFreeRouteMetadata();
+  assert.equal(currentFreeMetadata?.get("provider/replacement:free")?.supportsTools, true);
+  assert.equal(currentFreeMetadata?.get("provider/no-tools:free")?.supportsTools, false);
+  assert.deepEqual(
+    currentFreeMetadata?.get("provider/explicit-zero"),
+    {},
+    "a route with no supported_parameters remains unknown instead of inheriting a sibling/model heuristic"
+  );
   assert.deepEqual(
     openRouterFreeModels
       .discoverOpenRouterFreeModels(

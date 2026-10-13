@@ -31,7 +31,7 @@ import { buildFamilyCandidateFilter, type ModelFamily } from "./modelFamily";
 import { getHiddenModelsByProvider } from "@/models";
 import { getSyncedAvailableModelsByConnection, getCustomModels } from "@/lib/db/models";
 import { filterPaidOnlyCandidates } from "./paidModelFilter";
-import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
+import { getCurrentOpenRouterFreeRouteMetadata } from "@/lib/catalog/openrouterCatalog";
 import { isFreeModel } from "@/shared/utils/freeModels";
 import { filterModelExposureCandidates } from "./modelExposureFilter";
 import {
@@ -109,6 +109,8 @@ export interface VirtualAutoComboCandidate {
   costPer1MTokens: number; // from providerRegistry
   /** Current free classification attached during server-side pool preparation. */
   isFree?: boolean;
+  /** Exact current OpenRouter catalog tool-support fact for a free variant. */
+  resolvedSupportsTools?: boolean | null;
   /** Build-local capability snapshot. Runtime calls rebuild it; catalog entries reuse it. */
   resolvedContextLength?: number | null;
   resolvedMaxOutputTokens?: number | null;
@@ -133,6 +135,7 @@ type VirtualAutoCombo = AutoComboConfig & {
     providerId: string;
     connectionId: string | null;
     allowedConnectionIds?: string[];
+    resolvedSupportsTools?: boolean | null;
     weight: number;
     label: string;
     /** Carried through from the candidate for the read-only inspector; absent
@@ -661,8 +664,14 @@ export async function prepareVirtualAutoComboInputs(
   // governed by the user's visible-model selection below.
   const connectedProviders = new Set(validConnections.map((conn) => conn.provider));
   let currentOpenRouterFreeRoutes: Set<string> | undefined;
+  let currentOpenRouterFreeRouteMetadata:
+    Awaited<ReturnType<typeof getCurrentOpenRouterFreeRouteMetadata>> | undefined;
   if (connectedProviders.has("openrouter")) {
-    currentOpenRouterFreeRoutes = (await getCurrentOpenRouterFreeRouteIds()) ?? undefined;
+    currentOpenRouterFreeRouteMetadata =
+      (await getCurrentOpenRouterFreeRouteMetadata()) ?? undefined;
+    if (currentOpenRouterFreeRouteMetadata) {
+      currentOpenRouterFreeRoutes = new Set(currentOpenRouterFreeRouteMetadata.keys());
+    }
   }
 
   // Build one logical candidate per provider/model and keep account fallback as an
@@ -746,6 +755,12 @@ export async function prepareVirtualAutoComboInputs(
         model: modelId,
         modelStr: `${providerId}/${modelId}`,
         costPer1MTokens: 0, // Not used in virtual auto-combo (LKGP uses session stickiness)
+        ...(providerId === "openrouter" && currentOpenRouterFreeRouteMetadata?.has(modelId)
+          ? {
+              resolvedSupportsTools:
+                currentOpenRouterFreeRouteMetadata.get(modelId)?.supportsTools ?? null,
+            }
+          : {}),
       });
     }
   }
@@ -1136,6 +1151,9 @@ export async function createVirtualAutoComboFromPrepared(
     ...(candidate.allowedConnectionIds
       ? { allowedConnectionIds: candidate.allowedConnectionIds }
       : {}),
+    ...(candidate.resolvedSupportsTools === undefined
+      ? {}
+      : { resolvedSupportsTools: candidate.resolvedSupportsTools }),
     weight: snapshotScores.get(candidate.modelStr) ?? 1,
     label: candidate.provider,
     ...(candidate.freeAccessExclusion === undefined
