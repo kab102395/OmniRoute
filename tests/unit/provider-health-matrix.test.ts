@@ -78,7 +78,7 @@ test("provider health matrix reports providers without account or traffic eviden
   assert.equal(report.summary.healthyCount, 0);
 });
 
-test("active but unverified connections stay unknown until a successful check or request", async () => {
+test("stale connection checks stay unknown until a fresh check or request", async () => {
   const connection = (await providersDb.createProviderConnection({
     id: "matrix-unverified-connection",
     provider: PROVIDER,
@@ -86,6 +86,8 @@ test("active but unverified connections stay unknown until a successful check or
     name: "matrix-unverified-key",
     apiKey: "test-key",
     isActive: true,
+    testStatus: "success",
+    lastHealthCheckAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   })) as Record<string, unknown>;
   const connectionId = String(connection.id);
 
@@ -99,14 +101,8 @@ test("active but unverified connections stay unknown until a successful check or
   assert.equal(unknownReport.providers[0]?.score, null);
   assert.equal(unknownReport.summary.unknownCount, 1);
 
-  await callLogs.saveCallLog({
-    id: "matrix-unverified-success",
-    timestamp: new Date().toISOString(),
-    status: 200,
-    provider: PROVIDER,
-    connectionId,
-    model: "matrix-observed-model",
-    duration: 100,
+  await providersDb.updateProviderConnection(connectionId, {
+    lastHealthCheckAt: new Date().toISOString(),
   });
   const verifiedReport = await matrix.buildProviderHealthMatrix({
     provider: PROVIDER,

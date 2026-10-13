@@ -11,6 +11,7 @@ type JsonRecord = Record<string, unknown>;
 export type ProviderHealthMatrixRange = "1h" | "24h" | "7d" | "30d";
 export type ProviderHealthState = "healthy" | "degraded" | "down" | "unknown";
 export type ProviderModelHealthStatus = "healthy" | "degraded" | "error" | "locked" | "idle";
+const DEFAULT_HEALTH_EVIDENCE_MAX_AGE_MS = 60 * 60 * 1000;
 
 export interface ProviderHealthMatrixOptions {
   provider?: string | null;
@@ -338,8 +339,19 @@ function classifyAccount(
     return "degraded";
   }
   const hasRecentModelEvidence = models.some((model) => model.requests > 0);
+  const checkTimestamp = Math.max(
+    parseTimeMs(connection?.lastHealthCheckAt) ?? 0,
+    parseTimeMs(connection?.lastTested) ?? 0
+  );
+  const configuredIntervalMinutes = toNumber(connection?.healthCheckInterval);
+  const checkMaxAgeMs =
+    configuredIntervalMinutes > 0
+      ? configuredIntervalMinutes * 60 * 1000
+      : DEFAULT_HEALTH_EVIDENCE_MAX_AGE_MS;
   const hasSuccessfulConnectionCheck =
-    connection?.testStatus === "active" || connection?.testStatus === "success";
+    (connection?.testStatus === "active" || connection?.testStatus === "success") &&
+    checkTimestamp <= now &&
+    now - checkTimestamp <= checkMaxAgeMs;
   if (!hasRecentModelEvidence && !hasSuccessfulConnectionCheck) return "unknown";
   return "healthy";
 }
