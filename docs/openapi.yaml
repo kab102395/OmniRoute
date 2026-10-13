@@ -15638,6 +15638,14 @@ components:
                     - model_spec
                     - provider_parameter_constraint
                     - unknown
+                retrievedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Retrieval time for synchronized or live route capability evidence, when known.
+                stale:
+                  type: boolean
+                  description: Whether this capability evidence is too old for constrained selection.
         free_access:
           type: object
           description: >-

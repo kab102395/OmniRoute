@@ -223,6 +223,8 @@ test("typed model catalog entries expose source-backed structured-output status"
     ),
     true
   );
+  assert.equal(structuredOutput.properties.retrievedAt.format, "date-time");
+  assert.equal(structuredOutput.properties.stale.type, "boolean");
 });
 
 test("model catalog OpenAPI includes every emitted OpenRouter modality price dimension", () => {

@@ -105,6 +105,8 @@ export interface CatalogCapabilityStatus {
       | "model_spec"
       | "provider_parameter_constraint"
       | "unknown";
+    retrievedAt?: string | null;
+    stale?: boolean;
   };
   [key: string]: unknown;
 }

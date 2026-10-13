@@ -94,6 +94,7 @@ function preservePinnedHuggingFaceRouteFacts(
 ): Record<string, unknown> {
   const routes = sourceModel.provider_routes;
   const routeSelection = sourceModel.route_selection;
+  const provenance = sourceModel.provider_routes_provenance;
   if (
     (sourceModel.owned_by !== "hf" && sourceModel.owned_by !== "huggingface") ||
     typeof sourceModel.id !== "string" ||
@@ -108,6 +109,12 @@ function preservePinnedHuggingFaceRouteFacts(
   }
 
   const route = routes[0];
+  const routeMetadata = isRecord(provenance) ? provenance : null;
+  const routeRetrievedAt =
+    routeMetadata && typeof routeMetadata.retrieved_at === "string"
+      ? routeMetadata.retrieved_at
+      : null;
+  const routeStale = routeMetadata?.stale !== false;
   const capabilities = isRecord(listedModel.capabilities) ? { ...listedModel.capabilities } : {};
   if (typeof route.supports_tools === "boolean") {
     capabilities.tool_calling = route.supports_tools;
@@ -137,6 +144,8 @@ function preservePinnedHuggingFaceRouteFacts(
               ? "unsupported"
               : "unknown",
         source: "huggingface.router_models_api",
+        retrievedAt: routeRetrievedAt,
+        stale: routeStale,
       },
       structured_output: {
         status:
@@ -146,6 +155,8 @@ function preservePinnedHuggingFaceRouteFacts(
               ? "unsupported"
               : "unknown",
         source: "huggingface.router_models_api",
+        retrievedAt: routeRetrievedAt,
+        stale: routeStale,
       },
     },
     route_selection: sourceModel.route_selection,

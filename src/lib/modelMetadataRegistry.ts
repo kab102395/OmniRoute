@@ -976,6 +976,23 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   const preserveProviderRouteStructuredOutputStatus =
     (publicProvider === "huggingface" || publicProvider === "hf") &&
     existingStructuredOutputSource === "huggingface.router_models_api";
+  const openRouterCapabilityEvidence = openRouterParametersKnown
+    ? {
+        retrievedAt:
+          typeof pricingSource?.retrievedAt === "string" ? pricingSource.retrievedAt : null,
+        stale: pricingSource?.stale === true,
+      }
+    : {};
+  const structuredOutputEvidence = preserveProviderRouteStructuredOutputStatus
+    ? {}
+    : openRouterCapabilityEvidence.retrievedAt !== undefined
+      ? openRouterCapabilityEvidence
+      : existingStructuredOutputSource === "provider_model_catalog"
+        ? providerCatalogCapabilityEvidence
+        : existingStructuredOutputSource === "synced_capability_catalog" ||
+            (syncedStructuredOutput !== undefined && metadata.metadata.source.syncedCapability)
+          ? modelsDevCapabilityEvidence
+          : {};
   nextEntry.capability_status = {
     ...(entry.capability_status && typeof entry.capability_status === "object"
       ? (entry.capability_status as JsonRecord)
@@ -1015,6 +1032,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
                 : metadata.metadata.source.staticSpec
                   ? "model_spec"
                   : "unknown",
+          ...structuredOutputEvidence,
         },
   };
 

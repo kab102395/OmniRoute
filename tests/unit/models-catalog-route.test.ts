@@ -637,7 +637,12 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
         supported_parameters?: string[];
         capability_status?: {
           tool_calling?: { status?: string; source?: string };
-          structured_output?: { status?: string; source?: string };
+          structured_output?: {
+            status?: string;
+            source?: string;
+            retrievedAt?: string | null;
+            stale?: boolean;
+          };
         };
         context_length?: number;
         max_output_tokens?: number;
@@ -646,7 +651,13 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
         route_availability?: {
           catalogListed?: boolean;
           accountEligibility?: string;
-          source?: { id?: string; modelId?: string; stale?: boolean; cacheTtlMs?: number };
+          source?: {
+            id?: string;
+            modelId?: string;
+            retrievedAt?: string | null;
+            stale?: boolean;
+            cacheTtlMs?: number;
+          };
           downstreamHostSelection?: string;
         };
       }>;
@@ -683,6 +694,8 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     assert.deepEqual(freeRoute.capability_status?.structured_output, {
       status: "supported",
       source: "openrouter.models_api",
+      retrievedAt: freeRoute.route_availability?.source?.retrievedAt,
+      stale: false,
     });
     assert.deepEqual(freeRoute.supported_parameters, ["tools", "structured_outputs"]);
     assert.equal(freeRoute.context_length, 64000);
@@ -710,6 +723,8 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     assert.deepEqual(noToolsRoute?.capability_status?.structured_output, {
       status: "unsupported",
       source: "openrouter.models_api",
+      retrievedAt: noToolsRoute.route_availability?.source?.retrievedAt,
+      stale: false,
     });
     assert.deepEqual(unknownToolsRoute?.capability_status?.tool_calling, {
       status: "unknown",
@@ -1341,12 +1356,18 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
       capabilities?: Record<string, boolean>;
       capability_status?: {
         tool_calling?: { status?: string; source?: string };
-        structured_output?: { status?: string; source?: string };
+        structured_output?: {
+          status?: string;
+          source?: string;
+          retrievedAt?: string | null;
+          stale?: boolean;
+        };
       };
       route_selection?: { kind?: string; exactModelIdentity?: boolean };
       route_availability?: {
         accountEligibility?: string;
         downstreamHostSelection?: string;
+        source?: { retrievedAt?: string | null };
       };
       provider_routes_provenance?: { stale?: boolean };
     }>;
@@ -1375,10 +1396,14 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
   assert.deepEqual(freeToolRoute.capability_status?.tool_calling, {
     status: "supported",
     source: "huggingface.router_models_api",
+    retrievedAt: freeToolRoute.route_availability?.source?.retrievedAt,
+    stale: false,
   });
   assert.deepEqual(freeToolRoute.capability_status?.structured_output, {
     status: "unknown",
     source: "huggingface.router_models_api",
+    retrievedAt: freeToolRoute.route_availability?.source?.retrievedAt,
+    stale: false,
   });
   assert.deepEqual(freeToolRoute.route_selection, {
     kind: "exact_model",
