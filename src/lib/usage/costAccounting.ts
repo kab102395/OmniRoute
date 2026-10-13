@@ -211,6 +211,8 @@ function hasUsage(usage: Record<string, unknown> | null | undefined): boolean {
     "cache_read_input_tokens",
     "cache_creation_input_tokens",
     "reasoning_tokens",
+    "input_audio_tokens",
+    "output_audio_tokens",
   ].some((field) => {
     const value = usage[field];
     return typeof value === "number" && Number.isFinite(value);

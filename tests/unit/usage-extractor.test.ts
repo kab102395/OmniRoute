@@ -45,6 +45,16 @@ test("normalizeUsage checks both OpenAI input detail containers for audio usage"
   );
 });
 
+test("normalizeUsage marks malformed audio token counts instead of converting them to zero", () => {
+  assert.deepEqual(
+    normalizeUsage({
+      prompt_tokens: 1_000_000,
+      prompt_tokens_details: { audio_tokens: "not-a-count" },
+    }),
+    { prompt_tokens: 1_000_000, audio_token_usage_invalid: 1 }
+  );
+});
+
 test("audio-only usage counts as valid and non-empty token usage", () => {
   const usage = { input_audio_tokens: 12 };
   assert.equal(hasValidUsage(usage), true);
@@ -88,6 +98,20 @@ test("extractUsageFromResponse preserves OpenAI input/output audio token counts"
   assert.equal(usage.completion_tokens, 20);
   assert.equal(usage.input_audio_tokens, 12);
   assert.equal(usage.output_audio_tokens, 8);
+});
+
+test("extractUsageFromResponse preserves malformed audio usage as unknown metadata", () => {
+  const usage = extractUsageFromResponse(
+    {
+      usage: {
+        prompt_tokens: 12,
+        prompt_tokens_details: { audio_tokens: "invalid" },
+      },
+    },
+    "openai"
+  );
+  assert.equal(usage.prompt_tokens, 12);
+  assert.equal(usage.audio_token_usage_invalid, 1);
 });
 
 test("extractUsageFromResponse preserves an OpenRouter cost receipt when token counts are absent", () => {
@@ -469,6 +493,31 @@ test("extractUsage reads OpenAI streaming chunk with prompt_tokens_details", () 
 
   assert.equal(usage.cached_tokens, 50);
   assert.equal(usage.reasoning_tokens, 20);
+});
+
+test("extractUsage preserves audio token counters and malformed audio dimensions in streams", () => {
+  const valid = extractUsage({
+    type: "response.completed",
+    response: {
+      usage: {
+        input_tokens: 20,
+        output_tokens: 12,
+        input_tokens_details: { audio_tokens: 7 },
+        output_tokens_details: { audio_tokens: 5 },
+      },
+    },
+  });
+  assert.equal(valid.input_audio_tokens, 7);
+  assert.equal(valid.output_audio_tokens, 5);
+
+  const malformed = extractUsage({
+    usage: {
+      prompt_tokens: 20,
+      completion_tokens: 12,
+      prompt_tokens_details: { audio_tokens: "bad" },
+    },
+  });
+  assert.equal(malformed.audio_token_usage_invalid, 1);
 });
 
 // ── Flat field extraction tests (Xiaomi MiMo-style providers) ──

@@ -174,6 +174,7 @@ export function computeCostFromPricing(
   // when one is present — works even when no local pricing row exists yet.
   const exactCostUsd = extractExactCostUsd(tokens, options.provider);
   if (exactCostUsd !== null) return exactCostUsd;
+  if (toNumber(tokens.audio_token_usage_invalid, 0) > 0) return 0;
   if (!pricing) return 0;
   // Flat-rate (subscription / cookie-web) providers don't bill per token — their
   // per-token pricing rows exist only for estimation, so display surfaces opt in
@@ -526,6 +527,7 @@ export async function calculateCostWithEvidence(
     const reasoningTokens = Math.max(0, toNumber(tokens.reasoning ?? tokens.reasoning_tokens));
     const inputAudioTokens = Math.max(0, toNumber(tokens.input_audio_tokens));
     const outputAudioTokens = Math.max(0, toNumber(tokens.output_audio_tokens));
+    const audioTokenUsageValid = toNumber(tokens.audio_token_usage_invalid, 0) === 0;
     const nonCachedInputTokens = Math.max(
       0,
       inputTokens - cachedTokens - cacheCreationTokens - inputAudioTokens
@@ -648,6 +650,7 @@ export async function calculateCostWithEvidence(
     );
     const costKnown =
       !openRouterEvidence?.conditional &&
+      audioTokenUsageValid &&
       pricingFreshnessKnown &&
       (nonCachedInputTokens === 0 || hasRate(pricingRecord.input)) &&
       (cachedTokens === 0 || hasRate(pricingRecord.cached) || hasRate(pricingRecord.input)) &&

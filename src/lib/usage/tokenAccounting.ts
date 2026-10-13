@@ -114,23 +114,41 @@ export function getReasoningTokens(tokens: unknown): number {
   );
 }
 
-/** Audio tokens are reported separately from text tokens in OpenAI-shaped usage. */
-export function getInputAudioTokens(tokens: unknown): number {
-  const tokenRecord = asRecord(tokens);
-  const promptDetails = asRecord(tokenRecord.prompt_tokens_details);
-  const inputDetails = asRecord(tokenRecord.input_tokens_details);
-  return toFiniteNumber(
-    tokenRecord.input_audio_tokens ?? promptDetails.audio_tokens ?? inputDetails.audio_tokens
-  );
+function readAudioTokenCount(values: unknown[]): { reported: boolean; count: number | null } {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+      return { reported: true, count: value };
+    }
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+      const count = Number(value);
+      if (Number.isSafeInteger(count)) return { reported: true, count };
+    }
+    return { reported: true, count: null };
+  }
+  return { reported: false, count: null };
 }
 
-export function getOutputAudioTokens(tokens: unknown): number {
+/** Preserve valid audio token counts and mark malformed reported dimensions as unknown. */
+export function getAudioUsageFields(tokens: unknown): Record<string, number> {
   const tokenRecord = asRecord(tokens);
-  const completionDetails = asRecord(tokenRecord.completion_tokens_details);
-  const outputDetails = asRecord(tokenRecord.output_tokens_details);
-  return toFiniteNumber(
-    tokenRecord.output_audio_tokens ?? completionDetails.audio_tokens ?? outputDetails.audio_tokens
-  );
+  const input = readAudioTokenCount([
+    tokenRecord.input_audio_tokens,
+    asRecord(tokenRecord.prompt_tokens_details).audio_tokens,
+    asRecord(tokenRecord.input_tokens_details).audio_tokens,
+  ]);
+  const output = readAudioTokenCount([
+    tokenRecord.output_audio_tokens,
+    asRecord(tokenRecord.completion_tokens_details).audio_tokens,
+    asRecord(tokenRecord.output_tokens_details).audio_tokens,
+  ]);
+  const malformed =
+    (input.reported && input.count === null) || (output.reported && output.count === null);
+  return {
+    ...(input.reported && input.count !== null ? { input_audio_tokens: input.count } : {}),
+    ...(output.reported && output.count !== null ? { output_audio_tokens: output.count } : {}),
+    ...(malformed ? { audio_token_usage_invalid: 1 } : {}),
+  };
 }
 
 // Non-greedy, single-capture, no nested variable-length quantifiers → ReDoS-safe.

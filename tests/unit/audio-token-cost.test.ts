@@ -11,6 +11,7 @@ const core = await import("../../src/lib/db/core.ts");
 const settings = await import("../../src/lib/db/settings.ts");
 const { calculateCostWithEvidence, computeCostFromPricing } =
   await import("../../src/lib/usage/costCalculator.ts");
+const { classifyCostAccounting } = await import("../../src/lib/usage/costAccounting.ts");
 
 test("audio tokens use dedicated input/output rates without double billing generic token rates", () => {
   assert.equal(
@@ -37,6 +38,34 @@ test("audio usage with no dedicated audio pricing remains unknown", async () => 
 
   assert.equal(estimate.costUsd, 0);
   assert.equal(estimate.costKnown, false);
+});
+
+test("malformed reported audio usage cannot be estimated as ordinary text", async () => {
+  await settings.updatePricing({
+    "audio-cost-malformed": {
+      "model-a": { input: 1, output: 2, input_audio: 10 },
+    },
+  });
+  const estimate = await calculateCostWithEvidence("audio-cost-malformed", "model-a", {
+    input: 1_000_000,
+    output: 0,
+    audio_token_usage_invalid: 1,
+  });
+
+  assert.equal(estimate.costUsd, 0);
+  assert.equal(estimate.costKnown, false);
+});
+
+test("audio-only counts are retained as provider-reported usage in accounting", () => {
+  const accounting = classifyCostAccounting({
+    provider: "openai",
+    model: "audio-model",
+    usage: { input_audio_tokens: 12 },
+    calculatedCostUsd: 0,
+    calculatedCostKnown: false,
+  });
+  assert.equal(accounting.kind, "usage_only");
+  assert.equal(accounting.usageKind, "provider_reported_usage");
 });
 
 test.after(() => {
