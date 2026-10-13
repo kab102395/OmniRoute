@@ -2,7 +2,8 @@ import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
+import { calculateModalCostWithEvidence } from "@/lib/usage/costCalculator";
+import { classifyModalCostAccounting } from "@/lib/usage/costAccounting";
 import { generateRequestId } from "@/shared/utils/requestId";
 import { toJsonErrorPayload } from "@/shared/utils/upstreamError";
 import { v1ImageGenerationSchema } from "@/shared/validation/schemas";
@@ -127,13 +128,24 @@ export async function successfulMediaGenerationResponse({
   strategy?: string;
   fallbackAttempts?: number;
 }) {
-  const seconds = Number(duration) || 0;
-  const costUsd = await calculateModalCost(billingMode, provider, model, { seconds });
+  const seconds = typeof duration === "number" && Number.isFinite(duration) ? duration : undefined;
+  const cost = await calculateModalCostWithEvidence(
+    billingMode,
+    provider,
+    model,
+    seconds === undefined ? {} : { seconds }
+  );
   const headers = new Headers({ "Content-Type": "application/json" });
   attachOmniRouteMetaHeaders(headers, {
     provider,
     model,
-    costUsd,
+    costUsd: cost.costUsd ?? 0,
+    accounting: classifyModalCostAccounting({
+      provider,
+      model,
+      costUsd: cost.costUsd,
+      pricingEvidence: cost.pricingEvidence,
+    }),
     latencyMs: Date.now() - startTime,
     requestId: generateRequestId(),
     ...(strategy ? { strategy } : {}),

@@ -1583,6 +1583,16 @@ paths:
               schema:
                 type: string
               description: Provider-reported field or OmniRoute local pricing table used for the amount.
+            X-OmniRoute-Pricing-Retrieved-At:
+              schema:
+                type: string
+                format: date-time
+              description: UTC retrieval timestamp for the price metadata, when known.
+            X-OmniRoute-Pricing-Stale:
+              schema:
+                type: string
+                enum: [true, false]
+              description: Whether the source pricing metadata is past its known freshness interval.
             X-OmniRoute-Usage-Kind:
               schema:
                 type: string
@@ -1862,8 +1872,8 @@ paths:
           description: >-
             Embedding vectors. Success responses carry the `X-OmniRoute-*`
             cost-telemetry headers (see `POST /api/v1/chat/completions`); media
-            cost is computed per modality when pricing is available, otherwise
-            `0` (fail-open).
+            cost is computed when billable usage and pricing are available. Otherwise the
+            legacy numeric cost header is `0` and Accounting-Kind is `unknown`.
 
   /api/v1/multimodal-embeddings:
     post:
@@ -1948,8 +1958,8 @@ paths:
           description: >-
             Generated images. Success responses carry the `X-OmniRoute-*`
             cost-telemetry headers (see `POST /api/v1/chat/completions`); image
-            cost is computed per image when pricing is available, otherwise `0`
-            (fail-open).
+            cost is computed when billable image usage and pricing are available. Otherwise
+            the legacy numeric cost header is `0` and Accounting-Kind is `unknown`.
 
   /api/v1/providers/{provider}/images/generations:
     post:
@@ -1999,8 +2009,8 @@ paths:
           description: >-
             Audio data. Success responses carry the `X-OmniRoute-*`
             cost-telemetry headers (see `POST /api/v1/chat/completions`); speech
-            cost is computed per character when pricing is available, otherwise
-            `0` (fail-open).
+            cost is computed when billable character usage and pricing are available.
+            Otherwise the legacy numeric cost header is `0` and Accounting-Kind is `unknown`.
 
   /api/v1/audio/transcriptions:
     post:
@@ -2027,8 +2037,8 @@ paths:
           description: >-
             Transcription result. Success responses carry the `X-OmniRoute-*`
             cost-telemetry headers (see `POST /api/v1/chat/completions`);
-            transcription cost is computed per second when pricing is available,
-            otherwise `0` (fail-open).
+            billable duration is not available from the uploaded file metadata; the legacy
+            numeric cost header is `0` and Accounting-Kind is `unknown`.
 
   /api/v1/moderations:
     post:
@@ -2056,7 +2066,8 @@ paths:
           description: >-
             Moderation result. Success responses carry the `X-OmniRoute-*`
             cost-telemetry headers (see `POST /api/v1/chat/completions`);
-            moderations are always cost `0` (free).
+            provider billing metadata is unavailable; the legacy numeric cost header is `0`
+            and Accounting-Kind is `unknown`.
 
   /api/v1/rerank:
     post:
@@ -2086,8 +2097,8 @@ paths:
           description: >-
             Reranked documents. Success responses carry the `X-OmniRoute-*`
             cost-telemetry headers (see `POST /api/v1/chat/completions`); rerank
-            cost is computed per search-unit when pricing is available,
-            otherwise `0` (fail-open).
+            cost is computed per reported search-unit when pricing is available. Otherwise the
+            legacy numeric cost header is `0` and Accounting-Kind is `unknown`.
 
   /api/v1:
     get:

@@ -57,6 +57,11 @@ function assertCostTelemetryHeaders(response: Response) {
 
   const provider = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.provider);
   assert.ok(provider && provider.trim().length > 0, "provider header must be present");
+  assert.equal(
+    response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind),
+    "unknown",
+    "missing modality pricing must not be presented as verified zero cost"
+  );
 }
 
 test("v1 images generation success Response carries cost telemetry headers", async () => {

@@ -72,6 +72,7 @@ export async function handleModeration({ body, credentials }) {
       provider: providerId,
       model: modelId,
       costUsd: 0,
+      accounting: { kind: "unknown", currency: null, usageKind: "unknown" },
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

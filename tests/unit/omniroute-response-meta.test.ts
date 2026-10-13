@@ -107,6 +107,24 @@ test("buildOmniRouteResponseMetaHeaders always emits X-OmniRoute-Version", () =>
   assert.equal(bare[OMNIROUTE_RESPONSE_HEADERS.version], APP_CONFIG.version);
 });
 
+test("buildOmniRouteResponseMetaHeaders exposes cost pricing provenance and freshness", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({
+    accounting: {
+      kind: "estimated_cost",
+      source: "models_dev.api_json",
+      currency: "USD",
+      usageKind: "estimated_usage",
+      pricingRetrievedAt: "2026-10-12T00:00:00.000Z",
+      pricingStale: false,
+    },
+  });
+
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.accountingKind], "estimated_cost");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.costSource], "models_dev.api_json");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.pricingRetrievedAt], "2026-10-12T00:00:00.000Z");
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.pricingStale], "false");
+});
+
 test("buildOmniRouteResponseMetaHeaders emits X-OmniRoute-Request-Id only when provided", () => {
   const withId = buildOmniRouteResponseMetaHeaders({ model: "gpt", requestId: "req-123" });
   assert.equal(withId[OMNIROUTE_RESPONSE_HEADERS.requestId], "req-123");

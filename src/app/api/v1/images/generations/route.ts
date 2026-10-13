@@ -34,7 +34,8 @@ import {
 } from "@/lib/providerModels/syncedEndpointRouting";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
+import { calculateModalCostWithEvidence } from "@/lib/usage/costCalculator";
+import { classifyModalCostAccounting } from "@/lib/usage/costAccounting";
 import { generateRequestId } from "@/shared/utils/requestId";
 import { getSpecialtyModelsResponse } from "@/app/api/v1/_shared/specialtyCatalog";
 import { enforceClientApiRouteAuth } from "@/shared/utils/clientApiRouteAuth";
@@ -367,12 +368,18 @@ async function postHandler(request, context) {
       Number(body.n) || 1,
       (result as { data?: { data?: unknown[] } }).data?.data?.length || 0
     );
-    const costUsd = await calculateModalCost("image", provider, body.model, { n });
+    const cost = await calculateModalCostWithEvidence("image", provider, body.model, { n });
     const headers = new Headers({ "Content-Type": "application/json" });
     attachOmniRouteMetaHeaders(headers, {
       provider,
       model: body.model,
-      costUsd,
+      costUsd: cost.costUsd ?? 0,
+      accounting: classifyModalCostAccounting({
+        provider,
+        model: body.model,
+        costUsd: cost.costUsd,
+        pricingEvidence: cost.pricingEvidence,
+      }),
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

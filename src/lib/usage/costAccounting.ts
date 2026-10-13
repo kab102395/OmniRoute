@@ -21,6 +21,57 @@ export type CostAccountingFacts = {
   usageKind: "provider_reported_usage" | "estimated_usage" | "unknown";
 };
 
+function accountingSource(
+  source: import("./costCalculator").CostPricingEvidence["source"]
+): string | null {
+  switch (source) {
+    case "modelsDev":
+      return "models_dev.api_json";
+    case "litellm":
+      return "litellm.model_prices";
+    case "user":
+      return "omniroute.user_pricing";
+    case "default":
+      return "omniroute.static_pricing";
+    default:
+      return null;
+  }
+}
+
+export function classifyModalCostAccounting(args: {
+  provider: string;
+  model: string;
+  costUsd: number | null;
+  pricingEvidence: import("./costCalculator").CostPricingEvidence;
+}): CostAccountingFacts {
+  const source = accountingSource(args.pricingEvidence.source);
+  const common = {
+    currency: args.costUsd === null ? null : ("USD" as const),
+    source,
+    pricingProvider: args.provider || null,
+    pricingModel: args.model || args.pricingEvidence.modelId,
+    pricingVersion: null as null,
+    pricingEffectiveAt: null as null,
+    pricingRetrievedAt:
+      args.pricingEvidence.retrievedAt === null
+        ? null
+        : new Date(args.pricingEvidence.retrievedAt).toISOString(),
+    pricingStale: args.pricingEvidence.stale,
+    usageKind: "estimated_usage" as const,
+  };
+  if (args.costUsd === null) {
+    return { kind: "unknown", amountUsd: null, ...common };
+  }
+  if (!Number.isFinite(args.costUsd) || args.costUsd < 0) {
+    return { kind: "unknown", amountUsd: null, ...common, currency: null };
+  }
+  return {
+    kind: args.costUsd === 0 ? "zero_cost" : "estimated_cost",
+    amountUsd: args.costUsd,
+    ...common,
+  };
+}
+
 function hasUsage(usage: Record<string, unknown> | null | undefined): boolean {
   if (!usage) return false;
   return [

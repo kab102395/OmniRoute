@@ -159,6 +159,8 @@ export function buildOmniRouteResponseMetaHeaders({
     source?: string | null;
     currency?: string | null;
     usageKind?: string | null;
+    pricingRetrievedAt?: string | null;
+    pricingStale?: boolean | null;
   } | null;
   /**
    * Routing decision (combo strategy name, or `"single"` for a non-combo
@@ -218,6 +220,19 @@ export function buildOmniRouteResponseMetaHeaders({
     }
     if (accounting.usageKind) {
       headers[OMNIROUTE_RESPONSE_HEADERS.usageKind] = toHeaderValue(accounting.usageKind);
+    }
+    if (typeof accounting.pricingRetrievedAt === "string") {
+      const timestamp = Date.parse(accounting.pricingRetrievedAt);
+      if (Number.isFinite(timestamp)) {
+        headers[OMNIROUTE_RESPONSE_HEADERS.pricingRetrievedAt] = toHeaderValue(
+          new Date(timestamp).toISOString()
+        );
+      }
+    }
+    if (typeof accounting.pricingStale === "boolean") {
+      headers[OMNIROUTE_RESPONSE_HEADERS.pricingStale] = toHeaderValue(
+        String(accounting.pricingStale)
+      );
     }
   }
 

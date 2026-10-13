@@ -20,7 +20,8 @@ import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { resolveProxyForConnection } from "@/lib/db/settings";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
+import { calculateModalCostWithEvidence } from "@/lib/usage/costCalculator";
+import { classifyModalCostAccounting } from "@/lib/usage/costAccounting";
 import { generateRequestId } from "@/shared/utils/requestId";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +103,10 @@ async function readUpscaleBody(request: Request): Promise<Record<string, unknown
       }
       return body;
     } catch (err) {
-      log.warn("IMAGE", `Invalid multipart upscale body: ${err instanceof Error ? err.message : err}`);
+      log.warn(
+        "IMAGE",
+        `Invalid multipart upscale body: ${err instanceof Error ? err.message : err}`
+      );
       return null;
     }
   }
@@ -226,7 +230,9 @@ async function postHandler(request: Request) {
   let proxyInfo: { proxy?: unknown } | null = null;
   if (creds.connectionId) {
     try {
-      proxyInfo = (await resolveProxyForConnection(creds.connectionId)) as { proxy?: unknown } | null;
+      proxyInfo = (await resolveProxyForConnection(creds.connectionId)) as {
+        proxy?: unknown;
+      } | null;
     } catch {
       log.debug("PROXY", `Failed to resolve proxy for upscale provider: ${provider}`);
     }
@@ -246,12 +252,19 @@ async function postHandler(request: Request) {
 
   if (result.success) {
     await clearRecoveredProviderState(credentialsResult);
-    const costUsd = await calculateModalCost("image", provider, `${provider}/${model}`, { n: 1 });
+    const accountingModel = `${provider}/${model}`;
+    const cost = await calculateModalCostWithEvidence("image", provider, accountingModel, { n: 1 });
     const headers = new Headers({ "Content-Type": "application/json" });
     attachOmniRouteMetaHeaders(headers, {
       provider,
-      model: `${provider}/${model}`,
-      costUsd,
+      model: accountingModel,
+      costUsd: cost.costUsd ?? 0,
+      accounting: classifyModalCostAccounting({
+        provider,
+        model: accountingModel,
+        costUsd: cost.costUsd,
+        pricingEvidence: cost.pricingEvidence,
+      }),
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

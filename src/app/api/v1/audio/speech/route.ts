@@ -16,7 +16,8 @@ import {
   rateLimitedProviderResponse,
 } from "@/app/api/v1/_shared/rateLimit";
 import { attachOmniRouteMetaToResponse } from "@/domain/omnirouteResponseMeta";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
+import { calculateModalCostWithEvidence } from "@/lib/usage/costCalculator";
+import { classifyModalCostAccounting } from "@/lib/usage/costAccounting";
 import { generateRequestId } from "@/shared/utils/requestId";
 
 /**
@@ -107,13 +108,20 @@ async function postHandler(request, context) {
     // TTS is billed per input character; attach cost telemetry without
     // touching the audio Content-Type / body (ADD-only headers).
     const characters = typeof body.input === "string" ? body.input.length : 0;
-    const costUsd = await calculateModalCost("audio", provider, resolvedModel || body.model, {
+    const accountingModel = resolvedModel || body.model;
+    const cost = await calculateModalCostWithEvidence("audio", provider, accountingModel, {
       characters,
     });
     response = attachOmniRouteMetaToResponse(response, {
       provider,
-      model: resolvedModel || body.model,
-      costUsd,
+      model: accountingModel,
+      costUsd: cost.costUsd ?? 0,
+      accounting: classifyModalCostAccounting({
+        provider,
+        model: accountingModel,
+        costUsd: cost.costUsd,
+        pricingEvidence: cost.pricingEvidence,
+      }),
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

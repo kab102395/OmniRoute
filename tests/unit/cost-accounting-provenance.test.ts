@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyCostAccounting } from "../../src/lib/usage/costAccounting.ts";
+import {
+  classifyCostAccounting,
+  classifyModalCostAccounting,
+} from "../../src/lib/usage/costAccounting.ts";
 import { resolveServedIdentity } from "../../open-sse/handlers/chatCore/servedIdentity.ts";
 import { extractUsageFromResponse } from "../../open-sse/handlers/usageExtractor.ts";
 import { extractUsage, normalizeUsage } from "../../open-sse/utils/usageTracking.ts";
@@ -160,6 +163,46 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
   assert.equal(
     classifyCostAccounting({ provider: null, model: null, usage: null, calculatedCostUsd: 0 }).kind,
     "unknown"
+  );
+});
+
+test("modal cost accounting distinguishes unknown pricing from an explicitly zero rate", () => {
+  const pricingEvidence = {
+    source: "modelsDev" as const,
+    modelId: "image-model",
+    retrievedAt: 1_797_000_000_000,
+    ttlMs: 60_000,
+    stale: false,
+  };
+  assert.deepEqual(
+    classifyModalCostAccounting({
+      provider: "image-provider",
+      model: "image-model",
+      costUsd: null,
+      pricingEvidence,
+    }),
+    {
+      kind: "unknown",
+      amountUsd: null,
+      currency: null,
+      source: "models_dev.api_json",
+      pricingProvider: "image-provider",
+      pricingModel: "image-model",
+      pricingVersion: null,
+      pricingEffectiveAt: null,
+      pricingRetrievedAt: new Date(pricingEvidence.retrievedAt).toISOString(),
+      pricingStale: false,
+      usageKind: "estimated_usage",
+    }
+  );
+  assert.equal(
+    classifyModalCostAccounting({
+      provider: "image-provider",
+      model: "image-model",
+      costUsd: 0,
+      pricingEvidence,
+    }).kind,
+    "zero_cost"
   );
 });
 

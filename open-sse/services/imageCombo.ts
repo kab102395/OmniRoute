@@ -19,7 +19,8 @@ import { isAllRateLimitedCredentials } from "@/app/api/v1/_shared/rateLimit";
 import { handleImageGeneration } from "@omniroute/open-sse/handlers/imageGeneration.ts";
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
 import { generateRequestId } from "@/shared/utils/requestId";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
+import { calculateModalCostWithEvidence } from "@/lib/usage/costCalculator";
+import { classifyModalCostAccounting } from "@/lib/usage/costAccounting";
 import { toJsonErrorPayload } from "@/shared/utils/upstreamError";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
@@ -162,13 +163,21 @@ export async function executeImageCombo(
     const payload = successResult.data as { created?: number; data?: unknown[] } | unknown[];
     const images = Array.isArray(payload) ? payload : payload?.data;
     const n = Math.max(Number(body.n) || 1, images?.length || 0);
-    const costUsd = await calculateModalCost("image", selectedProvider, selectedModel, { n });
+    const cost = await calculateModalCostWithEvidence("image", selectedProvider, selectedModel, {
+      n,
+    });
 
     const headers = new Headers({ "Content-Type": "application/json" });
     attachOmniRouteMetaHeaders(headers, {
       provider: selectedProvider,
       model: selectedModel,
-      costUsd,
+      costUsd: cost.costUsd ?? 0,
+      accounting: classifyModalCostAccounting({
+        provider: selectedProvider,
+        model: selectedModel,
+        costUsd: cost.costUsd,
+        pricingEvidence: cost.pricingEvidence,
+      }),
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
       strategy: "priority",

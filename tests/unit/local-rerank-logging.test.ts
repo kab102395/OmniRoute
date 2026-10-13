@@ -98,6 +98,7 @@ test.describe("Local rerank provider logging and fallback", () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("x-omniroute-provider"), "vram");
     assert.equal(res.headers.get("x-omniroute-model"), "BAAI/bge-reranker-v2-m3");
+    assert.equal(res.headers.get("x-omniroute-accounting-kind"), "unknown");
 
     const json = (await res.json()) as RerankSuccessResponse;
     assert.equal(json.results.length, 2);
@@ -122,6 +123,7 @@ test.describe("Local rerank provider logging and fallback", () => {
         { index: 1, relevance_score: 0.2 },
       ],
     });
+    assert.equal(detail?.accounting?.kind, "unknown");
   });
 
   test("falls back from /v1/rerank to /rerank when local provider returns 404", async () => {

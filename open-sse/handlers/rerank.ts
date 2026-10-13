@@ -9,7 +9,8 @@ import { CORS_HEADERS } from "../utils/cors.ts";
 import { getRerankProvider, parseRerankModel, RERANK_PROVIDERS } from "../config/rerankRegistry.ts";
 import { errorResponse } from "../utils/error.ts";
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
+import { calculateModalCostWithEvidence } from "@/lib/usage/costCalculator";
+import { classifyModalCostAccounting } from "@/lib/usage/costAccounting";
 import { generateRequestId } from "@/shared/utils/requestId";
 import { saveCallLog } from "@/lib/usageDb";
 import { resolveProxyForConnection } from "@/lib/db/settings";
@@ -211,8 +212,7 @@ export async function handleRerank({
   }
 
   const { provider: providerId, model: modelId } = parseRerankModel(model);
-  const providerConfig =
-    resolvedProvider || (providerId ? getRerankProvider(providerId) : null);
+  const providerConfig = resolvedProvider || (providerId ? getRerankProvider(providerId) : null);
 
   if (!providerConfig) {
     const availableProviders = Object.keys(RERANK_PROVIDERS).join(", ");
@@ -300,8 +300,23 @@ export async function handleRerank({
       return_documents,
     });
 
-    const searchUnits = Number(result?.meta?.billed_units?.search_units) || 0;
-    const costUsd = await calculateModalCost("rerank", effectiveProviderId, modelId, { searchUnits });
+    const reportedSearchUnits = result?.meta?.billed_units?.search_units;
+    const searchUnits =
+      typeof reportedSearchUnits === "number" && Number.isFinite(reportedSearchUnits)
+        ? reportedSearchUnits
+        : undefined;
+    const cost = await calculateModalCostWithEvidence(
+      "rerank",
+      effectiveProviderId,
+      modelId,
+      searchUnits === undefined ? {} : { searchUnits }
+    );
+    const accounting = classifyModalCostAccounting({
+      provider: effectiveProviderId,
+      model: modelId,
+      costUsd: cost.costUsd,
+      pricingEvidence: cost.pricingEvidence,
+    });
 
     saveCallLog({
       method: "POST",
@@ -312,6 +327,7 @@ export async function handleRerank({
       connectionId: connectionId || undefined,
       duration: Date.now() - startTime,
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
+      accounting,
       requestBody,
       responseBody: result,
       apiKeyId: apiKeyId || undefined,
@@ -322,7 +338,8 @@ export async function handleRerank({
     attachOmniRouteMetaHeaders(headers, {
       provider: effectiveProviderId,
       model: modelId,
-      costUsd,
+      costUsd: cost.costUsd ?? 0,
+      accounting,
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

@@ -1,7 +1,7 @@
 ---
 title: "Routing provenance and accounting contract"
 version: 3.8.51
-lastUpdated: 2026-09-26
+lastUpdated: 2026-10-12
 ---
 
 # Routing provenance and accounting contract
@@ -26,6 +26,8 @@ On success, read these headers:
 | `X-OmniRoute-Response-Cost`               | USD amount formatted to 10 decimal places; interpret only with accounting kind/source.      |
 | `X-OmniRoute-Cost-Currency`               | Currency when an amount is available (`USD`).                                               |
 | `X-OmniRoute-Cost-Source`                 | Source of the amount, when present.                                                         |
+| `X-OmniRoute-Pricing-Retrieved-At`        | UTC timestamp when the referenced price metadata was retrieved, when known.                 |
+| `X-OmniRoute-Pricing-Stale`               | `true` or `false` when source freshness can be established.                                 |
 | `X-OmniRoute-Usage-Kind`                  | `provider_reported_usage`, `estimated_usage`, or `unknown`.                                 |
 
 The existing `X-OmniRoute-Provider` and `X-OmniRoute-Model` headers remain for
@@ -37,6 +39,12 @@ The served-provider header uses the configured public provider-node prefix when 
 uses a provider node. Its internal node ID is carried separately and must never be used as
 the public provider identity. Praxis can validate the exact public identity from completion
 headers without querying OmniRoute's management API.
+
+Modality endpoints retain the legacy numeric `X-OmniRoute-Response-Cost` format. When the
+provider-reported amount or billable usage/pricing dimensions cannot be established,
+`X-OmniRoute-Accounting-Kind` is `unknown`; consumers must not treat the compatibility zero
+amount as free-route eligibility. Where local price metadata is used, the pricing retrieval
+and freshness headers describe the evidence behind the estimate.
 
 `provider_reported_billed_cost` currently covers xAI's `usage.cost_in_usd_ticks` and
 OpenRouter's synchronous `usage.cost`. `zero_cost` means one of those provider-reported

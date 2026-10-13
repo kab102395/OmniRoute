@@ -90,6 +90,7 @@ export async function handleJinaFoundationProxy(
       provider,
       model: options.model || provider,
       costUsd: 0,
+      accounting: { kind: "unknown", currency: null, usageKind: "unknown" },
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

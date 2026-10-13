@@ -261,6 +261,13 @@ async function postHandler(request, context) {
             (credentials as { connectionId?: string } | null)?.connectionId || undefined,
           duration: latencyMs,
           tokens: { prompt_tokens: 0, completion_tokens: 0 },
+          accounting: {
+            kind: "unknown",
+            amountUsd: null,
+            currency: null,
+            source: null,
+            usageKind: "unknown",
+          },
           requestBody: {
             model: body.model,
             query: body.query,
@@ -278,6 +285,7 @@ async function postHandler(request, context) {
           provider: prefix,
           model: localModel,
           costUsd: 0,
+          accounting: { kind: "unknown", currency: null, usageKind: "unknown" },
           latencyMs,
           requestId: generateRequestId(),
         });

@@ -66,7 +66,7 @@ test("v1 video generation failure preserves provider status and error payload", 
 // Cost may legitimately be 0 (free / unpriced modality) — formatOmniRouteCost
 // still emits a fixed-10-decimal string ("0.0000000000"), so the format check
 // holds regardless.
-function assertCostTelemetryHeaders(response: Response) {
+function assertCostTelemetryHeaders(response: Response, accountingExpected = false) {
   assert.equal(response.status, 200);
 
   const cost = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost);
@@ -82,6 +82,14 @@ function assertCostTelemetryHeaders(response: Response) {
 
   const provider = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.provider);
   assert.ok(provider && provider.trim().length > 0, "provider header must be present");
+  if (accountingExpected) {
+    assert.ok(
+      ["unknown", "estimated_cost", "zero_cost"].includes(
+        response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind) || ""
+      ),
+      "cost accounting kind must distinguish estimates, verified zero, and unknown pricing"
+    );
+  }
 }
 
 test("rerank handler success Response carries cost telemetry headers", async () => {
@@ -110,7 +118,7 @@ test("rerank handler success Response carries cost telemetry headers", async () 
     credentials: { apiKey: "test-key" },
   })) as Response;
 
-  assertCostTelemetryHeaders(response);
+  assertCostTelemetryHeaders(response, true);
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.provider),
     "cohere",
@@ -162,7 +170,7 @@ test("rerank NVIDIA-format success Response reflects synthesized search unit in 
     credentials: { apiKey: "test-key" },
   })) as Response;
 
-  assertCostTelemetryHeaders(response);
+  assertCostTelemetryHeaders(response, true);
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.provider),
     "nvidia",
@@ -177,7 +185,7 @@ test("rerank NVIDIA-format success Response reflects synthesized search unit in 
   );
 });
 
-test("moderation handler success Response carries cost telemetry headers (cost 0)", async () => {
+test("moderation handler success Response marks unavailable provider billing as unknown", async () => {
   globalThis.fetch = (async (url: unknown) => {
     const stringUrl = String(url);
     if (stringUrl === "https://api.openai.com/v1/moderations") {
@@ -202,8 +210,9 @@ test("moderation handler success Response carries cost telemetry headers (cost 0
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost),
     "0.0000000000",
-    "moderation is free → cost must be exactly 0"
+    "legacy numeric cost header remains compatible"
   );
+  assert.equal(response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind), "unknown");
 });
 
 test("v1 audio speech success Response carries cost telemetry headers", async () => {
@@ -230,7 +239,7 @@ test("v1 audio speech success Response carries cost telemetry headers", async ()
     {}
   );
 
-  assertCostTelemetryHeaders(response);
+  assertCostTelemetryHeaders(response, true);
   assert.equal(
     response.headers.get("Content-Type"),
     "audio/mpeg",
@@ -238,7 +247,7 @@ test("v1 audio speech success Response carries cost telemetry headers", async ()
   );
 });
 
-test("v1 audio transcription success Response carries cost telemetry headers (cost 0)", async () => {
+test("v1 audio transcription success marks unavailable billable duration as unknown", async () => {
   globalThis.fetch = (async (url: unknown) => {
     const stringUrl = String(url);
     if (stringUrl === "http://localhost:8000/v1/audio/transcriptions") {
@@ -261,10 +270,10 @@ test("v1 audio transcription success Response carries cost telemetry headers (co
     })
   );
 
-  assertCostTelemetryHeaders(response);
+  assertCostTelemetryHeaders(response, true);
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost),
     "0.0000000000",
-    "transcription duration unavailable → cost must be 0"
+    "legacy numeric cost header remains compatible"
   );
 });

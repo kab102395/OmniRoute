@@ -50,6 +50,11 @@ export type CostEstimate = {
   pricingEvidence: CostPricingEvidence;
 };
 
+export type ModalCostAssessment = {
+  costUsd: number | null;
+  pricingEvidence: CostPricingEvidence;
+};
+
 /**
  * xAI reports the exact provider-billed cost of a request in the chat-completions
  * `usage` object via `cost_in_usd_ticks` (port of decolua/9router#2453, capability
@@ -398,8 +403,8 @@ export type ModalUsage = {
 
 /**
  * Load pricing for (provider, model) and dispatch to the per-modality cost
- * function. Like `calculateCost` for tokens: returns 0 (never throws) when
- * pricing is missing.
+ * function. Compatibility helper: returns 0 (never throws) when pricing is
+ * missing. New billing-aware code should use `calculateModalCostWithEvidence`.
  */
 export async function calculateModalCost(
   modality: Modality,
@@ -432,5 +437,121 @@ export async function calculateModalCost(
   } catch (error) {
     console.error("Error calculating modal cost:", error);
     return 0;
+  }
+}
+
+export function computeModalCostFromPricing(
+  modality: Modality,
+  pricing: Record<string, unknown>,
+  usage: ModalUsage
+): number | null {
+  const readPrice = (...keys: string[]): number | null => {
+    for (const key of keys) {
+      const value = toNonNegativePrice(pricing[key]);
+      if (value !== null) return value;
+    }
+    return null;
+  };
+  const readUsage = (value: unknown): number | null => {
+    const parsed = toNumber(value, Number.NaN);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  };
+
+  switch (modality) {
+    case "image": {
+      const quantity = readUsage(usage.n);
+      if (quantity === null) return null;
+      if (quantity === 0) return 0;
+      const price = readPrice("output_cost_per_image", "input_cost_per_image");
+      return price === null ? null : price * quantity;
+    }
+    case "audio": {
+      const seconds = readUsage(usage.seconds);
+      if (seconds !== null && seconds > 0) {
+        const price = readPrice("input_cost_per_second", "output_cost_per_second");
+        return price === null ? null : price * seconds;
+      }
+      const characters = readUsage(usage.characters);
+      if (characters !== null && characters > 0) {
+        const price = readPrice("input_cost_per_character", "output_cost_per_character");
+        return price === null ? null : Math.round(price * characters * 1e10) / 1e10;
+      }
+      return null;
+    }
+    case "rerank": {
+      const units = readUsage(usage.searchUnits);
+      if (units === null) return null;
+      if (units === 0) return 0;
+      const price = readPrice("search_unit_cost", "input_cost_per_query");
+      return price === null ? null : price * units;
+    }
+    case "video": {
+      const seconds = readUsage(usage.seconds);
+      if (seconds === null) return null;
+      if (seconds === 0) return 0;
+      const price = readPrice(
+        "output_cost_per_video_per_second",
+        "input_cost_per_video_per_second"
+      );
+      return price === null ? null : price * seconds;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Return null when the price or used billing dimension is unknown. */
+export async function calculateModalCostWithEvidence(
+  modality: Modality,
+  provider: string,
+  model: string,
+  usage: ModalUsage
+): Promise<ModalCostAssessment> {
+  const unknown: ModalCostAssessment = {
+    costUsd: null,
+    pricingEvidence: buildCostPricingEvidence(null, null, null, null),
+  };
+  if (!provider || !model) return unknown;
+
+  try {
+    const { getPricingForModelWithSource } = await import("@/lib/db/settings");
+    let resolvedPricing = await getPricingForModelWithSource(provider, model);
+    if (!resolvedPricing) {
+      const normalized = normalizeModelName(model);
+      if (normalized !== model) {
+        resolvedPricing = await getPricingForModelWithSource(provider, normalized);
+      }
+    }
+    if (!resolvedPricing) return unknown;
+
+    const pricing =
+      resolvedPricing.pricing && typeof resolvedPricing.pricing === "object"
+        ? (resolvedPricing.pricing as Record<string, unknown>)
+        : {};
+    const costUsd = computeModalCostFromPricing(modality, pricing, usage);
+
+    let retrievedAt: string | null = null;
+    let ttlMs: number | null = null;
+    if (resolvedPricing.source === "modelsDev") {
+      const { getSyncStatus } = await import("@/lib/modelsDevSync");
+      const status = getSyncStatus();
+      retrievedAt = status.sourceRetrievedAt;
+      ttlMs = status.intervalMs;
+    } else if (resolvedPricing.source === "litellm") {
+      const { getSyncStatus } = await import("@/lib/pricingSync");
+      const status = getSyncStatus();
+      retrievedAt = status.lastSync;
+      ttlMs = status.intervalMs;
+    }
+    const pricingEvidence = buildCostPricingEvidence(
+      resolvedPricing.source,
+      resolvedPricing.modelKey,
+      retrievedAt,
+      ttlMs
+    );
+    return { costUsd, pricingEvidence };
+  } catch (error) {
+    console.error("Error calculating modal cost:", error);
+    return unknown;
   }
 }

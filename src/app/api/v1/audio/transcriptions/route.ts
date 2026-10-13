@@ -140,12 +140,13 @@ async function transcribeWithModel(
   });
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);
-    // No text body / playback duration available from the multipart upload, so
-    // per-second pricing cannot be applied → cost 0 (ADD-only headers, body intact).
+    // The upload does not establish billable duration; preserve the legacy zero
+    // amount while marking cost unknown instead of treating it as a free route.
     response = attachOmniRouteMetaToResponse(response, {
       provider,
       model: resolvedModel,
       costUsd: 0,
+      accounting: { kind: "unknown", currency: null, usageKind: "unknown" },
       latencyMs: Date.now() - startTime,
       requestId: generateRequestId(),
     });

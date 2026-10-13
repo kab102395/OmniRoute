@@ -153,6 +153,17 @@ describe("cors/origins.applyCorsHeaders", () => {
     assert.equal(res.headers.get("Access-Control-Allow-Credentials"), null);
   });
 
+  it("CLIENT_API: exposes accounting freshness headers to browser clients", () => {
+    const res = NextResponse.json({ ok: true });
+    const req = new Request("https://server.example.com/api/v1/models", {
+      headers: { Origin: "http://localhost", Authorization: "Bearer omr_test_key" },
+    });
+    applyCorsHeaders(res, req, true);
+    const exposed = res.headers.get("Access-Control-Expose-Headers") || "";
+    assert.match(exposed, /X-OmniRoute-Pricing-Retrieved-At/);
+    assert.match(exposed, /X-OmniRoute-Pricing-Stale/);
+  });
+
   it("CLIENT_API: does NOT echo the Origin for a credential-less cross-origin request (GHSA-7px7)", () => {
     // A keyless install serves /v1 anonymously; echoing the Origin to a
     // credential-less cross-origin page would let any visited page drive the

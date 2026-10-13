@@ -195,6 +195,8 @@ export function applyCorsHeaders(
         "X-OmniRoute-Accounting-Kind",
         "X-OmniRoute-Cost-Currency",
         "X-OmniRoute-Cost-Source",
+        "X-OmniRoute-Pricing-Retrieved-At",
+        "X-OmniRoute-Pricing-Stale",
         "X-OmniRoute-Usage-Kind",
         "X-OmniRoute-Response-Cost",
         "X-OmniRoute-Tokens-In",
