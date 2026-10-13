@@ -136,6 +136,27 @@ test("OpenRouter free router requires a fresh non-empty exact-route catalog", ()
   );
 });
 
+test("strict pool keeps each exact OpenRouter free route separately from the dynamic router", () => {
+  const exactRoutes = [
+    { provider: "openrouter", model: "vendor/model-a:free", connectionId: REAL_CONN },
+    { provider: "openrouter", model: "vendor/model-b:free", connectionId: REAL_CONN },
+  ];
+  const freeRouter = { provider: "openrouter", model: "free", connectionId: REAL_CONN };
+  const pool = [...exactRoutes, freeRouter, PAID];
+  const result = filterStrictZeroCostCandidates(pool, {
+    enabled: true,
+    resolveFreeAccessState: () => undefined,
+    verifiedOpenRouterFreeRoutes: new Set(["vendor/model-a:free", "vendor/model-b:free"]),
+    ...BASE_OPTIONS,
+  });
+
+  assert.deepEqual(
+    result,
+    [...exactRoutes, freeRouter],
+    "fresh catalog membership authorizes each exact free route and the optional selector without substituting identities"
+  );
+});
+
 // 3 & 4. unknown model / unknown provider → EXCLUDE
 test("model absent from the free catalog is excluded even under a known provider", () => {
   assert.deepEqual(

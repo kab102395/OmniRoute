@@ -202,7 +202,10 @@ export function evaluateCandidateConnections(
   candidate: StrictZeroCostCandidate,
   budgetEntry: FreeModelBudget | undefined,
   resolveFreeAccessState: StrictZeroCostOptions["resolveFreeAccessState"],
-  options: Pick<StrictZeroCostOptions, "minRemainingAllowance" | "maxStateAgeMs" | "now">
+  options: Pick<
+    StrictZeroCostOptions,
+    "minRemainingAllowance" | "maxStateAgeMs" | "now" | "verifiedOpenRouterFreeRoutes"
+  >
 ): string[] {
   const verdict = classifyStrictZeroCostCandidate(
     candidate,
