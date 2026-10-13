@@ -199,6 +199,7 @@ test("request opt-in emits final SSE accounting when server-wide comments are di
     assert.match(text, /: x-omniroute-response-cost=0\.7500000000/);
     assert.match(text, /: x-omniroute-accounting-kind=estimated_cost/);
     assert.match(text, /: x-omniroute-cost-source=omniroute\.user_pricing/);
+    assert.match(text, /: x-omniroute-fallback-attempts=2/);
   } finally {
     await settingsDb.resetPricing("stream_receipt_test");
     if (previousCommentsSetting === undefined) delete process.env.OMNIROUTE_SSE_COMMENTS;

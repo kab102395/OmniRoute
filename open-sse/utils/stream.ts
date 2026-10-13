@@ -1121,6 +1121,7 @@ export function createSSEStream(options: StreamOptions = {}) {
       servedModel: model,
       cacheHit: false,
       latencyMs: Date.now() - streamStartedAt,
+      fallbackAttempts: Math.max(0, requestCount - 1),
       usage: timing.withTps(finalUsage),
       costUsd,
       ttftMs: timing.ttftMs(),
