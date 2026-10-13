@@ -323,6 +323,7 @@ export function buildOmniRouteSseMetadataComment(
   if (executionAttempts && executionAttempts.length > 0) {
     const receiptFields = [
       "index",
+      "executorIndex",
       "endpointIndex",
       "startedAt",
       "durationMs",
@@ -345,6 +346,63 @@ export function buildOmniRouteSseMetadataComment(
           )
         )
       );
+    // The stream knows request-level usage and accounting only after completion. Attribute
+    // those facts to the final successful upstream attempt, matching durable call-log receipts.
+    if (responseMeta.accounting && boundedAttempts.length > 0) {
+      let successfulIndex = -1;
+      for (let index = boundedAttempts.length - 1; index >= 0; index -= 1) {
+        const attempt = boundedAttempts[index];
+        if (
+          attempt?.outcome === "response" &&
+          typeof attempt.statusCode === "number" &&
+          attempt.statusCode >= 200 &&
+          attempt.statusCode < 300
+        ) {
+          successfulIndex = index;
+          break;
+        }
+      }
+      if (successfulIndex >= 0) {
+        const usage = responseMeta.usage as Record<string, unknown> | null | undefined;
+        const dimensions = Object.fromEntries(
+          [
+            "prompt_tokens",
+            "completion_tokens",
+            "input_tokens",
+            "output_tokens",
+            "cached_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+            "reasoning_tokens",
+          ].flatMap((key) => {
+            const value = usage?.[key];
+            return typeof value === "number" && Number.isFinite(value) && value >= 0
+              ? [[key, value]]
+              : [];
+          })
+        );
+        const accounting = responseMeta.accounting as Record<string, unknown>;
+        const attribution =
+          accounting.kind === "provider_reported_billed_cost" || accounting.kind === "zero_cost"
+            ? "provider_reported"
+            : accounting.kind === "estimated_cost"
+              ? "estimated"
+              : "unknown";
+        boundedAttempts[successfulIndex] = {
+          ...boundedAttempts[successfulIndex],
+          ...(Object.keys(dimensions).length > 0
+            ? {
+                usage: {
+                  kind: accounting.usageKind ?? "unknown",
+                  dimensions,
+                },
+              }
+            : {}),
+          accounting,
+          costAttribution: attribution,
+        };
+      }
+    }
     try {
       const encodedAttempts = encodeURIComponent(JSON.stringify(boundedAttempts));
       // Keep the final SSE comment bounded even when provider request IDs or receipt metadata

@@ -287,11 +287,19 @@ test("SSE metadata includes bounded, allowlisted upstream attempt receipts", () 
       },
       {
         index: 2,
+        executorIndex: 4,
         statusCode: 200,
         outcome: "response",
         routeModel: "gemini-3-pro-low",
       },
     ],
+    usage: { prompt_tokens: 14, completion_tokens: 5 },
+    accounting: {
+      kind: "provider_reported_billed_cost",
+      usageKind: "provider_reported_usage",
+      source: "provider.response.cost",
+      currency: "USD",
+    },
   });
   const encoded = comment.match(/^: x-omniroute-execution-attempts=(.+)$/m)?.[1];
   assert.ok(encoded);
@@ -305,9 +313,21 @@ test("SSE metadata includes bounded, allowlisted upstream attempt receipts", () 
     },
     {
       index: 2,
+      executorIndex: 4,
       statusCode: 200,
       outcome: "response",
       routeModel: "gemini-3-pro-low",
+      costAttribution: "provider_reported",
+      usage: {
+        kind: "provider_reported_usage",
+        dimensions: { prompt_tokens: 14, completion_tokens: 5 },
+      },
+      accounting: {
+        kind: "provider_reported_billed_cost",
+        usageKind: "provider_reported_usage",
+        source: "provider.response.cost",
+        currency: "USD",
+      },
     },
   ]);
   assert.doesNotMatch(comment, /must-not-be-exposed/);
