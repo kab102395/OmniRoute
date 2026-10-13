@@ -7,7 +7,38 @@ import {
 import { resolveServedIdentity } from "../../open-sse/handlers/chatCore/servedIdentity.ts";
 import { extractUsageFromResponse } from "../../open-sse/handlers/usageExtractor.ts";
 import { extractUsage, normalizeUsage } from "../../open-sse/utils/usageTracking.ts";
-import { computeCostFromPricing } from "../../src/lib/usage/costCalculator.ts";
+import {
+  buildCostPricingEvidence,
+  computeCostFromPricing,
+} from "../../src/lib/usage/costCalculator.ts";
+
+test("pricing evidence treats future or incomplete timestamps as freshness unknown", () => {
+  const now = Date.parse("2026-10-13T12:00:00.000Z");
+  const future = buildCostPricingEvidence(
+    "modelsDev",
+    "vendor/model",
+    "2026-10-13T12:01:00.000Z",
+    60_000,
+    now
+  );
+  assert.equal(future.retrievedAt, "2026-10-13T12:01:00.000Z");
+  assert.equal(future.stale, null);
+
+  assert.equal(
+    buildCostPricingEvidence("modelsDev", "vendor/model", "not-a-time", 60_000, now).stale,
+    null
+  );
+  assert.equal(
+    buildCostPricingEvidence("modelsDev", "vendor/model", "2026-10-13T11:59:30.000Z", 60_000, now)
+      .stale,
+    false
+  );
+  assert.equal(
+    buildCostPricingEvidence("modelsDev", "vendor/model", "2026-10-13T11:00:00.000Z", 60_000, now)
+      .stale,
+    true
+  );
+});
 
 test("served identity follows the final successful outbound model after fallback or retry", () => {
   assert.deepEqual(resolveServedIdentity("openai", { model: "provider-b/model-2" }), {

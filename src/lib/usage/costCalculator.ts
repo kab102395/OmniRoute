@@ -237,15 +237,22 @@ export async function calculateCost(
   return (await calculateCostWithEvidence(provider, model, tokens, options)).costUsd;
 }
 
-function buildCostPricingEvidence(
+export function buildCostPricingEvidence(
   source: "default" | "litellm" | "modelsDev" | "user" | null,
   modelId: string | null,
   retrievedAt: string | null,
-  ttlMs: number | null
+  ttlMs: number | null,
+  now = Date.now()
 ): CostPricingEvidence {
   const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
   const stale =
-    Number.isFinite(retrievedAtMs) && ttlMs !== null ? Date.now() - retrievedAtMs > ttlMs : null;
+    Number.isFinite(retrievedAtMs) &&
+    retrievedAtMs <= now &&
+    typeof ttlMs === "number" &&
+    Number.isFinite(ttlMs) &&
+    ttlMs >= 0
+      ? now - retrievedAtMs > ttlMs
+      : null;
   return {
     source,
     modelId,

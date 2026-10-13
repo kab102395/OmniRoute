@@ -1817,11 +1817,6 @@
       "count": 1
     }
   },
-  "src/lib/usage/costCalculator.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/lib/usage/fetcher.ts": {
     "@typescript-eslint/no-unused-vars": {
       "count": 7
