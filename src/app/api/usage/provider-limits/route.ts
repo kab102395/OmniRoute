@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
+import { addProviderLimitsFreshness } from "@/lib/usage/providerLimitsCache";
 import {
   getLastProviderLimitsAutoSyncTime,
   getProviderLimitsSyncIntervalMinutes,
@@ -16,9 +17,13 @@ export async function GET(request: Request) {
   if (authError) return authError;
 
   try {
+    const intervalMinutes = getProviderLimitsSyncIntervalMinutes();
     return NextResponse.json({
-      caches: await getSanitizedCachedProviderLimitsMap(),
-      intervalMinutes: getProviderLimitsSyncIntervalMinutes(),
+      caches: addProviderLimitsFreshness(
+        await getSanitizedCachedProviderLimitsMap(),
+        intervalMinutes * 60 * 1000
+      ),
+      intervalMinutes,
       lastAutoSyncAt: await getLastProviderLimitsAutoSyncTime(),
     });
   } catch (error) {
@@ -37,11 +42,15 @@ export async function POST(request: Request) {
 
   try {
     const result = await syncAllProviderLimits({ source: "manual" });
-    const caches = await getSanitizedCachedProviderLimitsMap();
+    const intervalMinutes = getProviderLimitsSyncIntervalMinutes();
+    const caches = addProviderLimitsFreshness(
+      await getSanitizedCachedProviderLimitsMap(),
+      intervalMinutes * 60 * 1000
+    );
     return NextResponse.json({
       ...result,
       caches,
-      intervalMinutes: getProviderLimitsSyncIntervalMinutes(),
+      intervalMinutes,
       lastAutoSyncAt: await getLastProviderLimitsAutoSyncTime(),
     });
   } catch (error) {

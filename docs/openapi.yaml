@@ -13744,6 +13744,24 @@ components:
         source:
           type: string
           nullable: true
+        freshness:
+          type: object
+          description: >-
+            Response-time freshness of this cached account quota observation. Age is computed
+            from fetchedAt and is never persisted as source data; unknown means the timestamp
+            was malformed or in the future.
+          required: [status, ageMs, maxAgeMs]
+          properties:
+            status:
+              type: string
+              enum: [fresh, stale, unknown]
+            ageMs:
+              type: integer
+              minimum: 0
+              nullable: true
+            maxAgeMs:
+              type: integer
+              minimum: 1
         bankedResetCredits:
           type: number
         billing:

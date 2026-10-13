@@ -178,6 +178,12 @@ test("provider-limits documents cached quota provenance and management auth", ()
   assert.deepEqual(entry?.required, ["quotas", "plan", "message", "fetchedAt"]);
   assert.equal(entry?.properties?.fetchedAt?.format, "date-time");
   assert.equal(entry?.properties?.source?.nullable, true);
+  assert.deepEqual(entry?.properties?.freshness?.properties?.status?.enum, [
+    "fresh",
+    "stale",
+    "unknown",
+  ]);
+  assert.equal(entry?.properties?.freshness?.properties?.ageMs?.nullable, true);
   assert.equal(entry?.properties?.billing?.type, "object");
 });
 

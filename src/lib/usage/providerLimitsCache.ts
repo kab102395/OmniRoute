@@ -6,6 +6,38 @@ const GROK_CLI_PROVIDER = "grok-cli";
 
 type JsonRecord = Record<string, unknown>;
 
+export type ProviderLimitsCacheFreshness = {
+  status: "fresh" | "stale" | "unknown";
+  ageMs: number | null;
+  maxAgeMs: number;
+};
+
+export type ProviderLimitsApiCacheEntry = ProviderLimitsCacheEntry & {
+  freshness: ProviderLimitsCacheFreshness;
+};
+
+/** Add response-time age facts without persisting derived freshness in the cache. */
+export function addProviderLimitsFreshness(
+  caches: Record<string, ProviderLimitsCacheEntry>,
+  maxAgeMs: number,
+  now = Date.now()
+): Record<string, ProviderLimitsApiCacheEntry> {
+  return Object.fromEntries(
+    Object.entries(caches).map(([connectionId, entry]) => {
+      const fetchedAtMs = Date.parse(entry.fetchedAt);
+      const ageMs = Number.isFinite(fetchedAtMs) && fetchedAtMs <= now ? now - fetchedAtMs : null;
+      const status = ageMs === null ? "unknown" : ageMs <= maxAgeMs ? "fresh" : "stale";
+      return [
+        connectionId,
+        {
+          ...entry,
+          freshness: { status, ageMs, maxAgeMs },
+        },
+      ];
+    })
+  );
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
