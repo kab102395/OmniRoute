@@ -1055,22 +1055,23 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     nextEntry.output_modalities = ["text"];
   }
 
-  if (provider === "deepseek" && metadata.model === "deepseek-v4-pro") {
-    // DeepSeek now routes this legacy API id to V4.1-Flash, which supports image input.
-    nextEntry.input_modalities = ["text", "image"];
-    nextEntry.output_modalities = ["text"];
-    nextEntry.capabilities = {
-      ...(nextEntry.capabilities as JsonRecord),
-      vision: true,
-    };
-  }
-
   if (
     publicProvider !== "openrouter" &&
     !Array.isArray(entry.output_modalities) &&
     metadata.modalities.output.length > 0
   ) {
     nextEntry.output_modalities = metadata.modalities.output;
+  }
+
+  if (provider === "deepseek" && metadata.model === "deepseek-v4-pro") {
+    // DeepSeek documents V4-Pro-0813 as text-only; do not inherit the Flash
+    // route's image capability through family-level model metadata.
+    nextEntry.input_modalities = ["text"];
+    nextEntry.output_modalities = ["text"];
+    nextEntry.capabilities = {
+      ...(nextEntry.capabilities as JsonRecord),
+      vision: false,
+    };
   }
 
   if (hasCurrentOpenRouterCapabilities) {

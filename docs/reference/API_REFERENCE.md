@@ -471,10 +471,11 @@ absent and `pricing_provenance.state` is `unavailable` with a reason; consumers 
 route's price as unknown.
 
 Native DeepSeek routes preserve the exact requested API model id while reporting their documented
-effective serving version and pricing condition. The direct DeepSeek API now routes the legacy
-`deepseek-v4-pro` id to V4.1-Flash, bills it at Flash rates, and supports image input; OmniRoute
-keeps those route and price facts separate in `pricing_provenance`. Legacy V4-Flash names resolve
-to V4.1-Flash as well. Other providers' similarly named routes retain their own metadata.
+effective serving version and pricing condition. The direct `deepseek-v4-pro` route identifies as
+DeepSeek-V4-Pro-0813, is text-only, and has its own tiered pricing schedule. Legacy V4-Flash names
+resolve to V4.1-Flash, support image input, and use Flash rates. OmniRoute keeps those route and
+price facts separate in `pricing_provenance`; other providers' similarly named routes retain their
+own metadata.
 
 Model rows also expose `capability_status.tool_calling` with `status` (`supported`, `unsupported`,
 or `unknown`) and a metadata `source`. Routing that requires tools should require `supported`;

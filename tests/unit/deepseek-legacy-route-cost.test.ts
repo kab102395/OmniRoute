@@ -10,16 +10,16 @@ process.env.DATA_DIR = DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const { calculateCostWithEvidence } = await import("../../src/lib/usage/costCalculator.ts");
 
-test("direct DeepSeek legacy V4-Pro id estimates at current V4.1-Flash peak rates", async () => {
+test("direct DeepSeek V4 Pro estimates at its own published peak rates", async () => {
   const estimate = await calculateCostWithEvidence("deepseek", "deepseek-v4-pro", {
     input: 1_000_000,
     output: 1_000_000,
   });
 
-  assert.equal(estimate.costUsd, 1.5);
+  assert.equal(estimate.costUsd, 5.28);
   assert.equal(estimate.costKnown, true);
   assert.equal(estimate.pricingEvidence.source, "deepseek");
-  assert.equal(estimate.pricingEvidence.condition?.includes("bills it at Flash rates"), true);
+  assert.equal(estimate.pricingEvidence.condition?.includes("DeepSeek-V4-Pro-0813"), true);
   assert.equal(estimate.pricingEvidence.stale, false);
 });
 

@@ -30,13 +30,13 @@ export const deepseekProvider: RegistryEntry = {
     },
     {
       id: "deepseek-v4-pro",
-      name: "DeepSeek V4 Pro (legacy id for V4.1 Flash)",
+      name: "DeepSeek V4 Pro",
       contextLength: 1_000_000,
       maxOutputTokens: 384_000,
       supportsReasoning: true,
       supportedThinkingEfforts: ["none", "low", "high", "max"],
       toolCalling: true,
-      supportsVision: true,
+      supportsVision: false,
     },
     {
       id: "deepseek-v4-flash",
