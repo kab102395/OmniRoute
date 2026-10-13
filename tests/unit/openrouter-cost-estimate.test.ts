@@ -11,7 +11,8 @@ process.env.OPENROUTER_CATALOG_TTL_MS = "900000";
 const core = await import("../../src/lib/db/core.ts");
 core.getDbInstance();
 const pricingSync = await import("../../src/lib/pricingSync.ts");
-const { calculateCostWithEvidence } = await import("../../src/lib/usage/costCalculator.ts");
+const { calculateCostWithEvidence, calculateModalCostWithEvidence } =
+  await import("../../src/lib/usage/costCalculator.ts");
 const { classifyCostAccounting } = await import("../../src/lib/usage/costAccounting.ts");
 
 const routeId = "vendor/model-3";
@@ -90,6 +91,30 @@ test("OpenRouter's dynamic free router is not estimated from a sibling route", a
   });
   assert.equal(estimate.costUsd, 0);
   assert.equal(estimate.costKnown, false);
+  assert.equal(estimate.pricingEvidence.source, null);
+});
+
+test("an OpenRouter route missing from the exact catalog does not inherit generic synced rates", async () => {
+  writeCatalog(new Date().toISOString());
+  pricingSync.saveSyncedPricing({
+    openrouter: { "vendor/unlisted-route": { input: 0.1, output: 0.2 } },
+  });
+  const estimate = await calculateCostWithEvidence("openrouter", "vendor/unlisted-route", {
+    input: 100_000,
+    output: 100_000,
+  });
+  assert.equal(estimate.costUsd, 0);
+  assert.equal(estimate.costKnown, false);
+  assert.equal(estimate.pricingEvidence.source, null);
+});
+
+test("OpenRouter media estimates stay unknown without authoritative unit-specific pricing", async () => {
+  writeCatalog(new Date().toISOString());
+  pricingSync.saveSyncedPricing({
+    openrouter: { [routeId]: { output_cost_per_image: 0.03 } },
+  });
+  const estimate = await calculateModalCostWithEvidence("image", "openrouter", routeId, { n: 1 });
+  assert.equal(estimate.costUsd, null);
   assert.equal(estimate.pricingEvidence.source, null);
 });
 

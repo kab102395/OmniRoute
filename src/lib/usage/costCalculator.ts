@@ -424,6 +424,14 @@ export async function calculateCostWithEvidence(
           Object.keys(openRouterEvidence.pricing).map((field) => [field, "openrouter"])
         ),
       };
+    } else if (
+      normalizeServiceTier(provider) === "openrouter" &&
+      !openRouterEvidence &&
+      resolvedPricing?.source !== "user"
+    ) {
+      // Generic pricing sources are not evidence for an OpenRouter route when
+      // the exact route is absent from its authoritative catalog.
+      resolvedPricing = null;
     }
     if (!resolvedPricing) {
       return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
@@ -829,6 +837,11 @@ export async function calculateModalCostWithEvidence(
       }
     }
     if (!resolvedPricing) return unknown;
+    if (normalizeServiceTier(provider) === "openrouter" && resolvedPricing.source !== "user") {
+      // The public OpenRouter model record does not establish a common unit for
+      // image/audio/media billing. Do not reuse another source's modality rate.
+      return unknown;
+    }
 
     const pricing =
       resolvedPricing.pricing && typeof resolvedPricing.pricing === "object"
