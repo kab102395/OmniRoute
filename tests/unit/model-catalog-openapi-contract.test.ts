@@ -48,6 +48,15 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
               };
             };
           };
+          free_access: {
+            properties: {
+              source: {
+                properties: {
+                  curatedAt: { type: string; format: string };
+                };
+              };
+            };
+          };
           supported_endpoints: {
             type: string;
             description: string;
@@ -281,6 +290,11 @@ test("OmniRoute keeps catalog and execution facts needed by external routers", (
   ]) {
     assert.ok(field in modelProperties, `Model schema must preserve ${field}`);
   }
+  assert.deepEqual(modelProperties.free_access.properties.source.properties.curatedAt, {
+    type: "string",
+    format: "date",
+    description: "Date the checked-in provider free-tier catalog was last reviewed.",
+  });
 
   const headers = spec.paths["/api/v1/chat/completions"]?.post?.responses?.["200"]?.headers;
   for (const header of [

@@ -15610,6 +15610,10 @@ components:
                 freshness:
                   type: string
                   enum: [release_catalog]
+                curatedAt:
+                  type: string
+                  format: date
+                  description: Date the checked-in provider free-tier catalog was last reviewed.
                 retrievedAt:
                   type: string
                   format: date-time

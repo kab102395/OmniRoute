@@ -41,6 +41,8 @@ The returned route metadata remains authoritative for the facts it names:
   `capability_status`, token limits, modalities, and any `provider_routes` should be retained
   with the model record. Do not flatten them into the legacy `free`, `pricing`, or boolean
   `capabilities` fields.
+- Curated `free_access` facts carry `source.curatedAt`; this identifies when OmniRoute last
+  reviewed its release catalog. It is not a live provider fetch or account quota observation.
 - Hugging Face `provider_routes` are scoped to their named serving provider. With a constrained
   catalog query, eligible routes are also emitted as exact IDs such as
   `hf/org/model:provider`, with that host's pricing, capabilities, freshness, and current free

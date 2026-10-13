@@ -410,7 +410,9 @@ Catalog query filters:
   routes while its current router catalog marks them free, and exact provider routes whose
   `free_access.hardStopGuaranteed` is true. A provider's current free-promotion marker does not
   guarantee the offer or account billing state remains unchanged after catalog retrieval. Catalog
-  inclusion does not establish current account quota or successful execution.
+  inclusion does not establish current account quota or successful execution. Curated provider
+  entries include `free_access.source.curatedAt`, the date the checked-in free-tier catalog was
+  last reviewed; `retrievedAt` remains null because that source is release data, not a live fetch.
 - `require_tool_calling=true` keeps only routes whose exact model metadata confirms tool support;
   unsupported and unknown routes are omitted. For Hugging Face, eligible downstream routes are
   returned as exact provider-pinned model IDs when that host reports tool support. Combine it with

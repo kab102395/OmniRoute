@@ -1,5 +1,6 @@
 import {
   FREE_MODEL_BUDGETS,
+  FREE_CATALOG_CURATED_AT,
   grantsFreeAccess,
   type FreeModelBudget,
 } from "@omniroute/open-sse/config/freeModelCatalog";
@@ -42,6 +43,7 @@ export function getCatalogFreeAccess(provider: string, modelId: string): Catalog
     source: {
       id: "omniroute.free_model_catalog",
       freshness: "release_catalog",
+      curatedAt: FREE_CATALOG_CURATED_AT,
       retrievedAt: null,
     },
   };

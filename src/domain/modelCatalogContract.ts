@@ -135,6 +135,7 @@ export interface CatalogFreeAccess {
   source: {
     id: "omniroute.free_model_catalog";
     freshness: "release_catalog";
+    curatedAt: string;
     retrievedAt: null;
   };
 }

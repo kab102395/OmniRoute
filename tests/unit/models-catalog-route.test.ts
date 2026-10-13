@@ -832,7 +832,12 @@ test("v1 models exposes other providers' curated free-tier facts without claimin
         hardStopGuaranteed?: boolean | null;
         accountEligibility?: string;
         zeroCostOnExhaustion?: string;
-        source?: { id?: string; freshness?: string; retrievedAt?: string | null };
+        source?: {
+          id?: string;
+          freshness?: string;
+          curatedAt?: string;
+          retrievedAt?: string | null;
+        };
       };
     }>;
   };
@@ -848,6 +853,7 @@ test("v1 models exposes other providers' curated free-tier facts without claimin
   assert.equal(freeTierRoute.free_access?.accountEligibility, "unknown");
   assert.equal(freeTierRoute.free_access?.source?.id, "omniroute.free_model_catalog");
   assert.equal(freeTierRoute.free_access?.source?.freshness, "release_catalog");
+  assert.equal(freeTierRoute.free_access?.source?.curatedAt, "2026-09-03");
   assert.equal(freeTierRoute.free_access?.source?.retrievedAt, null);
 });
 
