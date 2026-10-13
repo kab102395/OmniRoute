@@ -454,9 +454,15 @@ Hugging Face Router model rows can also expose `provider_routes`, containing eac
 provider's reported status, context limit, USD-per-million-token input/output rates, free-promotion
 flag, tool/structured-output support, latency, and throughput. These facts are scoped to each
 downstream provider; a free provider entry does not classify the aggregate Hugging Face route as
-free, and the catalog does not pin that provider during inference. `provider_routes_provenance`
-identifies `huggingface.router_models_api`, its retrieval time, price unit, and whether the
-15-minute freshness window has elapsed.
+free. When the provider identifier is representable safely, `route_model` gives the exact
+Hugging Face model ID with that downstream provider pinned (for example,
+`hf/org/model:provider`). Hugging Face documents this suffix-based provider selection in
+its [function-calling guide](https://huggingface.co/docs/inference-providers/en/guides/function-calling).
+`free_catalog_eligible` is true only when Hugging Face reports that exact route as free and the
+catalog snapshot is within OmniRoute's 15-minute freshness window. It does not prove account
+eligibility or execution success. `provider_routes_provenance` identifies
+`huggingface.router_models_api`, its retrieval time, price unit, and whether the freshness window
+has elapsed.
 
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.

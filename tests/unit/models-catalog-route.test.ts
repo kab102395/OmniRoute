@@ -825,8 +825,8 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
   const connection = await seedConnection("huggingface");
   await modelsDb.replaceSyncedAvailableModelsForConnection("huggingface", connection.id as string, [
     {
-      id: "zai-org/GLM-5.2",
-      name: "GLM-5.2",
+      id: "fixture-org/route-metadata-model",
+      name: "Route metadata fixture model",
       source: "imported",
       providerRoutes: [
         {
@@ -838,9 +838,16 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
           supportsTools: true,
           supportsStructuredOutput: true,
         },
-        { provider: "promo-host", status: "live", isFree: true, supportsTools: false },
+        { provider: "promo-host", status: "live", isFree: true, supportsTools: true },
       ],
       providerRoutesRetrievedAt: new Date().toISOString(),
+    },
+    {
+      id: "zai-org/GLM-stale",
+      name: "GLM stale catalog fixture",
+      source: "imported",
+      providerRoutes: [{ provider: "promo-host", status: "live", isFree: true }],
+      providerRoutesRetrievedAt: "2020-01-01T00:00:00.000Z",
     },
   ]);
 
@@ -852,17 +859,19 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
       id: string;
       provider_routes?: Array<{
         provider?: string;
+        route_model?: string;
         status?: string;
         context_length?: number;
         pricing?: { input?: number; output?: number };
         is_free?: boolean;
+        free_catalog_eligible?: boolean;
         supports_tools?: boolean;
       }>;
       provider_routes_provenance?: { source?: string; pricing_unit?: string; stale?: boolean };
       free?: boolean;
     }>;
   };
-  const model = body.data.find((entry) => entry.id === "huggingface/zai-org/GLM-5.2");
+  const model = body.data.find((entry) => entry.id === "hf/fixture-org/route-metadata-model");
 
   assert.equal(response.status, 200);
   assert.ok(model);
@@ -870,18 +879,33 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
   assert.deepEqual(model.provider_routes, [
     {
       provider: "together",
+      route_model: "hf/fixture-org/route-metadata-model:together",
       status: "live",
       context_length: 262144,
       pricing: { input: 1.4, output: 4.4 },
       is_free: false,
+      free_catalog_eligible: false,
       supports_tools: true,
       supports_structured_output: true,
     },
-    { provider: "promo-host", status: "live", is_free: true, supports_tools: false },
+    {
+      provider: "promo-host",
+      route_model: "hf/fixture-org/route-metadata-model:promo-host",
+      status: "live",
+      is_free: true,
+      free_catalog_eligible: true,
+      supports_tools: true,
+    },
   ]);
   assert.equal(model.provider_routes_provenance?.source, "huggingface.router_models_api");
   assert.equal(model.provider_routes_provenance?.pricing_unit, "USD / 1M tokens");
   assert.equal(model.provider_routes_provenance?.stale, false);
+
+  const staleModel = body.data.find((entry) => entry.id === "hf/zai-org/GLM-stale");
+  assert.ok(staleModel);
+  assert.equal(staleModel.provider_routes_provenance?.stale, true);
+  assert.equal(staleModel.provider_routes?.[0]?.is_free, true);
+  assert.equal(staleModel.provider_routes?.[0]?.free_catalog_eligible, false);
 });
 
 test("v1 models catalog does not final-enrich combo names as real models", async () => {

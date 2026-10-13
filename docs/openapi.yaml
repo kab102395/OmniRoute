@@ -14806,14 +14806,21 @@ components:
           type: array
           description: >-
             Provider-specific route facts from the Hugging Face Inference Providers catalog.
-            These describe eligible downstream choices and do not mean OmniRoute can pin the
-            provider for execution. A free flag applies only to the named downstream provider.
+            `route_model` is a provider-pinned model ID when present. A free flag
+            applies only to the named downstream provider; `free_catalog_eligible` is true only
+            while the source catalog snapshot is fresh.
           items:
             type: object
             required: [provider]
             properties:
               provider:
                 type: string
+              route_model:
+                type: string
+                description: >-
+                  OmniRoute model ID with the Hugging Face downstream provider pinned using
+                  Hugging Face's `<model>:<provider>` syntax. Omitted if the identifiers cannot
+                  be represented safely.
               status:
                 type: string
                 enum: [live, error]
@@ -14830,6 +14837,11 @@ components:
               is_free:
                 type: boolean
                 description: Current free-promotion status for this downstream provider only.
+              free_catalog_eligible:
+                type: boolean
+                description: >-
+                  True when Hugging Face currently marks this exact provider route as free and
+                  the catalog snapshot is within OmniRoute's 15-minute freshness window.
               supports_tools:
                 type: boolean
               supports_structured_output:

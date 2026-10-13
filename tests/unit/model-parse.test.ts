@@ -42,6 +42,14 @@ test("parseModel trims provider prefix and model id", () => {
   assert.strictEqual(result.model, "gpt-5.6-sol");
 });
 
+test("parseModel preserves Hugging Face's exact downstream-provider route suffix", () => {
+  const result = parseModel("hf/org/model:provider-id");
+  assert.strictEqual(result.providerAlias, "hf");
+  assert.strictEqual(result.provider, "huggingface");
+  assert.strictEqual(result.model, "org/model:provider-id");
+  assert.strictEqual(result.isAlias, false);
+});
+
 test("parseModel treats exact slashful model ids as models, not provider prefixes", () => {
   const result = parseModel("openai/gpt-oss-120b");
   assert.strictEqual(result.provider, null);

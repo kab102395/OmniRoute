@@ -1325,10 +1325,17 @@ async function buildUnifiedModelsResponseCore(
               ? {
                   provider_routes: sm.providerRoutes.map((route) => ({
                     provider: route.provider,
+                    ...(displayModelId.includes(":") ||
+                    !/^[a-z0-9][a-z0-9._-]*$/i.test(route.provider)
+                      ? {}
+                      : {
+                          route_model: `${aliasId}:${route.provider}`,
+                        }),
                     ...(route.status ? { status: route.status } : {}),
                     ...(route.contextLength ? { context_length: route.contextLength } : {}),
                     ...(route.pricing ? { pricing: route.pricing } : {}),
                     ...(typeof route.isFree === "boolean" ? { is_free: route.isFree } : {}),
+                    free_catalog_eligible: route.isFree === true && !providerRoutesAreStale,
                     ...(typeof route.supportsTools === "boolean"
                       ? { supports_tools: route.supportsTools }
                       : {}),
