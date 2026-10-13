@@ -217,6 +217,16 @@ type ToolCall = {
 
 type UsageTokenRecord = Record<string, number>;
 
+/** Preserve exact provider-billed amounts when usage arrives across SSE events. */
+function mergeProviderReportedCosts(target: UsageTokenRecord, incoming: UsageTokenRecord): void {
+  for (const field of ["cost_in_usd_ticks", "provider_reported_cost_usd"] as const) {
+    const amount = incoming[field];
+    if (typeof amount === "number" && Number.isFinite(amount) && amount >= 0) {
+      target[field] = amount;
+    }
+  }
+}
+
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
@@ -1744,6 +1754,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                       u.cache_read_input_tokens = eu.cache_read_input_tokens;
                     if (eu.cache_creation_input_tokens)
                       u.cache_creation_input_tokens = eu.cache_creation_input_tokens;
+                    mergeProviderReportedCosts(u, eu);
                   }
                   if (
                     shouldInjectClaudeEmptyResponseBeforeCurrentEvent(
@@ -2291,9 +2302,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 su.cache_creation_input_tokens = eu.cache_creation_input_tokens;
               if (eu.cached_tokens > 0) su.cached_tokens = eu.cached_tokens;
               if (eu.reasoning_tokens > 0) su.reasoning_tokens = eu.reasoning_tokens;
-              if (eu.provider_reported_cost_usd !== undefined) {
-                su.provider_reported_cost_usd = eu.provider_reported_cost_usd;
-              }
+              mergeProviderReportedCosts(su, eu);
             }
           }
 
@@ -2764,9 +2773,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                     su.cache_creation_input_tokens = eu.cache_creation_input_tokens;
                   if (eu.cached_tokens > 0) su.cached_tokens = eu.cached_tokens;
                   if (eu.reasoning_tokens > 0) su.reasoning_tokens = eu.reasoning_tokens;
-                  if (eu.provider_reported_cost_usd !== undefined) {
-                    su.provider_reported_cost_usd = eu.provider_reported_cost_usd;
-                  }
+                  mergeProviderReportedCosts(su, eu);
                 }
               }
 

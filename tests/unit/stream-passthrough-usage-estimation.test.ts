@@ -5,6 +5,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { hasValidUsage, estimateUsage, isEmptyUsage } from "../../open-sse/utils/usageTracking.ts";
 import { FORMATS } from "../../open-sse/translator/formats.ts";
+import { createSSEStream } from "../../open-sse/utils/stream.ts";
+
+async function readTransformed(chunks: string[], options: Parameters<typeof createSSEStream>[0]) {
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  return new Response(source.pipeThrough(createSSEStream(options))).text();
+}
 
 test("passthrough estimate: finish without usage but with content -> estimate", () => {
   // Regression: Gemini single-field usage must count as valid (totalTokenCount was missing before)
@@ -34,7 +46,6 @@ test("passthrough no fake: tool_only contentLength==0 -> no estimate (tool_calls
 
 import { createSSEStream } from "../../open-sse/utils/stream.ts";
 
-
 function parseSSEUsage(sseText: string): unknown[] {
   return sseText
     .split("\n\n")
@@ -53,7 +64,12 @@ function parseSSEUsage(sseText: string): unknown[] {
 }
 
 test("passthrough SSE: finish stop without usage + include_usage:true -> emits usage.estimated:true", async () => {
-  const body = { model: "m", messages: [{ role: "user", content: "hi" }], stream: true, stream_options: { include_usage: true } };
+  const body = {
+    model: "m",
+    messages: [{ role: "user", content: "hi" }],
+    stream: true,
+    stream_options: { include_usage: true },
+  };
   const stream = createSSEStream({
     mode: "passthrough" as const,
     body,
@@ -74,15 +90,26 @@ test("passthrough SSE: finish stop without usage + include_usage:true -> emits u
   })();
   const enc = new TextEncoder();
   // delta content -> accumulates totalContentLength
-  await writer.write(enc.encode(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "hello world" }, finish_reason: null }] })}\n\n`));
+  await writer.write(
+    enc.encode(
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "hello world" }, finish_reason: null }] })}\n\n`
+    )
+  );
   // finish without usage
-  await writer.write(enc.encode(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
+  await writer.write(
+    enc.encode(
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`
+    )
+  );
   await writer.write(enc.encode("data: [DONE]\n\n"));
   await writer.close();
   const text = await readAll;
   const parsed = parseSSEUsage(text);
   const withUsage = parsed.filter((p: unknown) => (p as Record<string, unknown>).usage);
-  assert.ok(withUsage.length >= 1, `expected at least 1 chunk with usage, got ${withUsage.length} — text: ${text.slice(0, 600)}`);
+  assert.ok(
+    withUsage.length >= 1,
+    `expected at least 1 chunk with usage, got ${withUsage.length} — text: ${text.slice(0, 600)}`
+  );
   const last = withUsage[withUsage.length - 1] as Record<string, unknown>;
   const usage = last.usage as Record<string, unknown>;
   assert.equal(usage.estimated, true);
@@ -91,7 +118,12 @@ test("passthrough SSE: finish stop without usage + include_usage:true -> emits u
 });
 
 test("passthrough SSE: real trailing choices:[] usage is forwarded; no estimate is emitted (real wins)", async () => {
-  const body = { model: "m", messages: [{ role: "user", content: "hi" }], stream: true, stream_options: { include_usage: true } };
+  const body = {
+    model: "m",
+    messages: [{ role: "user", content: "hi" }],
+    stream: true,
+    stream_options: { include_usage: true },
+  };
   const stream = createSSEStream({
     mode: "passthrough" as const,
     body,
@@ -111,11 +143,23 @@ test("passthrough SSE: real trailing choices:[] usage is forwarded; no estimate 
     return Buffer.concat(chunks).toString("utf8");
   })();
   const enc = new TextEncoder();
-  await writer.write(enc.encode(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "hello world" }, finish_reason: null }] })}\n\n`));
+  await writer.write(
+    enc.encode(
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "hello world" }, finish_reason: null }] })}\n\n`
+    )
+  );
   // finish without usage -> passes through untouched (estimate only happens at flush, and only if no usage ever arrives)
-  await writer.write(enc.encode(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
+  await writer.write(
+    enc.encode(
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`
+    )
+  );
   // trailing choices:[] with valid usage -> forwarded verbatim (marks passthroughForwardedUsage, so flush skips the estimate)
-  await writer.write(enc.encode(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 8, completion_tokens: 6, total_tokens: 14 } })}\n\n`));
+  await writer.write(
+    enc.encode(
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 8, completion_tokens: 6, total_tokens: 14 } })}\n\n`
+    )
+  );
   await writer.write(enc.encode("data: [DONE]\n\n"));
   await writer.close();
   const text = await readAll;
@@ -125,10 +169,79 @@ test("passthrough SSE: real trailing choices:[] usage is forwarded; no estimate 
   // and wins; the estimate exists only for upstreams that never report usage (emitted at
   // flush). Exactly one usage block ever reaches the client — never two, never estimated
   // when a real one arrived (the v1 "estimated wins" tradeoff was a billing regression).
-  assert.equal(withUsage.length, 1, `expected 1 usage (the real trailing block), got ${withUsage.length} — usages: ${JSON.stringify(withUsage.map((p) => (p as Record<string, unknown>).usage))}`);
-  const forwarded = (withUsage[0] as Record<string, unknown> & { usage: Record<string, unknown> }).usage;
+  assert.equal(
+    withUsage.length,
+    1,
+    `expected 1 usage (the real trailing block), got ${withUsage.length} — usages: ${JSON.stringify(withUsage.map((p) => (p as Record<string, unknown>).usage))}`
+  );
+  const forwarded = (withUsage[0] as Record<string, unknown> & { usage: Record<string, unknown> })
+    .usage;
   assert.equal(forwarded.estimated, undefined);
   assert.equal(forwarded.prompt_tokens, 8);
   assert.equal(forwarded.completion_tokens, 6);
   assert.equal(forwarded.total_tokens, 14);
+});
+
+async function getTranslatedFinalUsage(chunks: string[]) {
+  let finalUsage: Record<string, unknown> | null = null;
+  await readTransformed(chunks, {
+    mode: "translate",
+    targetFormat: FORMATS.OPENAI,
+    sourceFormat: FORMATS.OPENAI,
+    provider: "xai",
+    model: "grok-4",
+    body: { messages: [{ role: "user", content: "hello" }] },
+    onComplete(payload) {
+      finalUsage = payload.usage as Record<string, unknown> | null;
+    },
+  });
+  return finalUsage;
+}
+
+function xaiUsageEvent(usage: Record<string, unknown>, trailingNewline = true): string {
+  const event = `data: ${JSON.stringify({
+    id: "chatcmpl_xai_usage_merge",
+    object: "chat.completion.chunk",
+    model: "grok-4",
+    choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    usage,
+  })}`;
+  return trailingNewline ? `${event}\n\n` : event;
+}
+
+test("translated SSE merges exact xAI ticks from a later usage event", async () => {
+  const finalUsage = await getTranslatedFinalUsage([
+    `data: ${JSON.stringify({
+      id: "chatcmpl_xai_usage_merge",
+      object: "chat.completion.chunk",
+      model: "grok-4",
+      choices: [{ index: 0, delta: { content: "done" }, finish_reason: null }],
+      usage: { prompt_tokens: 10, completion_tokens: 0 },
+    })}\n\n`,
+    xaiUsageEvent({ prompt_tokens: 10, completion_tokens: 2, cost_in_usd_ticks: 37_756_000 }),
+  ]);
+
+  assert.equal(finalUsage?.prompt_tokens, 10);
+  assert.equal(finalUsage?.completion_tokens, 2);
+  assert.equal(finalUsage?.cost_in_usd_ticks, 37_756_000);
+});
+
+test("translated SSE flush merges exact xAI ticks from a final line without a newline", async () => {
+  const finalUsage = await getTranslatedFinalUsage([
+    `data: ${JSON.stringify({
+      id: "chatcmpl_xai_usage_merge",
+      object: "chat.completion.chunk",
+      model: "grok-4",
+      choices: [{ index: 0, delta: { content: "done" }, finish_reason: null }],
+      usage: { prompt_tokens: 10, completion_tokens: 0 },
+    })}\n\n`,
+    xaiUsageEvent(
+      { prompt_tokens: 10, completion_tokens: 2, cost_in_usd_ticks: 37_756_000 },
+      false
+    ),
+  ]);
+
+  assert.equal(finalUsage?.prompt_tokens, 10);
+  assert.equal(finalUsage?.completion_tokens, 2);
+  assert.equal(finalUsage?.cost_in_usd_ticks, 37_756_000);
 });
