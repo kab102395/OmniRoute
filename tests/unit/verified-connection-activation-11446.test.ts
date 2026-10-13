@@ -38,7 +38,7 @@ process.env.DISABLE_SQLITE_AUTO_BACKUP = "true";
 const VALIDATION_BASE_URL = "https://proxy.activation-11446.example.com/v1";
 let nextModelsProbeStatus: number | null = 200;
 const originalFetch = globalThis.fetch;
-globalThis.fetch = (async (input: string | URL | Request) => {
+const stubFetch = (async (input: string | URL | Request) => {
   const url =
     typeof input === "string" ? input : input instanceof Request ? input.url : input.toString();
   if (url === `${VALIDATION_BASE_URL}/models`) {
@@ -49,11 +49,15 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   }
   return new Response("not found", { status: 404 });
 }) as typeof fetch;
+globalThis.fetch = stubFetch;
 
 const core = await import("../../src/lib/db/core.ts");
 const providerNodesRoute = await import("../../src/app/api/provider-nodes/route.ts");
 const providersRoute = await import("../../src/app/api/providers/route.ts");
 const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/route.ts");
+// Some network clients patch global fetch during module initialization. Reapply
+// the test stub after imports so every validation path remains local and stable.
+globalThis.fetch = stubFetch;
 
 async function readJsonObject(response: Response): Promise<Record<string, unknown>> {
   const text = await response.text();
