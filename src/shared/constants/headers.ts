@@ -10,6 +10,7 @@ export const OMNIROUTE_RESPONSE_HEADERS = {
   costCurrency: "X-OmniRoute-Cost-Currency",
   decision: "X-OmniRoute-Decision",
   fallbackAttempts: "X-OmniRoute-Fallback-Attempts",
+  executionAttempts: "X-OmniRoute-Execution-Attempts",
   latencyMs: "X-OmniRoute-Latency-Ms",
   model: "X-OmniRoute-Model",
   progress: "X-OmniRoute-Progress",

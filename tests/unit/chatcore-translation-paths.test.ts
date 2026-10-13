@@ -2420,6 +2420,17 @@ test("chatCore reports the concrete model that succeeded after model-family fall
   assert.equal(calls[1].body.model, "claude-sonnet-4-6");
   assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), "claude");
   assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), "claude-sonnet-4-6");
+  const encodedAttempts = result.response.headers.get("X-OmniRoute-Execution-Attempts");
+  assert.ok(encodedAttempts, "non-streaming response exposes the complete observed route trail");
+  const [initialAttempt, successfulAttempt] = JSON.parse(decodeURIComponent(encodedAttempts));
+  assert.deepEqual([initialAttempt.statusCode, successfulAttempt.statusCode], [404, 200]);
+  assert.deepEqual(
+    [initialAttempt.routeModel, successfulAttempt.routeModel],
+    ["claude-sonnet-5", "claude-sonnet-4-6"]
+  );
+  assert.equal(initialAttempt.usage, undefined);
+  assert.equal(successfulAttempt.usage.kind, "provider_reported_usage");
+  assert.equal(successfulAttempt.accounting.kind, "estimated_cost");
   await waitForCallLogSaves(5000);
   const callLog = await getCallLogById(result.response.headers.get("X-OmniRoute-Request-Id"));
   assert.equal(callLog.servedProvider, "claude");

@@ -32,6 +32,7 @@ export function buildNonStreamingResponseHeaders(
       currency?: string | null;
       usageKind?: string | null;
     } | null;
+    executionAttempts?: Array<Record<string, unknown>>;
     /** Number of additional upstream dispatches recorded before this response. */
     fallbackAttempts?: number;
     compressionResponseMeta?: string | null | undefined;
@@ -61,6 +62,7 @@ export function buildNonStreamingResponseHeaders(
     servedProviderInstanceId: args.servedProviderInstanceId,
     connectionId: args.connectionId,
     accounting: args.accounting,
+    executionAttempts: args.executionAttempts,
     fallbackAttempts: args.fallbackAttempts,
     strategy: args.comboStrategy ?? "single",
   });

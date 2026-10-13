@@ -346,6 +346,95 @@ test("SSE attempt receipt serialization cannot fail response metadata generation
   assert.doesNotMatch(comment, /x-omniroute-execution-attempts/);
 });
 
+test("non-streaming metadata returns bounded credential-free per-attempt receipts", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({
+    provider: "openrouter",
+    model: "vendor/model",
+    usage: { prompt_tokens: 9, completion_tokens: 4 },
+    accounting: {
+      kind: "provider_reported_billed_cost",
+      usageKind: "provider_reported_usage",
+      source: "usage.cost",
+      currency: "USD",
+    },
+    executionAttempts: [
+      {
+        index: 1,
+        executorIndex: 2,
+        statusCode: 429,
+        outcome: "response",
+        costAttribution: "unknown",
+        routeModel: "vendor/model",
+        providerRequestId: "generation-429",
+        connectionId: "private-connection-id",
+        providerApiKey: "must-not-be-exposed",
+      },
+      {
+        index: 2,
+        executorIndex: 3,
+        statusCode: 200,
+        outcome: "response",
+        costAttribution: "unknown",
+        routeModel: "vendor/model",
+        providerRequestId: "generation-200",
+        connectionId: "private-connection-id",
+      },
+    ],
+  });
+  const encoded = headers[OMNIROUTE_RESPONSE_HEADERS.executionAttempts];
+  assert.ok(encoded);
+  assert.ok(encoded.length <= 6_000);
+  assert.deepEqual(JSON.parse(decodeURIComponent(encoded)), [
+    {
+      index: 1,
+      executorIndex: 2,
+      statusCode: 429,
+      providerRequestId: "generation-429",
+      outcome: "response",
+      costAttribution: "unknown",
+      routeModel: "vendor/model",
+    },
+    {
+      index: 2,
+      executorIndex: 3,
+      statusCode: 200,
+      providerRequestId: "generation-200",
+      outcome: "response",
+      costAttribution: "provider_reported",
+      routeModel: "vendor/model",
+      usage: {
+        kind: "provider_reported_usage",
+        dimensions: { prompt_tokens: 9, completion_tokens: 4 },
+      },
+      accounting: {
+        kind: "provider_reported_billed_cost",
+        usageKind: "provider_reported_usage",
+        source: "usage.cost",
+        currency: "USD",
+      },
+    },
+  ]);
+  assert.doesNotMatch(decodeURIComponent(encoded), /private-connection-id|must-not-be-exposed/);
+});
+
+test("attempt response header preserves only newest receipts when the 6k limit is reached", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({
+    executionAttempts: Array.from({ length: 80 }, (_, index) => ({
+      index: index + 1,
+      statusCode: 503,
+      outcome: "response",
+      routeModel: `provider/${"m".repeat(220)}`,
+      providerRequestId: `request-${index + 1}-${"r".repeat(180)}`,
+    })),
+  });
+  const encoded = headers[OMNIROUTE_RESPONSE_HEADERS.executionAttempts];
+  assert.ok(encoded);
+  assert.ok(encoded.length <= 6_000);
+  const receipts = JSON.parse(decodeURIComponent(encoded)) as Array<Record<string, unknown>>;
+  assert.ok(receipts.length > 0 && receipts.length < 64);
+  assert.equal(receipts.at(-1)?.index, 80);
+});
+
 test("buildOmniRouteResponseMetaHeaders emits X-OmniRoute-Cost-Saved only when costSavedUsd is provided", () => {
   // Cache HIT: the incremental cost of serving the hit is 0, but the cache saved the
   // original (would-have-been) cost — surfaced via the Cost-Saved header for analytics.

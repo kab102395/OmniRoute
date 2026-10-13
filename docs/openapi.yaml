@@ -1637,6 +1637,18 @@ paths:
               description: >-
                 Number of additional upstream dispatch attempts recorded before the final response.
                 Omitted when no additional attempt was recorded.
+            X-OmniRoute-Execution-Attempts:
+              schema:
+                type: string
+                maxLength: 6000
+              description: >-
+                URI-component-encoded JSON array of at most 64 allowlisted upstream attempt
+                receipts on non-streaming responses. Decode before parsing. Receipts include each
+                observed upstream route/model, status, provider request ID when reported, and
+                final usage/accounting attribution on the successful attempt. Account identifiers,
+                credentials, request bodies, and response bodies are excluded. Oversized optional
+                diagnostics may be omitted or retain only the newest attempts. Streaming clients
+                receive the same receipt contract in the final opt-in SSE metadata comment.
             X-OmniRoute-Accounting-Kind:
               schema:
                 type: string

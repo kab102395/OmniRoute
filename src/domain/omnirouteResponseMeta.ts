@@ -140,6 +140,7 @@ export function buildOmniRouteResponseMetaHeaders({
   connectionId = null,
   accounting = null,
   usage = null,
+  executionAttempts,
   ttftMs = null,
 }: {
   cacheHit?: boolean;
@@ -175,6 +176,8 @@ export function buildOmniRouteResponseMetaHeaders({
     pricingCondition?: string | null;
     pricingStale?: boolean | null;
   } | null;
+  /** Bounded upstream attempt receipts for non-streaming responses. */
+  executionAttempts?: readonly Record<string, unknown>[];
   /**
    * Routing decision (combo strategy name, or `"single"` for a non-combo
    * request) surfaced via `X-OmniRoute-Decision`. See #6022.
@@ -306,13 +309,133 @@ export function buildOmniRouteResponseMetaHeaders({
     headers[OMNIROUTE_RESPONSE_HEADERS.tokensPerSecond] = toHeaderValue(tps.toFixed(3));
   }
 
+  if (executionAttempts && executionAttempts.length > 0) {
+    const receipts = accounting
+      ? attributeExecutionAttemptReceipts(executionAttempts, usage, accounting)
+      : executionAttempts;
+    const encodedAttempts = encodeExecutionAttemptReceipts(receipts);
+    if (encodedAttempts) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.executionAttempts] = encodedAttempts;
+    }
+  }
+
   return headers;
 }
 
-export function buildOmniRouteSseMetadataComment(
-  options: Parameters<typeof buildOmniRouteResponseMetaHeaders>[0] & {
-    executionAttempts?: readonly Record<string, unknown>[];
+const EXECUTION_ATTEMPT_RECEIPT_FIELDS = [
+  "index",
+  "executorIndex",
+  "endpointIndex",
+  "startedAt",
+  "durationMs",
+  "statusCode",
+  "providerRequestId",
+  "outcome",
+  "costAttribution",
+  "attemptSource",
+  "routeLeg",
+  "routeModel",
+  "usage",
+  "accounting",
+] as const;
+
+const EXECUTION_ATTEMPT_USAGE_DIMENSIONS = [
+  "prompt_tokens",
+  "completion_tokens",
+  "input_tokens",
+  "output_tokens",
+  "cached_tokens",
+  "cache_read_input_tokens",
+  "cache_creation_input_tokens",
+  "reasoning_tokens",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function attributeExecutionAttemptReceipts(
+  attempts: readonly Record<string, unknown>[],
+  usage: UsageLike,
+  accounting: NonNullable<Parameters<typeof buildOmniRouteResponseMetaHeaders>[0]["accounting"]>
+): Record<string, unknown>[] {
+  const receipts = attempts
+    .slice(-64)
+    .map((attempt) =>
+      Object.fromEntries(
+        EXECUTION_ATTEMPT_RECEIPT_FIELDS.flatMap((field) =>
+          Object.prototype.hasOwnProperty.call(attempt, field) ? [[field, attempt[field]]] : []
+        )
+      )
+    );
+  let successfulIndex = -1;
+  for (let index = receipts.length - 1; index >= 0; index -= 1) {
+    const attempt = receipts[index];
+    if (
+      attempt?.outcome === "response" &&
+      typeof attempt.statusCode === "number" &&
+      attempt.statusCode >= 200 &&
+      attempt.statusCode < 300
+    ) {
+      successfulIndex = index;
+      break;
+    }
   }
+  if (successfulIndex < 0) return receipts;
+
+  const usageRecord = isRecord(usage) ? usage : null;
+  const dimensions = Object.fromEntries(
+    EXECUTION_ATTEMPT_USAGE_DIMENSIONS.flatMap((key) => {
+      const value = usageRecord?.[key];
+      return typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? [[key, value]]
+        : [];
+    })
+  );
+  const attribution =
+    accounting.kind === "provider_reported_billed_cost" || accounting.kind === "zero_cost"
+      ? "provider_reported"
+      : accounting.kind === "estimated_cost"
+        ? "estimated"
+        : "unknown";
+  receipts[successfulIndex] = {
+    ...receipts[successfulIndex],
+    ...(Object.keys(dimensions).length > 0
+      ? { usage: { kind: accounting.usageKind ?? "unknown", dimensions } }
+      : {}),
+    accounting,
+    costAttribution: attribution,
+  };
+  return receipts;
+}
+
+/** URI-component-encoded JSON shared by HTTP response headers and SSE metadata. */
+function encodeExecutionAttemptReceipts(
+  attempts: readonly Record<string, unknown>[]
+): string | null {
+  const boundedAttempts = attempts
+    .slice(-64)
+    .map((attempt) =>
+      Object.fromEntries(
+        EXECUTION_ATTEMPT_RECEIPT_FIELDS.flatMap((field) =>
+          Object.prototype.hasOwnProperty.call(attempt, field) ? [[field, attempt[field]]] : []
+        )
+      )
+    );
+  try {
+    while (boundedAttempts.length > 0) {
+      const encoded = encodeURIComponent(JSON.stringify(boundedAttempts));
+      if (encoded.length <= 6_000) return encoded;
+      boundedAttempts.shift();
+    }
+  } catch {
+    // Optional diagnostics must never turn a successful inference into a request failure.
+  }
+  return null;
+}
+
+export function buildOmniRouteSseMetadataComment(
+  options: Parameters<typeof buildOmniRouteResponseMetaHeaders>[0]
 ): string {
   const { executionAttempts, ...responseMeta } = options;
   const headers = buildOmniRouteResponseMetaHeaders(responseMeta);
@@ -321,98 +444,15 @@ export function buildOmniRouteSseMetadataComment(
     .map(([name, value]) => `: ${name.toLowerCase()}=${value}`);
 
   if (executionAttempts && executionAttempts.length > 0) {
-    const receiptFields = [
-      "index",
-      "executorIndex",
-      "endpointIndex",
-      "startedAt",
-      "durationMs",
-      "statusCode",
-      "providerRequestId",
-      "outcome",
-      "costAttribution",
-      "attemptSource",
-      "routeLeg",
-      "routeModel",
-      "usage",
-      "accounting",
-    ] as const;
-    const boundedAttempts = executionAttempts
-      .slice(-64)
-      .map((attempt) =>
-        Object.fromEntries(
-          receiptFields.flatMap((field) =>
-            Object.prototype.hasOwnProperty.call(attempt, field) ? [[field, attempt[field]]] : []
-          )
+    const receipts = responseMeta.accounting
+      ? attributeExecutionAttemptReceipts(
+          executionAttempts,
+          responseMeta.usage,
+          responseMeta.accounting
         )
-      );
-    // The stream knows request-level usage and accounting only after completion. Attribute
-    // those facts to the final successful upstream attempt, matching durable call-log receipts.
-    if (responseMeta.accounting && boundedAttempts.length > 0) {
-      let successfulIndex = -1;
-      for (let index = boundedAttempts.length - 1; index >= 0; index -= 1) {
-        const attempt = boundedAttempts[index];
-        if (
-          attempt?.outcome === "response" &&
-          typeof attempt.statusCode === "number" &&
-          attempt.statusCode >= 200 &&
-          attempt.statusCode < 300
-        ) {
-          successfulIndex = index;
-          break;
-        }
-      }
-      if (successfulIndex >= 0) {
-        const usage = responseMeta.usage as Record<string, unknown> | null | undefined;
-        const dimensions = Object.fromEntries(
-          [
-            "prompt_tokens",
-            "completion_tokens",
-            "input_tokens",
-            "output_tokens",
-            "cached_tokens",
-            "cache_read_input_tokens",
-            "cache_creation_input_tokens",
-            "reasoning_tokens",
-          ].flatMap((key) => {
-            const value = usage?.[key];
-            return typeof value === "number" && Number.isFinite(value) && value >= 0
-              ? [[key, value]]
-              : [];
-          })
-        );
-        const accounting = responseMeta.accounting as Record<string, unknown>;
-        const attribution =
-          accounting.kind === "provider_reported_billed_cost" || accounting.kind === "zero_cost"
-            ? "provider_reported"
-            : accounting.kind === "estimated_cost"
-              ? "estimated"
-              : "unknown";
-        boundedAttempts[successfulIndex] = {
-          ...boundedAttempts[successfulIndex],
-          ...(Object.keys(dimensions).length > 0
-            ? {
-                usage: {
-                  kind: accounting.usageKind ?? "unknown",
-                  dimensions,
-                },
-              }
-            : {}),
-          accounting,
-          costAttribution: attribution,
-        };
-      }
-    }
-    try {
-      const encodedAttempts = encodeURIComponent(JSON.stringify(boundedAttempts));
-      // Keep the final SSE comment bounded even when provider request IDs or receipt metadata
-      // are unusually large. The call-log receipt remains the full authorized record.
-      if (encodedAttempts.length <= 65_536) {
-        lines.push(`: x-omniroute-execution-attempts=${encodedAttempts}`);
-      }
-    } catch {
-      // Optional diagnostics must never turn a successful inference into a stream error.
-    }
+      : executionAttempts;
+    const encodedAttempts = encodeExecutionAttemptReceipts(receipts);
+    if (encodedAttempts) lines.push(`: x-omniroute-execution-attempts=${encodedAttempts}`);
   }
 
   return lines.length > 0 ? `${lines.join("\n")}\n` : "";

@@ -5701,6 +5701,7 @@ export async function handleChatCore({
       servedProviderInstanceId: servedIdentity?.providerInstanceId || null,
       connectionId: credentials?.connectionId ?? null,
       accounting,
+      executionAttempts: getSseExecutionAttempts(),
       fallbackAttempts: Math.max(0, executionAttemptTotal - 1),
       compressionResponseMeta,
       comboStrategy,

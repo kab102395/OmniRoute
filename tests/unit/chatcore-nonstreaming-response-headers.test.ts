@@ -78,6 +78,22 @@ test("meta receives the recorded additional upstream attempt count", () => {
   assert.equal(metaCalls[0].meta.fallbackAttempts, 2);
 });
 
+test("meta carries bounded upstream attempts into the response metadata contract", () => {
+  const { deps, metaCalls } = makeDeps();
+  const attempts = [
+    {
+      index: 1,
+      executorIndex: 2,
+      statusCode: 429,
+      outcome: "response",
+      providerRequestId: "generation-1",
+      routeModel: "vendor/model",
+    },
+  ];
+  buildNonStreamingResponseHeaders(baseArgs({ executionAttempts: attempts }), deps);
+  assert.deepEqual(metaCalls[0].meta.executionAttempts, attempts);
+});
+
 test("meta preserves public served identity separately from node and connection IDs", () => {
   const { deps, metaCalls } = makeDeps();
   buildNonStreamingResponseHeaders(
