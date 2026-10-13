@@ -153,6 +153,53 @@ test("model sync route stores the real provider while keeping the account label"
   }
 });
 
+test("OpenRouter free-only sync imports current exact free routes without redundant zero prices", async () => {
+  await resetStorage();
+
+  const connection = await providersDb.createProviderConnection({
+    provider: "openrouter",
+    authType: "apikey",
+    name: "Free Routes",
+    apiKey: "test-key",
+    providerSpecificData: { importFreeModelsOnly: true },
+  });
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("__readiness_probe__")) return new Response(null, { status: 404 });
+    assert.equal(
+      String(url),
+      `http://127.0.0.1:20128/api/providers/${connection.id}/models?refresh=true&excludeCustom=true`
+    );
+    return Response.json({
+      source: "api",
+      models: [
+        { id: "vendor/coder:free", name: "Vendor Coder Free" },
+        {
+          id: "vendor/coder",
+          name: "Vendor Coder Paid",
+          pricing: { prompt: "0.000001", completion: "0.000002" },
+        },
+      ],
+    });
+  };
+
+  const response = await modelSyncRoute.POST(
+    new Request(`http://localhost/api/providers/${connection.id}/sync-models`, {
+      method: "POST",
+      headers: scheduler.buildModelSyncInternalHeaders(),
+    }),
+    { params: { id: connection.id } }
+  );
+
+  assert.equal(response.status, 200);
+  const synced = await modelsDb.getSyncedAvailableModelsForConnection("openrouter", connection.id);
+  assert.deepEqual(
+    synced.map((model) => model.id),
+    ["vendor/coder:free"],
+    "fresh OpenRouter free variants must be importable without a numeric-zero pricing field"
+  );
+});
+
 test("model sync route requires authentication for external requests when auth is enabled", async () => {
   await resetStorage();
   await enableAuth();
