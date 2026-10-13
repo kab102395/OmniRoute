@@ -66,7 +66,9 @@ export function classifyModalCostAccounting(args: {
     return { kind: "unknown", amountUsd: null, ...common, currency: null };
   }
   return {
-    kind: args.costUsd === 0 ? "zero_cost" : "estimated_cost",
+    // Modal routes currently have no common provider-reported billing receipt;
+    // a local $0 calculation is still an estimate, not verified zero-cost use.
+    kind: "estimated_cost",
     amountUsd: args.costUsd,
     ...common,
   };

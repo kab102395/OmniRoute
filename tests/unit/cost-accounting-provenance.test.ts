@@ -186,7 +186,7 @@ test("an exact provider-reported charge does not imply provider-reported token u
   assert.equal(xaiCostOnly.usageKind, "unknown");
 });
 
-test("modal cost accounting distinguishes unknown pricing from an explicitly zero rate", () => {
+test("modal cost accounting distinguishes unknown pricing from a zero-value estimate", () => {
   const pricingEvidence = {
     source: "modelsDev" as const,
     modelId: "image-model",
@@ -222,7 +222,16 @@ test("modal cost accounting distinguishes unknown pricing from an explicitly zer
       costUsd: 0,
       pricingEvidence,
     }).kind,
-    "zero_cost"
+    "estimated_cost"
+  );
+  assert.equal(
+    classifyModalCostAccounting({
+      provider: "image-provider",
+      model: "image-model",
+      costUsd: 0,
+      pricingEvidence,
+    }).amountUsd,
+    0
   );
 });
 
