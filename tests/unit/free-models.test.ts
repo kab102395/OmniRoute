@@ -27,8 +27,13 @@ test("isFreeModel: catalog membership works when called with the provider alias"
   assert.equal(isFreeModel("ollamacloud", { id: "deepseek-v4-pro" }), true);
 });
 
-test("isFreeModel: route suffix alone is not free evidence", () => {
+test("isFreeModel: OpenRouter needs current classification; route suffix alone is not evidence", () => {
   assert.equal(isFreeModel("openrouter", { id: "deepseek/deepseek-r1:free" }), false);
+  assert.equal(
+    isFreeModel("openrouter", { id: "liquid/lfm-2.5-2.6b:free" }),
+    false,
+    "a stale OpenRouter budget-catalog row cannot keep a rotated route eligible"
+  );
   assert.equal(
     isFreeModel("openrouter", { id: "deepseek/deepseek-r1:free", isFree: true }),
     true,

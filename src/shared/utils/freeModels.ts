@@ -32,8 +32,10 @@ import { AI_MODELS } from "@/shared/constants/models";
  * documented free-tier catalog (`FREE_MODEL_BUDGETS`). A single model is
  * considered free when its provider-specific caller attaches an authoritative
  * `isFree` classification, both prompt and completion prices are explicitly
- * zero, or its id is listed in the curated free model catalog. Route naming
- * alone is not pricing evidence.
+ * zero, or its id is listed in the curated free model catalog. OpenRouter is
+ * the exception: its route-level free catalog rotates, so static budget-catalog
+ * membership is never sufficient for eligibility. Route naming alone is not
+ * pricing evidence.
  *
  * The catalog also records the regime of every entry via `freeType`
  * (`FreeModelFreeType`). A regime can retire a free tier behind a paid key
@@ -101,6 +103,9 @@ export function isFreeModel(provider: string, model: FreeModelCandidate): boolea
   }
   if (typeof model.id === "string") {
     const canonical = resolveProviderId(provider);
+    // OpenRouter free variants rotate upstream. Only a caller with current catalog evidence may
+    // attach isFree=true; a historical budget row must not preserve route eligibility forever.
+    if (canonical === "openrouter") return false;
     if (
       FREE_MODEL_IDS_BY_PROVIDER.get(provider)?.has(model.id) ||
       FREE_MODEL_IDS_BY_PROVIDER.get(canonical)?.has(model.id)
