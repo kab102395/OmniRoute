@@ -1,3 +1,5 @@
+import { parseUsdTicks } from "@/lib/usage/usdDecimal";
+
 /**
  * Extract usage from non-streaming response body
  * Handles different provider response formats
@@ -75,8 +77,7 @@ export function extractUsageFromResponse(responseBody, provider) {
       // (Codex, DeepSeek, etc.) is unaffected. Ticks → USD conversion happens in
       // costCalculator.ts, not here.
       ...(typeof responseBody.usage.cost_in_usd_ticks === "number" &&
-      Number.isFinite(responseBody.usage.cost_in_usd_ticks) &&
-      responseBody.usage.cost_in_usd_ticks >= 0
+      parseUsdTicks(responseBody.usage.cost_in_usd_ticks)
         ? { cost_in_usd_ticks: responseBody.usage.cost_in_usd_ticks }
         : {}),
       ...(providerId === "openrouter" &&

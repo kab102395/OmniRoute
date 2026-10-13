@@ -12,6 +12,7 @@ import {
 } from "@/lib/usage/tokenAccounting";
 import { FORMATS } from "../translator/formats.ts";
 import { pickCacheCreationTokens } from "./pickCacheCreationTokens.ts";
+import { parseUsdTicks } from "@/lib/usage/usdDecimal";
 
 export { pickCacheCreationTokens };
 
@@ -631,11 +632,7 @@ export function normalizeUsage(usage: UsageLike | null | undefined) {
   // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A —
   // @ryanngit). Ticks → USD conversion happens in costCalculator.ts, not here.
   const exactCostTicks = usage?.cost_in_usd_ticks;
-  if (
-    typeof exactCostTicks === "number" &&
-    Number.isFinite(exactCostTicks) &&
-    exactCostTicks >= 0
-  ) {
+  if (typeof exactCostTicks === "number" && parseUsdTicks(exactCostTicks)) {
     normalized.cost_in_usd_ticks = exactCostTicks;
   }
   const reportedCost = usage?.provider_reported_cost_usd;

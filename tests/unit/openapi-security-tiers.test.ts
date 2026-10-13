@@ -138,6 +138,7 @@ test("call-log detail contract exposes persisted execution attempt accounting", 
     "zero_cost",
     "pending",
   ]);
+  assert.equal(accounting?.properties?.amountUsdExact?.type, "string");
   assert.equal(accounting?.properties?.amountUsd?.nullable, true);
   assert.match(
     completionOperation?.responses?.["200"]?.headers?.["X-OmniRoute-Request-Id"]?.description ?? "",

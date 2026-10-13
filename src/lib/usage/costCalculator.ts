@@ -9,6 +9,7 @@
 
 import { toNumber } from "@/shared/utils/numeric";
 import { getDeepseekPricingEvidence } from "@/lib/catalog/deepseekPricing";
+import { parseUsdTicks } from "./usdDecimal";
 import { isFlatRateProvider } from "./flatRateProviders";
 
 /**
@@ -71,8 +72,6 @@ export type ModalCostAssessment = {
  * NOTE: this divisor is intentionally 1e10, not the 1e12 used by the upstream PR
  * (which under-reports cost 100x) — verified directly against the xAI docs.
  */
-const USD_TICKS_PER_DOLLAR = 10_000_000_000;
-
 /**
  * Extract a provider-reported USD amount from a usage record when one is present,
  * so callers can preserve it instead of substituting a local price-table estimate.
@@ -84,9 +83,8 @@ function extractExactCostUsd(
   provider?: string | null
 ): number | null {
   const ticks = tokens?.cost_in_usd_ticks;
-  if (typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0) {
-    return ticks / USD_TICKS_PER_DOLLAR;
-  }
+  const tickAmount = parseUsdTicks(ticks);
+  if (tickAmount) return tickAmount.amountUsd;
   const reportedCost = tokens?.provider_reported_cost_usd;
   if (
     provider?.toLowerCase() === "openrouter" &&

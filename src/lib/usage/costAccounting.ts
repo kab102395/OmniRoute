@@ -4,12 +4,16 @@
  * effective date/version and they are not provider invoices.
  */
 
+import { parseUsdTicks } from "./usdDecimal";
+
 export type CostAccountingKind =
   "provider_reported_billed_cost" | "estimated_cost" | "usage_only" | "unknown" | "zero_cost";
 
 export type CostAccountingFacts = {
   kind: CostAccountingKind;
   amountUsd: number | null;
+  /** Exact decimal charge when supplied as integer USD ticks by the provider. */
+  amountUsdExact?: string;
   currency: "USD" | null;
   source: string | null;
   pricingProvider: string | null;
@@ -121,11 +125,13 @@ export function classifyCostAccounting(args: {
     pricingCondition: null as string | null,
   };
 
-  if (typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0) {
-    const amountUsd = ticks / 10_000_000_000;
+  const tickAmount = parseUsdTicks(ticks);
+  if (tickAmount) {
+    const amountUsd = tickAmount.amountUsd;
     return {
       kind: amountUsd === 0 ? "zero_cost" : "provider_reported_billed_cost",
       amountUsd,
+      amountUsdExact: tickAmount.amountUsdExact,
       currency: "USD",
       source: "provider_usage.cost_in_usd_ticks",
       ...identity,

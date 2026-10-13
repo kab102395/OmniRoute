@@ -13860,6 +13860,9 @@ components:
           type: number
           nullable: true
           description: Provider-reported charge or OmniRoute estimate, as identified by kind/source.
+        amountUsdExact:
+          type: string
+          description: Exact decimal USD amount when the provider reports integer USD ticks.
         currency:
           type: string
           enum: [USD]

@@ -455,11 +455,17 @@ function serializeAccounting(value: unknown): string | null {
     typeof accounting.amountUsd === "number" && Number.isFinite(accounting.amountUsd)
       ? accounting.amountUsd
       : null;
+  const amountUsdExact =
+    typeof accounting.amountUsdExact === "string" &&
+    /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(accounting.amountUsdExact)
+      ? accounting.amountUsdExact.slice(0, 64)
+      : null;
   const optionalString = (key: string) =>
     typeof accounting[key] === "string" ? (accounting[key] as string).slice(0, 256) : null;
   return JSON.stringify({
     kind: accounting.kind,
     amountUsd,
+    ...(amountUsdExact !== null ? { amountUsdExact } : {}),
     currency: accounting.currency === "USD" ? "USD" : null,
     source: optionalString("source"),
     pricingProvider: optionalString("pricingProvider"),

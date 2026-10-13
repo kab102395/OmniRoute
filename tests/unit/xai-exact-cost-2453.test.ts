@@ -21,6 +21,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateCost, computeCostFromPricing } from "../../src/lib/usage/costCalculator.ts";
 import { extractUsageFromResponse } from "../../open-sse/handlers/usageExtractor.ts";
+import { parseUsdTicks } from "../../src/lib/usage/usdDecimal.ts";
 import { extractUsage, normalizeUsage } from "../../open-sse/utils/usageTracking.ts";
 
 // $1/1M input, $2/1M output → 1M+1M tokens would estimate to $3 at the
@@ -38,10 +39,7 @@ test("computeCostFromPricing: xAI exact cost_in_usd_ticks overrides the token-ba
     ...TOKENS_1M_EACH,
     cost_in_usd_ticks: DOC_EXAMPLE_TICKS,
   });
-  assert.ok(
-    Math.abs(cost - DOC_EXAMPLE_USD) < 1e-9,
-    `expected ${DOC_EXAMPLE_USD}, got ${cost}`
-  );
+  assert.ok(Math.abs(cost - DOC_EXAMPLE_USD) < 1e-9, `expected ${DOC_EXAMPLE_USD}, got ${cost}`);
   assert.notEqual(cost, 3, "must not fall back to the $3 token-based estimate");
 });
 
@@ -91,15 +89,28 @@ test("normalizeUsage: drops a non-finite cost_in_usd_ticks", () => {
   assert.equal(normalized.cost_in_usd_ticks, undefined);
 });
 
-test("normalizeUsage: rejects null, empty, and negative exact costs", () => {
-  for (const value of [null, "", -1]) {
+test("normalizeUsage: rejects null, empty, negative, fractional, and unsafe exact costs", () => {
+  for (const value of [null, "", -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     const normalized = normalizeUsage({ prompt_tokens: 10, cost_in_usd_ticks: value });
     assert.equal(normalized.cost_in_usd_ticks, undefined, `unexpected exact cost for ${value}`);
   }
 });
 
+test("USD ticks preserve exact decimal amounts and reject fractional or unsafe tick counts", () => {
+  assert.deepEqual(parseUsdTicks(37_756_000), {
+    amountUsd: 0.0037756,
+    amountUsdExact: "0.0037756",
+  });
+  assert.deepEqual(parseUsdTicks(10_000_000_000), {
+    amountUsd: 1,
+    amountUsdExact: "1",
+  });
+  assert.equal(parseUsdTicks(1.5), null);
+  assert.equal(parseUsdTicks(Number.MAX_SAFE_INTEGER + 1), null);
+});
+
 test("extractUsageFromResponse: rejects malformed exact cost values", () => {
-  for (const value of [null, "", -1]) {
+  for (const value of [null, "", -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     const usage = extractUsageFromResponse(
       {
         usage: {

@@ -236,6 +236,50 @@ test("compact execution receipts do not enable provider payload capture", async 
   assert.equal("clientResponse" in pipelinePayloads, false);
 });
 
+test("persists exact provider-reported USD ticks in the public call-log receipt", async () => {
+  const id = "attempt-accounting-exact-usd-ticks";
+  persistAttemptLogs(
+    {
+      status: 200,
+      tokens: { prompt_tokens: 1, completion_tokens: 1, cost_in_usd_ticks: 37_756_000 },
+      accounting: {
+        kind: "provider_reported_billed_cost",
+        amountUsd: 0.0037756,
+        amountUsdExact: "0.0037756",
+        currency: "USD",
+        source: "provider_usage.cost_in_usd_ticks",
+        pricingProvider: "xai",
+        pricingModel: "grok-model",
+        pricingVersion: null,
+        pricingEffectiveAt: null,
+        pricingRetrievedAt: null,
+        pricingStale: null,
+        pricingCondition: null,
+        usageKind: "provider_reported_usage",
+      },
+    },
+    baseCtx({
+      pendingRequestId: id,
+      getExecutionAttempts: () => [
+        { index: 1, statusCode: 200, outcome: "response", costAttribution: "unknown" },
+      ],
+    })
+  );
+
+  const row = await pollForCallLog(id);
+  assert.ok(row);
+  const detailResponse = await callLogDetailRoute.GET(
+    new Request(`http://localhost/api/usage/call-logs/${id}`),
+    { params: Promise.resolve({ id }) }
+  );
+  assert.equal(detailResponse.status, 200);
+  const detail = (await detailResponse.json()) as {
+    pipelinePayloads?: { executionAttempts?: Array<Record<string, unknown>> };
+  };
+  const receipt = detail.pipelinePayloads?.executionAttempts?.[0];
+  assert.equal((receipt?.accounting as { amountUsdExact?: string })?.amountUsdExact, "0.0037756");
+});
+
 test("uses final credentials connectionId when Codex failover rotates the account", async () => {
   const id = "attempt-codex-rotation-1";
   persistAttemptLogs(

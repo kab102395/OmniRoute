@@ -257,6 +257,7 @@ test("an exact provider-reported charge does not imply provider-reported token u
   });
   assert.equal(xaiCostOnly.kind, "provider_reported_billed_cost");
   assert.equal(xaiCostOnly.usageKind, "unknown");
+  assert.equal(xaiCostOnly.amountUsdExact, "0.0042");
 });
 
 test("modal cost accounting distinguishes unknown pricing from a zero-value estimate", () => {
