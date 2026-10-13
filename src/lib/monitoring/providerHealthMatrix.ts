@@ -9,7 +9,7 @@ import { getWebSessionPoolHealth } from "@omniroute/open-sse/services/webSession
 type JsonRecord = Record<string, unknown>;
 
 export type ProviderHealthMatrixRange = "1h" | "24h" | "7d" | "30d";
-export type ProviderHealthState = "healthy" | "degraded" | "down";
+export type ProviderHealthState = "healthy" | "degraded" | "down" | "unknown";
 export type ProviderModelHealthStatus = "healthy" | "degraded" | "error" | "locked" | "idle";
 
 export interface ProviderHealthMatrixOptions {
@@ -54,7 +54,7 @@ export interface ProviderHealthMatrixAccount {
 export interface ProviderHealthMatrixProvider {
   provider: string;
   state: ProviderHealthState;
-  score: number;
+  score: number | null;
   circuitBreaker: {
     state: string;
     failureCount: number;
@@ -90,6 +90,7 @@ export interface ProviderHealthMatrixResponse {
     healthyCount: number;
     degradedCount: number;
     downCount: number;
+    unknownCount: number;
   };
   providers: ProviderHealthMatrixProvider[];
   webSessionPools: {
@@ -328,9 +329,18 @@ function classifyAccount(
     const cooldownUntil = parseTimeMs(connection.rateLimitedUntil);
     if (cooldownUntil && cooldownUntil > now) return "degraded";
   }
-  if (models.some((model) => model.status === "error" || model.status === "locked")) {
+  if (
+    models.some(
+      (model) =>
+        model.status === "degraded" || model.status === "error" || model.status === "locked"
+    )
+  ) {
     return "degraded";
   }
+  const hasRecentModelEvidence = models.some((model) => model.requests > 0);
+  const hasSuccessfulConnectionCheck =
+    connection?.testStatus === "active" || connection?.testStatus === "success";
+  if (!hasRecentModelEvidence && !hasSuccessfulConnectionCheck) return "unknown";
   return "healthy";
 }
 
@@ -340,7 +350,9 @@ function classifyProvider(
 ): ProviderHealthState {
   if (breaker?.state === "OPEN") return "down";
   if (breaker?.state === "HALF_OPEN") return "degraded";
+  if (accounts.length === 0) return "unknown";
   if (accounts.length > 0 && accounts.every((account) => account.state === "down")) return "down";
+  if (accounts.every((account) => account.state === "unknown")) return "unknown";
   if (accounts.some((account) => account.state !== "healthy")) return "degraded";
   return "healthy";
 }
@@ -513,7 +525,7 @@ export async function buildProviderHealthMatrix(
       const cooldownRemainingMs = cooldownUntil ? Math.max(0, cooldownUntil - now) : 0;
       const state = classifyAccount(connection, models, now);
       const issueCount =
-        (state === "healthy" ? 0 : 1) +
+        (state === "degraded" || state === "down" ? 1 : 0) +
         models.filter((model) => model.status === "error" || model.status === "locked").length;
       accounts.push({
         connectionId,
@@ -543,7 +555,7 @@ export async function buildProviderHealthMatrix(
     );
     const state = classifyProvider(circuitBreaker, accounts);
     const issueCount =
-      (state === "healthy" ? 0 : 1) +
+      (state === "degraded" || state === "down" ? 1 : 0) +
       accounts.reduce((sum, account) => sum + account.issueCount, 0);
     const totalConnections = providerConnections.length;
     const activeConnections = providerConnections.filter((connection) =>
@@ -565,7 +577,8 @@ export async function buildProviderHealthMatrix(
     const providerRow: ProviderHealthMatrixProvider = {
       provider,
       state,
-      score: Number(Math.max(0, Math.min(1, 1 - scorePenalty)).toFixed(2)),
+      score:
+        state === "unknown" ? null : Number(Math.max(0, Math.min(1, 1 - scorePenalty)).toFixed(2)),
       circuitBreaker,
       connections: {
         total: totalConnections,
@@ -616,6 +629,7 @@ export async function buildProviderHealthMatrix(
       healthyCount: providers.filter((provider) => provider.state === "healthy").length,
       degradedCount: providers.filter((provider) => provider.state === "degraded").length,
       downCount: providers.filter((provider) => provider.state === "down").length,
+      unknownCount: providers.filter((provider) => provider.state === "unknown").length,
     },
     providers,
     webSessionPools: {

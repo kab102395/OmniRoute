@@ -10716,7 +10716,8 @@ paths:
       summary: "GET providers › health matrix"
       description: >-
         Returns provider-level breaker health, account cooldown and terminal states, model
-        lockouts, and request outcomes for the selected observation window. This is an
+        lockouts, and request outcomes for the selected observation window. Providers and
+        accounts without positive health evidence are `unknown`, not healthy. This is an
         operational snapshot, not a guarantee that a future request will succeed. Requires
         management authentication when `requireLogin` is enabled. Management sessions and
         management-authorized bearer credentials are accepted.
@@ -13529,6 +13530,7 @@ components:
               healthyCount,
               degradedCount,
               downCount,
+              unknownCount,
             ]
           properties:
             providerCount: { type: integer }
@@ -13538,6 +13540,7 @@ components:
             healthyCount: { type: integer }
             degradedCount: { type: integer }
             downCount: { type: integer }
+            unknownCount: { type: integer }
         providers:
           type: array
           items:
@@ -13584,8 +13587,8 @@ components:
         - accounts
       properties:
         provider: { type: string }
-        state: { type: string, enum: [healthy, degraded, down] }
-        score: { type: number }
+        state: { type: string, enum: [healthy, degraded, down, unknown] }
+        score: { type: number, nullable: true, description: Null when there is no health evidence. }
         circuitBreaker:
           type: object
           nullable: true
@@ -13637,7 +13640,7 @@ components:
         label: { type: string }
         isSynthetic: { type: boolean }
         isActive: { type: boolean }
-        state: { type: string, enum: [healthy, degraded, down] }
+        state: { type: string, enum: [healthy, degraded, down, unknown] }
         testStatus: { type: string, nullable: true }
         rateLimitedUntil: { type: string, format: date-time, nullable: true }
         cooldownRemainingMs: { type: number }

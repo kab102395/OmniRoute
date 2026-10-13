@@ -185,6 +185,7 @@ test("provider health matrix documents account and model routing health", () => 
   const operation = paths["/api/providers/health-matrix"]?.get;
   assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }, { BearerAuth: [] }]);
   assert.match(operation?.description ?? "", /not a guarantee that a future request will succeed/i);
+  assert.match(operation?.description ?? "", /without positive health evidence are `unknown`/i);
   assert.deepEqual(
     operation?.parameters?.find((parameter: { name?: string }) => parameter.name === "range")
       ?.schema?.enum,
@@ -205,7 +206,24 @@ test("provider health matrix documents account and model routing health", () => 
   const providerSchema = raw.components?.schemas?.ProviderHealthMatrixProvider;
   const accountSchema = raw.components?.schemas?.ProviderHealthMatrixAccount;
   assert.equal(providerSchema?.properties?.circuitBreaker?.nullable, true);
+  assert.deepEqual(providerSchema?.properties?.state?.enum, [
+    "healthy",
+    "degraded",
+    "down",
+    "unknown",
+  ]);
+  assert.equal(providerSchema?.properties?.score?.nullable, true);
+  assert.ok(
+    raw.components?.schemas?.ProviderHealthMatrixResponse?.properties?.summary?.properties
+      ?.unknownCount
+  );
   assert.equal(providerSchema?.properties?.modelLockoutCount?.type, "integer");
+  assert.deepEqual(accountSchema?.properties?.state?.enum, [
+    "healthy",
+    "degraded",
+    "down",
+    "unknown",
+  ]);
   assert.equal(accountSchema?.properties?.rateLimitedUntil?.format, "date-time");
   assert.deepEqual(accountSchema?.properties?.models?.items?.properties?.status?.enum, [
     "healthy",

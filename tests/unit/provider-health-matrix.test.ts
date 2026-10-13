@@ -64,6 +64,61 @@ test.after(async () => {
   else process.env.INITIAL_PASSWORD = ORIGINAL_INITIAL_PASSWORD;
 });
 
+test("provider health matrix reports providers without account or traffic evidence as unknown", async () => {
+  const report = await matrix.buildProviderHealthMatrix({
+    provider: PROVIDER,
+    range: "24h",
+    includeHealthy: true,
+  });
+
+  assert.equal(report.providers.length, 1);
+  assert.equal(report.providers[0]?.state, "unknown");
+  assert.equal(report.providers[0]?.score, null);
+  assert.equal(report.summary.unknownCount, 1);
+  assert.equal(report.summary.healthyCount, 0);
+});
+
+test("active but unverified connections stay unknown until a successful check or request", async () => {
+  const connection = (await providersDb.createProviderConnection({
+    id: "matrix-unverified-connection",
+    provider: PROVIDER,
+    authType: "apikey",
+    name: "matrix-unverified-key",
+    apiKey: "test-key",
+    isActive: true,
+  })) as Record<string, unknown>;
+  const connectionId = String(connection.id);
+
+  const unknownReport = await matrix.buildProviderHealthMatrix({
+    provider: PROVIDER,
+    range: "24h",
+    includeHealthy: true,
+  });
+  assert.equal(unknownReport.providers[0]?.state, "unknown");
+  assert.equal(unknownReport.providers[0]?.accounts[0]?.state, "unknown");
+  assert.equal(unknownReport.providers[0]?.score, null);
+  assert.equal(unknownReport.summary.unknownCount, 1);
+
+  await callLogs.saveCallLog({
+    id: "matrix-unverified-success",
+    timestamp: new Date().toISOString(),
+    status: 200,
+    provider: PROVIDER,
+    connectionId,
+    model: "matrix-observed-model",
+    duration: 100,
+  });
+  const verifiedReport = await matrix.buildProviderHealthMatrix({
+    provider: PROVIDER,
+    range: "24h",
+    includeHealthy: true,
+  });
+  assert.equal(verifiedReport.providers[0]?.state, "healthy");
+  assert.equal(verifiedReport.providers[0]?.accounts[0]?.state, "healthy");
+  assert.equal(typeof verifiedReport.providers[0]?.score, "number");
+  assert.equal(verifiedReport.summary.unknownCount, 0);
+});
+
 test("provider health matrix combines connections, synced models, logs and lockouts", async () => {
   const connection = (await providersDb.createProviderConnection({
     id: "matrix-connection",
@@ -248,6 +303,7 @@ test("provider health matrix treats recovered models as degraded instead of erro
   assert.equal(model.lastErrorStatus, 503);
   assert.equal(model.successRate, 50);
   assert.equal(model.status, "degraded");
+  assert.equal(report.providers[0]?.accounts[0]?.state, "degraded");
 });
 
 test("provider health matrix route requires management auth", async () => {

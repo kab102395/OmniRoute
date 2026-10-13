@@ -8,7 +8,7 @@ import { Card } from "@/shared/components";
 import { getProviderDisplayName } from "@/lib/display/names";
 import { cn } from "@/shared/utils/cn";
 
-type HealthState = "healthy" | "degraded" | "down";
+type HealthState = "healthy" | "degraded" | "down" | "unknown";
 type ModelStatus = "healthy" | "degraded" | "error" | "locked" | "idle";
 type RangeValue = "1h" | "24h" | "7d" | "30d";
 
@@ -47,7 +47,7 @@ type HealthMatrixAccount = {
 type HealthMatrixProvider = {
   provider: string;
   state: HealthState;
-  score: number;
+  score: number | null;
   circuitBreaker: {
     state: string;
     failureCount: number;
@@ -82,6 +82,7 @@ type HealthMatrixResponse = {
     healthyCount: number;
     degradedCount: number;
     downCount: number;
+    unknownCount: number;
   };
   providers: HealthMatrixProvider[];
 };
@@ -129,6 +130,7 @@ function formatDate(
 function stateVariant(state: HealthState) {
   if (state === "healthy") return "success" as const;
   if (state === "degraded") return "warning" as const;
+  if (state === "unknown") return "default" as const;
   return "error" as const;
 }
 
@@ -387,7 +389,7 @@ export default function ProviderHealthMatrixCard() {
       </div>
 
       {data ? (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-7">
           <Metric
             label={healthText(t, "providers", "Providers")}
             value={data.summary.providerCount}
@@ -403,6 +405,7 @@ export default function ProviderHealthMatrixCard() {
             value={data.summary.degradedCount}
           />
           <Metric label={healthText(t, "down", "Down")} value={data.summary.downCount} />
+          <Metric label={healthText(t, "unknown", "Unknown")} value={data.summary.unknownCount} />
         </div>
       ) : null}
 
@@ -515,7 +518,11 @@ export default function ProviderHealthMatrixCard() {
                   <div className="grid gap-3 lg:grid-cols-4">
                     <Metric
                       label={healthText(t, "score", "Score")}
-                      value={`${Math.round(provider.score * 100)}%`}
+                      value={
+                        provider.score === null
+                          ? healthText(t, "notAvailable", "n/a")
+                          : `${Math.round(provider.score * 100)}%`
+                      }
                     />
                     <Metric
                       label={healthText(t, "lastRequest", "Last request")}
