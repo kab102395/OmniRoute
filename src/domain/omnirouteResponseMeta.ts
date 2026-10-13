@@ -124,7 +124,7 @@ export function buildOmniRouteDecisionHeaderValue({
 
 export function buildOmniRouteResponseMetaHeaders({
   cacheHit = false,
-  costUsd = 0,
+  costUsd = undefined,
   costSavedUsd = undefined,
   fallbackAttempts = 0,
   latencyMs = 0,
@@ -182,7 +182,13 @@ export function buildOmniRouteResponseMetaHeaders({
   ttftMs?: number | null;
 }): Record<string, string> {
   const tokens = getOmniRouteTokenCounts(usage);
-  const formattedCost = formatOmniRouteCost(costUsd);
+  // Legacy callers may pass `0` when the amount is unknown, usage-only, or still
+  // pending. Preserve accounting state as the authority and never serialize those
+  // states as numeric zero that downstream budget consumers could mistake for free.
+  const amountIsUnestablished = ["unknown", "usage_only", "pending"].includes(
+    accounting?.kind || ""
+  );
+  const formattedCost = amountIsUnestablished ? null : formatOmniRouteCost(costUsd);
   const headers: Record<string, string> = {
     [OMNIROUTE_RESPONSE_HEADERS.cacheHit]: toHeaderValue(String(cacheHit)),
     [OMNIROUTE_RESPONSE_HEADERS.latencyMs]: toHeaderValue(String(toNonNegativeInteger(latencyMs))),

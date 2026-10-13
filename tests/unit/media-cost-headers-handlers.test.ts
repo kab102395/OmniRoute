@@ -63,30 +63,27 @@ test("v1 video generation failure preserves provider status and error payload", 
 
 // Shared assertions: every successful media Response must carry the
 // X-OmniRoute-* cost telemetry headers (parity with chat/embeddings).
-// Cost may legitimately be 0 (free / unpriced modality) — formatOmniRouteCost
-// still emits a fixed-10-decimal string ("0.0000000000"), so the format check
-// holds regardless.
+// Known cost amounts use fixed-10-decimal strings. Unknown costs omit the amount
+// instead of using numeric zero as a compatibility placeholder.
 function assertCostTelemetryHeaders(response: Response, accountingExpected = false) {
   assert.equal(response.status, 200);
 
   const cost = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost);
-  assert.ok(cost, "response cost header must be present");
-  assert.match(
-    cost as string,
-    /^\d+\.\d{10}$/,
-    `cost header must be a fixed-10-decimal number, got: ${cost}`
-  );
 
   const version = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.version);
   assert.ok(version && version.trim().length > 0, "version header must be non-empty");
 
   const provider = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.provider);
   assert.ok(provider && provider.trim().length > 0, "provider header must be present");
+  const accountingKind = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind);
+  if (accountingKind === "unknown") {
+    assert.equal(cost, null, "unknown pricing must not be represented by a numeric amount");
+  } else if (cost !== null) {
+    assert.match(cost, /^\d+\.\d{10}$/);
+  }
   if (accountingExpected) {
     assert.ok(
-      ["unknown", "estimated_cost", "zero_cost"].includes(
-        response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind) || ""
-      ),
+      ["unknown", "estimated_cost", "zero_cost"].includes(accountingKind || ""),
       "cost accounting kind must distinguish estimates, verified zero, and unknown pricing"
     );
   }
@@ -209,8 +206,8 @@ test("moderation handler success Response marks unavailable provider billing as 
   assertCostTelemetryHeaders(response);
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost),
-    "0.0000000000",
-    "legacy numeric cost header remains compatible"
+    null,
+    "unknown provider billing must omit the numeric cost amount"
   );
   assert.equal(response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind), "unknown");
 });
@@ -273,7 +270,7 @@ test("v1 audio transcription success marks unavailable billable duration as unkn
   assertCostTelemetryHeaders(response, true);
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost),
-    "0.0000000000",
-    "legacy numeric cost header remains compatible"
+    null,
+    "unknown billable duration must omit the numeric cost amount"
   );
 });

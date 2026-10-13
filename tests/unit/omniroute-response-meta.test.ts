@@ -66,6 +66,35 @@ test("cost metadata preserves explicit zero and omits missing or malformed amoun
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.costSaved], undefined);
 });
 
+test("unknown accounting omits legacy zero cost while verified zero remains explicit", () => {
+  const unknown = buildOmniRouteResponseMetaHeaders({
+    costUsd: 0,
+    accounting: { kind: "unknown", currency: null, usageKind: "unknown" },
+  });
+  assert.equal(unknown[OMNIROUTE_RESPONSE_HEADERS.responseCost], undefined);
+  assert.equal(unknown[OMNIROUTE_RESPONSE_HEADERS.accountingKind], "unknown");
+
+  const verifiedZero = buildOmniRouteResponseMetaHeaders({
+    costUsd: 0,
+    accounting: { kind: "zero_cost", currency: "USD", usageKind: "provider_reported_usage" },
+  });
+  assert.equal(verifiedZero[OMNIROUTE_RESPONSE_HEADERS.responseCost], "0.0000000000");
+  assert.equal(verifiedZero[OMNIROUTE_RESPONSE_HEADERS.accountingKind], "zero_cost");
+
+  for (const kind of ["usage_only", "pending"]) {
+    const unpriced = buildOmniRouteResponseMetaHeaders({
+      costUsd: 0,
+      accounting: { kind, currency: null, usageKind: "unknown" },
+    });
+    assert.equal(unpriced[OMNIROUTE_RESPONSE_HEADERS.responseCost], undefined);
+  }
+});
+
+test("response metadata does not invent a zero amount when the caller has no cost fact", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({ fallbackAttempts: 1 });
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.responseCost], undefined);
+});
+
 test("response metadata exposes additional upstream attempts", () => {
   const headers = buildOmniRouteResponseMetaHeaders({ fallbackAttempts: 2 });
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.fallbackAttempts], "2");

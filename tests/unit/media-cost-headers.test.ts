@@ -45,12 +45,16 @@ function assertCostTelemetryHeaders(response: Response) {
   assert.equal(response.status, 200);
 
   const cost = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.responseCost);
-  assert.ok(cost, "response cost header must be present");
-  assert.match(
-    cost as string,
-    /^\d+\.\d{10}$/,
-    `cost header must be a fixed-10-decimal number, got: ${cost}`
-  );
+  if (response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind) === "unknown") {
+    assert.equal(cost, null, "unknown pricing must not be represented by a numeric amount");
+  } else {
+    assert.ok(cost, "known cost amount must be present");
+    assert.match(
+      cost as string,
+      /^\d+\.\d{10}$/,
+      `cost header must be a fixed-10-decimal number, got: ${cost}`
+    );
+  }
 
   const version = response.headers.get(OMNIROUTE_RESPONSE_HEADERS.version);
   assert.ok(version && version.trim().length > 0, "version header must be non-empty");
@@ -60,7 +64,7 @@ function assertCostTelemetryHeaders(response: Response) {
   assert.equal(
     response.headers.get(OMNIROUTE_RESPONSE_HEADERS.accountingKind),
     "unknown",
-    "missing modality pricing must not be presented as verified zero cost"
+    "missing modality pricing must remain explicitly unknown"
   );
 }
 
