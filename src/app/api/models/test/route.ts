@@ -5,6 +5,8 @@ import { DEFAULT_MODEL_TEST_TIMEOUT_MS, runSingleModelTest } from "@/lib/api/mod
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
 import { getSettings } from "@/lib/db/settings";
 import { isFreeModel, providerHasFreeModels } from "@/shared/utils/freeModels";
+import { resolveProviderId } from "@/shared/constants/providers";
+import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
 
 const testModelSchema = z.object({
   providerId: z.string().min(1),
@@ -49,9 +51,15 @@ export async function POST(request: Request) {
       const settings = await getSettings();
       hidePaid = settings?.hidePaidModels === true;
     } catch {}
+    const currentOpenRouterFreeRoutes =
+      hidePaid && resolveProviderId(providerId) === "openrouter"
+        ? await getCurrentOpenRouterFreeRouteIds()
+        : null;
     if (
       hidePaid &&
-      !(providerHasFreeModels(providerId) && isFreeModel(providerId, { id: modelId }))
+      !(resolveProviderId(providerId) === "openrouter"
+        ? currentOpenRouterFreeRoutes?.has(modelId) === true
+        : providerHasFreeModels(providerId) && isFreeModel(providerId, { id: modelId }))
     ) {
       return NextResponse.json(
         {

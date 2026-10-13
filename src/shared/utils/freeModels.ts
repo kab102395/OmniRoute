@@ -30,9 +30,10 @@ import { AI_MODELS } from "@/shared/constants/models";
  *
  * A provider is considered to "have free models" when it appears in the
  * documented free-tier catalog (`FREE_MODEL_BUDGETS`). A single model is
- * considered free when its id carries the OpenRouter-style `:free` suffix, when
- * both its prompt and completion prices are zero, or when its id is listed as a
- * free model for that provider in the catalog.
+ * considered free when its provider-specific caller attaches an authoritative
+ * `isFree` classification, both prompt and completion prices are explicitly
+ * zero, or its id is listed in the curated free model catalog. Route naming
+ * alone is not pricing evidence.
  *
  * The catalog also records the regime of every entry via `freeType`
  * (`FreeModelFreeType`). A regime can retire a free tier behind a paid key
@@ -85,7 +86,6 @@ export interface FreeModelCandidate {
 /** Whether a single fetched model qualifies as free for the given provider (id or alias). */
 export function isFreeModel(provider: string, model: FreeModelCandidate): boolean {
   if (model.isFree === true) return true;
-  if (typeof model.id === "string" && model.id.endsWith(":free")) return true;
   if (isZeroPrice(model.pricing?.prompt) && isZeroPrice(model.pricing?.completion)) return true;
   if (typeof model.id === "string") {
     const canonical = resolveProviderId(provider);

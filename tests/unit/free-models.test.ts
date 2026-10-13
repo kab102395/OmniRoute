@@ -27,8 +27,13 @@ test("isFreeModel: catalog membership works when called with the provider alias"
   assert.equal(isFreeModel("ollamacloud", { id: "deepseek-v4-pro" }), true);
 });
 
-test("isFreeModel: model id ending in :free is free", () => {
-  assert.equal(isFreeModel("openrouter", { id: "deepseek/deepseek-r1:free" }), true);
+test("isFreeModel: route suffix alone is not free evidence", () => {
+  assert.equal(isFreeModel("openrouter", { id: "deepseek/deepseek-r1:free" }), false);
+  assert.equal(
+    isFreeModel("openrouter", { id: "deepseek/deepseek-r1:free", isFree: true }),
+    true,
+    "a fresh provider catalog caller can attach authoritative free classification"
+  );
 });
 
 test("isFreeModel: zero prompt+completion price is free", () => {
@@ -70,7 +75,7 @@ test("selectModelsForImport: passthrough when importFreeOnly is false", () => {
 
 test("selectModelsForImport: keeps only free models when importFreeOnly is true", () => {
   const models = [
-    { id: "free-one:free" },
+    { id: "free-one:free", isFree: true },
     { id: "paid-one", pricing: { prompt: "0.01", completion: "0.02" } },
     { id: "free-two", pricing: { prompt: "0", completion: "0" } },
   ];

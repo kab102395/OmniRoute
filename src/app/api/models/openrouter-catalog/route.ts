@@ -8,7 +8,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
-import { getOpenRouterCatalog, refreshOpenRouterCatalog } from "@/lib/catalog/openrouterCatalog";
+import {
+  getOpenRouterCatalog,
+  isOpenRouterFreeRoute,
+  refreshOpenRouterCatalog,
+} from "@/lib/catalog/openrouterCatalog";
 import { getSettings } from "@/lib/db/settings";
 import { isFreeModel } from "@/shared/utils/freeModels";
 
@@ -28,14 +32,24 @@ export async function GET(req: NextRequest) {
     const settings = await getSettings();
     hidePaid = settings?.hidePaidModels === true;
   } catch {}
-  const applyFilter = <T extends { id?: string }>(data: T[]): T[] =>
-    hidePaid ? data.filter((m) => isFreeModel("or", m as { id: string; pricing?: unknown })) : data;
+  const applyFilter = <T extends { id?: string }>(data: T[], verified: boolean): T[] => {
+    if (hidePaid && !verified) return [];
+    const classified = verified
+      ? data.map((model) => ({
+          ...model,
+          ...(typeof model.id === "string" ? { isFree: isOpenRouterFreeRoute(model.id) } : {}),
+        }))
+      : data;
+    return hidePaid
+      ? classified.filter((model) => isFreeModel("openrouter", model as { id: string }))
+      : classified;
+  };
 
   const forceRefresh = req.nextUrl.searchParams.get("refresh") === "true";
 
   if (forceRefresh) {
     const result = await refreshOpenRouterCatalog();
-    const data = applyFilter(result.data);
+    const data = applyFilter(result.data, result.ok);
     return NextResponse.json({
       object: "list",
       data,
@@ -48,7 +62,7 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await getOpenRouterCatalog();
-  const data = applyFilter(result.data);
+  const data = applyFilter(result.data, !result.stale);
   return NextResponse.json({
     object: "list",
     data,

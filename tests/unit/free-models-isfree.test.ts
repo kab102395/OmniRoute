@@ -22,8 +22,9 @@ describe("isFreeModel isFree opt-in", () => {
     assert.equal(providerHasFreeModels("local"), false);
     assert.equal(providerHasFreeModels("openai"), providerHasFreeModels("openai"));
   });
-  it(":free and pricing 0 still work when isFree absent", () => {
-    assert.equal(isFreeModel("any", { id: "foo:free" }), true);
+  it("route suffix alone is not free, while authoritative flags and zero prices work", () => {
+    assert.equal(isFreeModel("any", { id: "foo:free" }), false);
+    assert.equal(isFreeModel("any", { id: "foo:free", isFree: true }), true);
     assert.equal(isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 0 } }), true);
     assert.equal(isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 1 } }), false);
   });

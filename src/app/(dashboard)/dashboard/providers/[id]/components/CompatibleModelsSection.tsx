@@ -166,8 +166,6 @@ export default function CompatibleModelsSection({
         source,
         isFree:
           Boolean((model as any).free) ||
-          model.id.endsWith(":free") ||
-          /\bgr[aá]tis\b|\bfree\b/i.test(model.name || "") ||
           isFreeModel(providerStorageAlias, { id: model.id, isFree: (model as any).isFree }),
         isHidden: isModelHidden(model.id),
       });
@@ -202,9 +200,7 @@ export default function CompatibleModelsSection({
         displayName: displayAlias,
         source: customModel ? customModel.source || "custom" : "alias",
         isFree:
-          modelId.endsWith(":free") ||
           Boolean((customModel as any)?.free) ||
-          /\bgr[aá]tis\b|\bfree\b/i.test(customModel?.name || alias || "") ||
           isFreeModel(providerStorageAlias, { id: modelId, isFree: (customModel as any)?.isFree }),
         isHidden: isModelHidden(modelId),
       });

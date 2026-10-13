@@ -62,6 +62,23 @@ export function isOpenRouterFreeRoute(modelId: string): boolean {
   return /^[^\s]+:free$/.test(modelId);
 }
 
+/** Exact OpenRouter routes currently advertised as free, or null when unverified. */
+export async function getCurrentOpenRouterFreeRouteIds(): Promise<Set<string> | null> {
+  const catalog = await getOpenRouterCatalog();
+  if (catalog.stale) return null;
+  return new Set(
+    catalog.data
+      .filter((entry) => {
+        if (isOpenRouterFreeRoute(entry.id)) return true;
+        const isNumericZero = (value: unknown) =>
+          (typeof value === "number" && value === 0) ||
+          (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
+        return isNumericZero(entry.pricing?.prompt) && isNumericZero(entry.pricing?.completion);
+      })
+      .map((entry) => entry.id)
+  );
+}
+
 interface CacheFile {
   fetchedAt: string;
   data: OpenRouterCatalogEntry[];

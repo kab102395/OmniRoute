@@ -136,7 +136,7 @@ import {
   SYNCED_AVAILABLE_MODELS_MALFORMED,
   type SyncedAvailableModelsByConnection,
 } from "@/lib/db/models";
-import { isFreeModel } from "@/shared/utils/freeModels";
+import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
 import {
   applySessionAffinityPin,
   formatSessionKeyForLog,
@@ -318,14 +318,15 @@ function isTerminalConnectionStatus(connection: ProviderConnectionView): boolean
 function isTerminalConnectionStatusForModel(
   connection: ProviderConnectionView,
   provider: string,
-  requestedModel: string | null
+  requestedModel: string | null,
+  currentOpenRouterFreeRoute: boolean
 ): boolean {
   if (!isTerminalConnectionStatus(connection)) return false;
   if (
     provider === "openrouter" &&
     normalizeStatus(connection.testStatus) === "credits_exhausted" &&
     requestedModel &&
-    isFreeModel("openrouter", { id: requestedModel })
+    currentOpenRouterFreeRoute
   ) {
     return false;
   }
@@ -1179,6 +1180,7 @@ export async function getProviderCredentials(
     // No-auth providers (e.g. opencode) need no DB connection — return synthetic credentials
     // so the executor receives a valid credentials object without auth headers being added.
     const resolvedId = resolveProviderId(provider);
+    let currentOpenRouterFreeRoute = false;
     const providerMaps: Record<string, { noAuth?: boolean } | undefined>[] = [
       NOAUTH_PROVIDERS as Record<string, { noAuth?: boolean } | undefined>,
       WEB_COOKIE_PROVIDERS as Record<string, { noAuth?: boolean } | undefined>,
@@ -1255,6 +1257,14 @@ export async function getProviderCredentials(
     // allowedConnections: restrict to specific connection IDs (from API key policy, #363)
     if (allowedConnections && allowedConnections.length > 0) {
       connections = connections.filter((conn) => allowedConnections.includes(conn.id));
+    }
+    if (
+      resolvedId === "openrouter" &&
+      requestedModel &&
+      connections.some((conn) => normalizeStatus(conn.testStatus) === "credits_exhausted")
+    ) {
+      const currentFreeRoutes = await getCurrentOpenRouterFreeRouteIds();
+      currentOpenRouterFreeRoute = currentFreeRoutes?.has(requestedModel) === true;
     }
     const forcedConnectionEligible = connections.some((conn) => conn.id === forcedConnectionId);
     if (options.lease && forcedConnectionId && !forcedConnectionEligible) return null;
@@ -1480,7 +1490,14 @@ export async function getProviderCredentials(
           connectionFilterStatus.set(c.id, "rateLimited");
           return false;
         }
-        if (isTerminalConnectionStatusForModel(c, provider, requestedModel)) {
+        if (
+          isTerminalConnectionStatusForModel(
+            c,
+            provider,
+            requestedModel,
+            currentOpenRouterFreeRoute
+          )
+        ) {
           connectionFilterStatus.set(c.id, "terminalStatus");
           return false;
         }

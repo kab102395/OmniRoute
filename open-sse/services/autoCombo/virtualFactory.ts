@@ -31,7 +31,7 @@ import { buildFamilyCandidateFilter, type ModelFamily } from "./modelFamily";
 import { getHiddenModelsByProvider } from "@/models";
 import { getSyncedAvailableModelsByConnection, getCustomModels } from "@/lib/db/models";
 import { filterPaidOnlyCandidates } from "./paidModelFilter";
-import { getOpenRouterCatalog, isOpenRouterFreeRoute } from "@/lib/catalog/openrouterCatalog";
+import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
 import { filterModelExposureCandidates } from "./modelExposureFilter";
 import {
   filterSubscriptionOnlyCandidates,
@@ -738,20 +738,7 @@ export async function prepareVirtualAutoComboInputs(
   // hide-paid candidate.
   let currentOpenRouterFreeRoutes: Set<string> | undefined;
   if (settings.hidePaidModels === true && connectedProviders.has("openrouter")) {
-    const catalog = await getOpenRouterCatalog();
-    if (!catalog.stale) {
-      currentOpenRouterFreeRoutes = new Set(
-        catalog.data
-          .filter((entry) => {
-            if (isOpenRouterFreeRoute(entry.id)) return true;
-            const isNumericZero = (value: unknown) =>
-              (typeof value === "number" && value === 0) ||
-              (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
-            return isNumericZero(entry.pricing?.prompt) && isNumericZero(entry.pricing?.completion);
-          })
-          .map((entry) => entry.id)
-      );
-    }
+    currentOpenRouterFreeRoutes = (await getCurrentOpenRouterFreeRouteIds()) ?? undefined;
   }
   const buildPreparedPool = (bypassNoAuthAllowlist: boolean) => {
     let pool = [

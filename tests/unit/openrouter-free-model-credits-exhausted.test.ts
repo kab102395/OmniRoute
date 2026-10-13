@@ -31,6 +31,14 @@ async function resetStorage() {
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
+  fs.mkdirSync(path.join(TEST_DATA_DIR, "cache"), { recursive: true });
+  fs.writeFileSync(
+    path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json"),
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      data: [{ id: "meta-llama/llama-3.1-8b-instruct:free" }],
+    })
+  );
 }
 
 test.after(() => {

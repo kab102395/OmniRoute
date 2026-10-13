@@ -10,6 +10,7 @@ import {
   getResolvedModelCapabilities,
 } from "@/lib/modelCapabilities";
 import { isFreeModel, providerHasFreeModels } from "@/shared/utils/freeModels";
+import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
 import { getAllActiveSyncedModels } from "@/lib/db/models/activeSyncedCatalog";
 import { providerUsesExclusiveSyncedListing } from "@/lib/providers/modelListingCapability";
 import {
@@ -101,6 +102,7 @@ export async function handleGetModels(request: Request, dependencies: GetModelsD
       const settings = await getSettings();
       hidePaid = settings?.hidePaidModels === true;
     } catch {}
+    const currentOpenRouterFreeRoutes = hidePaid ? await getCurrentOpenRouterFreeRouteIds() : null;
 
     // Filter before capability resolution so unavailable/paid rows cannot trigger
     // needless capability work. One request-local snapshot supplies all persisted
@@ -109,7 +111,10 @@ export async function handleGetModels(request: Request, dependencies: GetModelsD
       if (!showAll && activeProviders && !activeProviders.has(model.provider)) return false;
       return (
         !hidePaid ||
-        (providerHasFreeModels(model.provider) && isFreeModel(model.provider, { id: model.model }))
+        (model.provider === "openrouter"
+          ? currentOpenRouterFreeRoutes?.has(model.model) === true
+          : providerHasFreeModels(model.provider) &&
+            isFreeModel(model.provider, { id: model.model }))
       );
     });
     const capabilitySnapshot = (
@@ -149,8 +154,7 @@ export async function handleGetModels(request: Request, dependencies: GetModelsD
         staticModelId: m.model,
         syncedModelIds: syncedForProvider ? [...syncedForProvider] : [],
       });
-      const available =
-        (!activeProviders || activeProviders.has(m.provider)) && !suppressedBySync;
+      const available = (!activeProviders || activeProviders.has(m.provider)) && !suppressedBySync;
       return {
         ...m,
         fullModel,

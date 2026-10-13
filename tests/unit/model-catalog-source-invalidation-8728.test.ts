@@ -233,6 +233,11 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
   assert.equal(firstRefresh.ok, true);
   const firstCatalog = await openRouterCatalog.getOpenRouterCatalog();
   assert.deepEqual(
+    [...(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds())!],
+    ["provider/new-free:free"],
+    "routing eligibility exposes the exact fresh free route"
+  );
+  assert.deepEqual(
     openRouterFreeModels
       .discoverOpenRouterFreeModels(
         firstCatalog.data,
@@ -246,6 +251,11 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
   const secondRefresh = await openRouterCatalog.refreshOpenRouterCatalog();
   assert.equal(secondRefresh.ok, true);
   const secondCatalog = await openRouterCatalog.getOpenRouterCatalog();
+  assert.deepEqual(
+    [...(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds())!],
+    ["provider/replacement:free"],
+    "a successful rotation immediately removes the previous route from eligibility"
+  );
   assert.deepEqual(
     openRouterFreeModels
       .discoverOpenRouterFreeModels(
@@ -284,6 +294,11 @@ test("OpenRouter catalog refreshes free routes within the bounded TTL and thrott
     assert.equal(staleFirstRead.stale, true);
     assert.equal(staleFirstRead.cacheTtlMs, 900_000);
     assert.equal(staleSecondRead.stale, true);
+    assert.equal(
+      await openRouterCatalog.getCurrentOpenRouterFreeRouteIds(),
+      null,
+      "stale display metadata cannot authorize a current free route"
+    );
     assert.equal(attempts, 1, "failed catalog fetch is throttled for the retry window");
   } finally {
     delete process.env.OPENROUTER_CATALOG_TTL_MS;
