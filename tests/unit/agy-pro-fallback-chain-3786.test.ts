@@ -103,6 +103,18 @@ test("execute retries pro-low with the next candidate when the first id 400s", a
 
     assert.equal(result.response.status, 200, "second candidate should succeed");
     assert.equal(payload.choices[0].message.content, "OK");
+    assert.deepEqual(
+      result.executionAttempts?.map(({ index, statusCode, routeModel }) => [
+        index,
+        statusCode,
+        routeModel,
+      ]),
+      [
+        [1, 400, "gemini-3.1-pro-low"],
+        [2, 200, "gemini-3-pro-low"],
+      ],
+      "both upstream model IDs must remain visible in the execution receipt"
+    );
     // Exactly two upstream calls: the 400 then the 200 on the next id.
     assert.deepEqual(modelsTried, ["gemini-3.1-pro-low", "gemini-3-pro-low"]);
   } finally {

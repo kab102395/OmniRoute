@@ -3,6 +3,7 @@ import {
   BaseExecutor,
   mergeUpstreamExtraHeaders,
   type ExecuteInput,
+  type ExecutorAttemptSummary,
   type ExecutorLog,
   type ProviderCredentials,
 } from "./base.ts";
@@ -526,6 +527,7 @@ type AntigravityAttemptContext = {
   urlIndex: number;
   retryAttemptsByUrl: Record<number, number>;
   fallbackCount: number;
+  executionAttempts: ExecutorAttemptSummary[];
 };
 
 /** Context threaded through the 429/503 handling helpers — adds the sent response. */
@@ -1169,7 +1171,22 @@ export class AntigravityExecutor extends BaseExecutor {
    */
   async execute(input: ExecuteInput) {
     await resolveAntigravityClientVersion(getAntigravityClientProfile(input.credentials));
+    const executionAttempts: ExecutorAttemptSummary[] = [];
+    try {
+      const result = await this.executeWithAttempts(input, executionAttempts);
+      return { ...result, executionAttempts };
+    } catch (error) {
+      if (error && typeof error === "object") {
+        Object.assign(error, { executionAttempts });
+      }
+      throw error;
+    }
+  }
 
+  private async executeWithAttempts(
+    input: ExecuteInput,
+    executionAttempts: ExecutorAttemptSummary[]
+  ) {
     // Look up the chain by the NORMALLY-resolved upstream id (honours MITM/static aliases).
     // If a MITM alias remapped the id away from a known Pro tier, no chain applies → fast path.
     const resolvedUpstreamId = await cleanModelName(input.model);
@@ -1177,7 +1194,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
     if (chain.length <= 1 || input.strictModelIdentity === true) {
       // No chain, or caller requires exact model identity → execute only the requested ID.
-      return this.executeOnce(input);
+      return this.executeOnce(input, undefined, executionAttempts);
     }
 
     let firstResult: Awaited<ReturnType<AntigravityExecutor["executeOnce"]>> | null = null;
@@ -1185,7 +1202,7 @@ export class AntigravityExecutor extends BaseExecutor {
       const candidate = chain[i];
       let result: Awaited<ReturnType<AntigravityExecutor["executeOnce"]>>;
       try {
-        result = await this.executeOnce(input, candidate);
+        result = await this.executeOnce(input, candidate, executionAttempts);
       } catch (error) {
         const outcome = handleAntigravityFallbackChainError(
           input,
@@ -1227,7 +1244,7 @@ export class AntigravityExecutor extends BaseExecutor {
     }
 
     // Unreachable (loop always returns), but keeps the type checker happy.
-    return firstResult ?? this.executeOnce(input);
+    return firstResult ?? this.executeOnce(input, undefined, executionAttempts);
   }
 
   /**
@@ -1239,7 +1256,8 @@ export class AntigravityExecutor extends BaseExecutor {
    */
   private async executeOnce(
     { model, body, stream, credentials, signal, log, upstreamExtraHeaders }: ExecuteInput,
-    modelIdOverride?: string
+    modelIdOverride: string | undefined,
+    executionAttempts: ExecutorAttemptSummary[]
   ) {
     await resolveAntigravityClientVersion(getAntigravityClientProfile(credentials));
     const fallbackCount = this.getFallbackCount();
@@ -1306,6 +1324,7 @@ export class AntigravityExecutor extends BaseExecutor {
           urlIndex,
           retryAttemptsByUrl,
           fallbackCount,
+          executionAttempts,
         });
 
         if (outcome.action === "return") return outcome.result;
@@ -1355,6 +1374,7 @@ export class AntigravityExecutor extends BaseExecutor {
       urlIndex,
       retryAttemptsByUrl,
       fallbackCount,
+      executionAttempts,
     } = ctx;
 
     const { response, finalHeaders } = await sendAntigravityRequest(
@@ -1367,7 +1387,8 @@ export class AntigravityExecutor extends BaseExecutor {
       stream,
       signal,
       log,
-      retryAttemptsByUrl[urlIndex]
+      retryAttemptsByUrl[urlIndex],
+      executionAttempts
     );
 
     let retryMs: number | null = null;
@@ -1618,7 +1639,8 @@ export class AntigravityExecutor extends BaseExecutor {
           signal,
           log,
           accountId,
-          updateAntigravityRemainingCredits
+          updateAntigravityRemainingCredits,
+          ctx.executionAttempts
         );
         if (creditsResult) return { kind: "return", result: creditsResult };
         if (retryMs) markConnectionQuotaExhausted(accountId, retryMs, ctx.model);

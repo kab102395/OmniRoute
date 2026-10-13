@@ -334,6 +334,7 @@ export type ExecutorAttemptSummary = {
   costAttribution: "unknown" | "provider_reported" | "estimated";
   attemptSource: "executor_reported" | "wrapper_observed";
   routeLeg?: "native" | "proxy_fallback";
+  routeModel?: string;
 };
 
 const PROVIDER_REQUEST_ID_HEADERS = [

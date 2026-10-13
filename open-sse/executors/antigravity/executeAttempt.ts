@@ -5,7 +5,7 @@
 // import the executor's credit-balance cache. Extracted from antigravity.ts
 // (file-size cap), mirroring the existing antigravity/streamingPassthrough.ts and
 // antigravity/sseCollect.ts submodule pattern.
-import { mergeAbortSignals, type ExecutorLog } from "../base.ts";
+import { mergeAbortSignals, type ExecutorAttemptSummary, type ExecutorLog } from "../base.ts";
 import { applyFingerprint, isCliCompatEnabled } from "../../config/cliFingerprints.ts";
 import { buildAntigravityUpstreamError } from "../antigravityUpstreamError.ts";
 import { maybeTriggerReactiveModelSync } from "@/lib/providerModels/reactiveModelSync.ts";
@@ -33,6 +33,42 @@ const CREDITS_EXHAUSTED_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
 
 /** Invoked with a fresh GOOGLE_ONE_AI credit balance to persist in the caller's cache. */
 export type OnAntigravityCreditsUpdate = (accountId: string, balance: number) => void;
+
+async function fetchAndRecordAttempt(
+  url: string,
+  init: RequestInit,
+  executionAttempts?: ExecutorAttemptSummary[],
+  routeModel?: string
+): Promise<Response> {
+  if (!executionAttempts) return fetchAntigravityWithReadinessTimeout(url, init);
+  const startedMs = Date.now();
+  const attempt: ExecutorAttemptSummary = {
+    index: executionAttempts.length + 1,
+    startedAt: new Date(startedMs).toISOString(),
+    durationMs: 0,
+    statusCode: null,
+    outcome: "network_error",
+    costAttribution: "unknown",
+    attemptSource: "executor_reported",
+    ...(routeModel ? { routeModel } : {}),
+  };
+  executionAttempts.push(attempt);
+  try {
+    const response = await fetchAntigravityWithReadinessTimeout(url, init);
+    attempt.statusCode = response.status;
+    attempt.outcome = "response";
+    attempt.durationMs = Math.max(0, Date.now() - startedMs);
+    const providerRequestId =
+      response.headers.get("x-goog-request-id") ||
+      response.headers.get("x-request-id") ||
+      response.headers.get("request-id");
+    if (providerRequestId) attempt.providerRequestId = providerRequestId;
+    return response;
+  } catch (error) {
+    attempt.durationMs = Math.max(0, Date.now() - startedMs);
+    throw error;
+  }
+}
 
 /**
  * Per-account GOOGLE_ONE_AI credits-exhausted tracker.
@@ -333,7 +369,8 @@ export async function sendAntigravityRequest(
   stream: boolean,
   signal: AbortSignal | null | undefined,
   log: SafeAntigravityLog,
-  retryAttempt: number
+  retryAttempt: number,
+  executionAttempts?: ExecutorAttemptSummary[]
 ): Promise<{ response: Response; finalHeaders: Record<string, string> }> {
   const serializedRequest = serializeAntigravityRequest(provider, headers, transformedBody);
   let finalHeaders = serializedRequest.headers;
@@ -356,26 +393,36 @@ export async function sendAntigravityRequest(
   }
 
   await prl.captureCurrentProviderBody(url, finalHeaders, serializedRequest.bodyString, log);
-  let response = await fetchAntigravityWithReadinessTimeout(url, {
-    method: "POST",
-    headers: finalHeaders,
-    body: getChunkedOrFixedBody(serializedRequest.bodyString, stream),
-    ...(stream ? { duplex: "half" } : {}),
-    signal,
-  });
+  let response = await fetchAndRecordAttempt(
+    url,
+    {
+      method: "POST",
+      headers: finalHeaders,
+      body: getChunkedOrFixedBody(serializedRequest.bodyString, stream),
+      ...(stream ? { duplex: "half" } : {}),
+      signal,
+    },
+    executionAttempts,
+    getRequestTargetModel(transformedBody)
+  );
 
   if (response.status === HTTP_STATUS.FORBIDDEN && finalHeaders["x-goog-user-project"]) {
     const retryHeaders = { ...finalHeaders };
     removeHeaderCaseInsensitive(retryHeaders, "x-goog-user-project");
     log.debug("RETRY", "403 with x-goog-user-project, retrying once without it");
     await prl.captureCurrentProviderBody(url, retryHeaders, serializedRequest.bodyString, log);
-    response = await fetchAntigravityWithReadinessTimeout(url, {
-      method: "POST",
-      headers: retryHeaders,
-      body: getChunkedOrFixedBody(serializedRequest.bodyString, stream),
-      ...(stream ? { duplex: "half" } : {}),
-      signal,
-    });
+    response = await fetchAndRecordAttempt(
+      url,
+      {
+        method: "POST",
+        headers: retryHeaders,
+        body: getChunkedOrFixedBody(serializedRequest.bodyString, stream),
+        ...(stream ? { duplex: "half" } : {}),
+        signal,
+      },
+      executionAttempts,
+      getRequestTargetModel(transformedBody)
+    );
     finalHeaders = retryHeaders;
   }
 
@@ -416,7 +463,8 @@ export async function tryCreditsRetry(
   signal: AbortSignal | null | undefined,
   log: SafeAntigravityLog,
   accountId: string,
-  onCreditsUpdate: OnAntigravityCreditsUpdate
+  onCreditsUpdate: OnAntigravityCreditsUpdate,
+  executionAttempts?: ExecutorAttemptSummary[]
 ): Promise<SsePassthroughResult | null> {
   log.info("AG_CREDITS", "Retrying with Google One AI credits");
   const creditsBody = attachToolNameMap(
@@ -433,13 +481,18 @@ export async function tryCreditsRetry(
       serializedCreditsRequest.bodyString,
       log
     );
-    const creditsResp = await fetchAntigravityWithReadinessTimeout(url, {
-      method: "POST",
-      headers: finalCreditsHeaders,
-      body: getChunkedOrFixedBody(serializedCreditsRequest.bodyString, stream),
-      ...(stream ? { duplex: "half" } : {}),
-      signal,
-    });
+    const creditsResp = await fetchAndRecordAttempt(
+      url,
+      {
+        method: "POST",
+        headers: finalCreditsHeaders,
+        body: getChunkedOrFixedBody(serializedCreditsRequest.bodyString, stream),
+        ...(stream ? { duplex: "half" } : {}),
+        signal,
+      },
+      executionAttempts,
+      getRequestTargetModel(creditsBody)
+    );
     if (creditsResp.ok || creditsResp.status !== HTTP_STATUS.RATE_LIMITED) {
       log.info("AG_CREDITS", `Credits retry succeeded: ${creditsResp.status}`);
       if (!stream && creditsResp.body) {
