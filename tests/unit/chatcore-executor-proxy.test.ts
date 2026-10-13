@@ -146,6 +146,120 @@ test("proxy fallback returns both native and fallback attempt receipts", async (
   }
 });
 
+test("proxy fallback error preserves native attempt receipts when fallback throws without receipts", async () => {
+  await upstreamProxyDb.upsertUpstreamProxyConfig({
+    providerId: "openai",
+    mode: "fallback",
+    enabled: true,
+  });
+  clearUpstreamProxyConfigCache("openai");
+  const native = await getExecutor("openai");
+  const fallback = await getExecutor("cliproxyapi");
+  const originalNativeExecute = native.execute;
+  const originalFallbackExecute = fallback.execute;
+  const nativeAttempt = {
+    index: 1,
+    statusCode: 503,
+    outcome: "response" as const,
+    costAttribution: "unknown" as const,
+    attemptSource: "executor_reported" as const,
+  };
+
+  native.execute = async () => ({
+    response: new Response("native unavailable", { status: 503 }),
+    executionAttempts: [nativeAttempt],
+  });
+  fallback.execute = async () => {
+    throw new Error("fallback transport failed");
+  };
+
+  try {
+    const exec = await resolveExecutorWithProxy("openai");
+    await assert.rejects(
+      exec.execute({
+        model: "gpt-4.1",
+        body: {},
+        stream: false,
+        credentials: { apiKey: "not-used" },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.deepEqual(
+          (
+            error as Error & { executionAttempts?: Array<Record<string, unknown>> }
+          ).executionAttempts?.map(({ statusCode, routeLeg }) => ({ statusCode, routeLeg })),
+          [{ statusCode: 503, routeLeg: "native" }]
+        );
+        return true;
+      }
+    );
+  } finally {
+    native.execute = originalNativeExecute;
+    fallback.execute = originalFallbackExecute;
+    clearUpstreamProxyConfigCache("openai");
+  }
+});
+
+test("proxy fallback error preserves receipts attached to a thrown native error", async () => {
+  await upstreamProxyDb.upsertUpstreamProxyConfig({
+    providerId: "openai",
+    mode: "fallback",
+    enabled: true,
+  });
+  clearUpstreamProxyConfigCache("openai");
+  const native = await getExecutor("openai");
+  const fallback = await getExecutor("cliproxyapi");
+  const originalNativeExecute = native.execute;
+  const originalFallbackExecute = fallback.execute;
+  const nativeAttempt = {
+    index: 1,
+    statusCode: null,
+    outcome: "network_error" as const,
+    costAttribution: "unknown" as const,
+    attemptSource: "executor_reported" as const,
+  };
+  const nativeError = Object.assign(new Error("native network failure"), {
+    executionAttempts: [nativeAttempt],
+  });
+
+  native.execute = async () => {
+    throw nativeError;
+  };
+  fallback.execute = async () => {
+    throw new Error("fallback transport failed");
+  };
+
+  try {
+    const exec = await resolveExecutorWithProxy("openai");
+    await assert.rejects(
+      exec.execute({
+        model: "gpt-4.1",
+        body: {},
+        stream: false,
+        credentials: { apiKey: "not-used" },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.deepEqual(
+          (
+            error as Error & { executionAttempts?: Array<Record<string, unknown>> }
+          ).executionAttempts?.map(({ statusCode, outcome, routeLeg }) => ({
+            statusCode,
+            outcome,
+            routeLeg,
+          })),
+          [{ statusCode: null, outcome: "network_error", routeLeg: "native" }]
+        );
+        return true;
+      }
+    );
+  } finally {
+    native.execute = originalNativeExecute;
+    fallback.execute = originalFallbackExecute;
+    clearUpstreamProxyConfigCache("openai");
+  }
+});
+
 // === Per-connection routing override (#6339) ===
 // The resolved connection's providerSpecificData.cliproxyapiMode === "claude-native"
 // opts THIS connection into the CLIProxyAPI executor regardless of the provider-level

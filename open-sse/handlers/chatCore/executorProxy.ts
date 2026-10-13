@@ -178,6 +178,24 @@ export async function resolveExecutorWithProxy(
       : await resolveCliproxyapiExecutor(cfg.cliproxyapiModelMapping, dedicatedApiKey);
   const backendLabel = fallbackBackend === "dario" ? "Dario" : "CLIProxyAPI";
   const isRetryableStatus = (s: number) => fallbackCodes.includes(s) || s === 0;
+  const preserveProxyFallbackAttempts = (
+    error: unknown,
+    nativeAttempts: Array<Record<string, unknown>>
+  ): void => {
+    if (!error || typeof error !== "object" || nativeAttempts.length === 0) return;
+    const proxyAttempts = (error as { executionAttempts?: unknown }).executionAttempts;
+    Object.assign(error, {
+      executionAttempts: [
+        ...nativeAttempts.map((attempt) => ({ ...attempt, routeLeg: "native" })),
+        ...(Array.isArray(proxyAttempts)
+          ? (proxyAttempts as Array<Record<string, unknown>>).map((attempt) => ({
+              ...attempt,
+              routeLeg: "proxy_fallback",
+            }))
+          : []),
+      ],
+    });
+  };
 
   const wrapper = Object.create(nativeExec);
   wrapper.execute = async (input: {
@@ -240,18 +258,7 @@ export async function resolveExecutorWithProxy(
       try {
         return await fallbackWithPriorAttempts(failedNativeAttempts);
       } catch (proxyErr) {
-        const proxyAttempts = (proxyErr as { executionAttempts?: unknown }).executionAttempts;
-        if (Array.isArray(proxyAttempts)) {
-          Object.assign(proxyErr, {
-            executionAttempts: [
-              ...failedNativeAttempts.map((attempt) => ({ ...attempt, routeLeg: "native" })),
-              ...(proxyAttempts as Array<Record<string, unknown>>).map((attempt) => ({
-                ...attempt,
-                routeLeg: "proxy_fallback",
-              })),
-            ],
-          });
-        }
+        preserveProxyFallbackAttempts(proxyErr, failedNativeAttempts);
         const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
         log?.error?.("UPSTREAM_PROXY", `${prov} ${backendLabel} fallback also failed: ${proxyMsg}`);
         throw proxyErr;
@@ -280,23 +287,12 @@ export async function resolveExecutorWithProxy(
           ];
       return await fallbackWithPriorAttempts(nativeAttempts);
     } catch (proxyErr) {
-      const proxyAttempts = (proxyErr as { executionAttempts?: unknown }).executionAttempts;
-      if (Array.isArray(proxyAttempts)) {
-        Object.assign(proxyErr, {
-          executionAttempts: [
-            ...(Array.isArray(result.executionAttempts)
-              ? (result.executionAttempts as Array<Record<string, unknown>>).map((attempt) => ({
-                  ...attempt,
-                  routeLeg: "native",
-                }))
-              : []),
-            ...(proxyAttempts as Array<Record<string, unknown>>).map((attempt) => ({
-              ...attempt,
-              routeLeg: "proxy_fallback",
-            })),
-          ],
-        });
-      }
+      preserveProxyFallbackAttempts(
+        proxyErr,
+        Array.isArray(result.executionAttempts)
+          ? (result.executionAttempts as Array<Record<string, unknown>>)
+          : []
+      );
       const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
       log?.error?.("UPSTREAM_PROXY", `${prov} ${backendLabel} fallback also failed: ${proxyMsg}`);
       throw proxyErr;
