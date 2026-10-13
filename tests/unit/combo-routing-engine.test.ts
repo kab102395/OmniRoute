@@ -2409,6 +2409,7 @@ test("handleComboChat auto strategy honors LKGP after filtering to tool-capable 
   await settingsDb.setLKGP("auto-lkgp", "auto-lkgp", "claude");
 
   const calls: any[] = [];
+  const log = createLog();
   const result = await handleComboChat({
     body: {
       messages: [{ role: "user", content: "Write code using a tool" }],
@@ -2426,14 +2427,18 @@ test("handleComboChat auto strategy honors LKGP after filtering to tool-capable 
       return okResponse();
     },
     isModelAvailable: async () => true,
-    log: createLog(),
+    log,
     settings: null,
     relayOptions: null as any,
     allCombos: null,
   });
 
   assert.equal(result.ok, true);
-  assert.equal(calls[0], "claude/claude-sonnet-4-6");
+  assert.equal(
+    calls[0],
+    "claude/claude-sonnet-4-6",
+    JSON.stringify(log.entries.filter((entry) => entry.tag === "COMBO"))
+  );
 });
 
 test("handleComboChat auto strategy preserves selected same-provider connection identity", async () => {

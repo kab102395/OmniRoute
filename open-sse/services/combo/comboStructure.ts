@@ -532,11 +532,20 @@ function hasKnownCompatibleContextLimit(
   requirements: RequestCompatibilityRequirements
 ): boolean {
   if (requirements.requiredContextTokens <= 0) return false;
-  const capabilities = getResolvedModelCapabilities({
-    provider: target.providerId || target.provider || null,
-    model: target.modelStr,
-  });
+  const capabilities = getTargetCapabilities(target);
   return evaluateContextLimit(capabilities, requirements, target.modelStr) === true;
+}
+
+/** Resolve catalog capabilities with the provider-local model id. `modelStr`
+ * includes the provider prefix (for example `claude/claude-sonnet-4-6`), while
+ * the structured capability resolver already receives the provider separately.
+ * Passing the full route string as its `model` silently misses registry facts. */
+function getTargetCapabilities(target: ResolvedComboTarget) {
+  const parsed = parseModel(target.modelStr);
+  return getResolvedModelCapabilities({
+    provider: target.providerId || target.provider || parsed.provider || null,
+    model: parsed.model || target.modelStr,
+  });
 }
 
 const HARD_COMPAT_REASONS = new Set(["tools", "vision", "structured_output", "output_tokens"]);
@@ -552,10 +561,7 @@ export function isVisionIncompatibleTarget(
   requirements: RequestCompatibilityRequirements
 ): boolean {
   if (!requirements.requiresVision) return false;
-  const capabilities = getResolvedModelCapabilities({
-    provider: target.providerId || target.provider || null,
-    model: target.modelStr,
-  });
+  const capabilities = getTargetCapabilities(target);
   return capabilities.supportsVision !== true;
 }
 
@@ -580,10 +586,7 @@ function getTargetCompatibilityFailures(
   target: ResolvedComboTarget,
   requirements: RequestCompatibilityRequirements
 ): string[] {
-  const capabilities = getResolvedModelCapabilities({
-    provider: target.providerId || target.provider || null,
-    model: target.modelStr,
-  });
+  const capabilities = getTargetCapabilities(target);
   const failures: string[] = [];
 
   if (
@@ -635,10 +638,7 @@ export type CompatFilterOptions = {
 function highestKnownOutputLimit(targets: ResolvedComboTarget[]): number {
   let ceiling = 0;
   for (const target of targets) {
-    const limit = getResolvedModelCapabilities({
-      provider: target.providerId || target.provider || null,
-      model: target.modelStr,
-    }).maxOutputTokens;
+    const limit = getTargetCapabilities(target).maxOutputTokens;
     if (typeof limit === "number" && limit > ceiling) ceiling = limit;
   }
   return ceiling;
