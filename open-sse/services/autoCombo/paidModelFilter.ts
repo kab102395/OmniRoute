@@ -26,6 +26,7 @@ function isFreeCandidate(
   currentOpenRouterFreeRoutes?: ReadonlySet<string>
 ): boolean {
   if (candidate.provider === "openrouter") {
+    if (candidate.model === "free") return (currentOpenRouterFreeRoutes?.size ?? 0) > 0;
     return currentOpenRouterFreeRoutes?.has(candidate.model) === true;
   }
   return (

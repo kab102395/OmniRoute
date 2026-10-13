@@ -69,6 +69,7 @@ export interface AutoComboCandidateView {
    * way, the routing path is what acts on it.
    */
   freeAccessExclusion: StrictZeroCostExclusionReason | null;
+  isFree?: boolean;
 }
 
 function finiteNonNegative(value: unknown): number | null {
@@ -112,7 +113,7 @@ export function buildCandidateView(input: {
   cache: ProviderLimitsCacheEntry | null | undefined;
 }): AutoComboCandidateView {
   const catalogModel = parseModel(input.modelStr).model ?? input.model;
-  const free = isFreeModel(input.provider, { id: catalogModel });
+  const free = input.isFree ?? isFreeModel(input.provider, { id: catalogModel });
   return {
     provider: input.provider,
     model: input.model,
@@ -187,6 +188,7 @@ async function decorateCandidate(candidate: {
     connectionCooldown,
     modelLocked,
     freeAccessExclusion: candidate.freeAccessExclusion ?? null,
+    isFree: candidate.isFree,
     cache: getProviderLimitsCache(candidate.connectionId),
   });
 }

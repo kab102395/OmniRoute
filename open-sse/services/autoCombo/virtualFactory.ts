@@ -32,6 +32,7 @@ import { getHiddenModelsByProvider } from "@/models";
 import { getSyncedAvailableModelsByConnection, getCustomModels } from "@/lib/db/models";
 import { filterPaidOnlyCandidates } from "./paidModelFilter";
 import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
+import { isFreeModel } from "@/shared/utils/freeModels";
 import { filterModelExposureCandidates } from "./modelExposureFilter";
 import {
   filterSubscriptionOnlyCandidates,
@@ -106,6 +107,8 @@ export interface VirtualAutoComboCandidate {
   model: string;
   modelStr: string; // e.g., 'openai/gpt-4o'
   costPer1MTokens: number; // from providerRegistry
+  /** Current free classification attached during server-side pool preparation. */
+  isFree?: boolean;
   /** Build-local capability snapshot. Runtime calls rebuild it; catalog entries reuse it. */
   resolvedContextLength?: number | null;
   resolvedMaxOutputTokens?: number | null;
@@ -737,10 +740,7 @@ export async function prepareVirtualAutoComboInputs(
   // stale-if-error snapshots remain useful for display, but cannot authorize a
   // hide-paid candidate.
   let currentOpenRouterFreeRoutes: Set<string> | undefined;
-  if (
-    (settings.hidePaidModels === true || settings.freeAccessPolicy === "strict") &&
-    connectedProviders.has("openrouter")
-  ) {
+  if (connectedProviders.has("openrouter")) {
     currentOpenRouterFreeRoutes = (await getCurrentOpenRouterFreeRouteIds()) ?? undefined;
   }
   const buildPreparedPool = (bypassNoAuthAllowlist: boolean) => {
@@ -755,6 +755,15 @@ export async function prepareVirtualAutoComboInputs(
         bypassNoAuthAllowlist
       ),
     ];
+    pool = pool.map((candidate) => ({
+      ...candidate,
+      isFree:
+        candidate.provider === "openrouter"
+          ? candidate.model === "free"
+            ? (currentOpenRouterFreeRoutes?.size ?? 0) > 0
+            : currentOpenRouterFreeRoutes?.has(candidate.model) === true
+          : isFreeModel(candidate.provider, { id: candidate.model }),
+    }));
 
     const resilienceFilteredPool = filterResilienceBlockedCandidates(pool, connectionsById, skip);
     if (resilienceFilteredPool !== pool) pool = resilienceFilteredPool;

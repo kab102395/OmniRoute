@@ -60,4 +60,10 @@ test("OpenRouter free eligibility requires the exact route in the current catalo
     [],
     "a :free suffix in an old or unverified route list cannot authorize routing"
   );
+  const freeRouter = { provider: "openrouter", model: "free" };
+  assert.deepEqual(
+    filterPaidOnlyCandidates([freeRouter], true, new Set(["vendor/model:free"])),
+    [freeRouter],
+    "the optional OpenRouter free router stays eligible when the catalog has free variants"
+  );
 });
