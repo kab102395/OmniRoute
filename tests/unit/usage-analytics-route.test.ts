@@ -153,6 +153,29 @@ test("GET /api/usage/analytics resolves Codex GPT-5.5 pricing through provider a
   assertClose(body.byModel[0].cost, 0.02);
 });
 
+test("GET /api/usage/analytics does not borrow prices from another provider or model", async () => {
+  const db = core.getDbInstance();
+  const timestamp = new Date().toISOString();
+  const insertUsage = db.prepare(
+    `INSERT INTO usage_history
+      (provider, model, connection_id, tokens_input, tokens_output, success, latency_ms, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  // OpenAI has an exact gpt-4o rate in the fixture, but Anthropic's gpt-4o route
+  // has no Anthropic rate and must not borrow it through a cross-provider lookup.
+  insertUsage.run("anthropic", "gpt-4o", "anthropic-conn", 1000, 500, 1, 250, timestamp);
+  // A neighboring OpenAI model is not evidence that this exact route has a price.
+  insertUsage.run("openai", "gpt-4o-lite", "openai-conn", 1000, 500, 1, 250, timestamp);
+
+  const response = await analyticsRoute.GET(makeRequest("http://localhost/api/usage/analytics"));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assertClose(body.summary.totalCost, 0);
+  assert.ok(body.byProvider.every((row: { cost: number }) => row.cost === 0));
+});
+
 test("GET /api/usage/analytics can include flat-rate provider estimates for the costs page", async () => {
   const db = core.getDbInstance();
   db.prepare(
