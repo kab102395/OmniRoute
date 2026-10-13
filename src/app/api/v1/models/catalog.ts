@@ -1470,6 +1470,9 @@ async function buildUnifiedModelsResponseCore(
               : {}),
             ...(inputModalities.length > 0 ? { input_modalities: inputModalities } : {}),
             ...(outputModalities.length > 0 ? { output_modalities: outputModalities } : {}),
+            ...(Array.isArray(openRouterModel.supported_parameters)
+              ? { supported_parameters: [...openRouterModel.supported_parameters] }
+              : {}),
             ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
           };
           if (existingIndex >= 0) models[existingIndex] = liveModel;

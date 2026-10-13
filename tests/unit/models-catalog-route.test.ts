@@ -613,6 +613,7 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
         free?: boolean;
         route_selection?: { kind?: string; exactModelIdentity?: boolean };
         capabilities?: Record<string, boolean>;
+        supported_parameters?: string[];
         context_length?: number;
         max_output_tokens?: number;
         pricing_provenance?: { zeroCostEligibility?: string };
@@ -644,6 +645,7 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       exactModelIdentity: false,
     });
     assert.equal(freeRoute.capabilities.tool_calling, true);
+    assert.deepEqual(freeRoute.supported_parameters, ["tools"]);
     assert.equal(freeRoute.context_length, 64000);
     assert.equal(freeRoute.max_output_tokens, 4096);
     assert.equal(freeRoute.pricing_provenance.zeroCostEligibility, "verified_free_variant");
