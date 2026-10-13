@@ -105,6 +105,33 @@ test("quotaSnapshots aggregates by provider or connection and rejects invalid bu
   );
 });
 
+test("unknown quota snapshots stay unknown and do not count as exhausted", () => {
+  quotaSnapshotsDb.saveQuotaSnapshot({
+    provider: "antigravity",
+    connection_id: "unknown-conn",
+    window_key: "model-window",
+    remaining_percentage: null,
+    is_exhausted: 0,
+    next_reset_at: null,
+    window_duration_ms: null,
+    raw_data: null,
+    fraction_reported: 0,
+  });
+
+  const rows = quotaSnapshotsDb.getLatestQuotaSnapshotsForConnection("unknown-conn");
+  assert.equal(rows[0].remainingPercentage, null);
+  assert.equal(rows[0].fractionReported, 0);
+  assert.equal(rows[0].isExhausted, 0);
+
+  const aggregate = quotaSnapshotsDb.getAggregatedSnapshots({
+    provider: "antigravity",
+    since: "2000-01-01T00:00:00.000Z",
+    bucketMinutes: 60,
+  });
+  assert.equal(aggregate[0].remainingPct, null);
+  assert.equal(aggregate[0].isExhausted, false);
+});
+
 test("quotaSnapshots cleanup removes old rows and throttles repeated execution", () => {
   const db = coreDb.getDbInstance();
   db.prepare(

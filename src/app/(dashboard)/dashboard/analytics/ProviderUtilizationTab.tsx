@@ -74,7 +74,9 @@ function getLatestPoints(points: ProviderUtilizationPoint[]) {
     }
   }
 
-  return Array.from(latestByProvider.values()).sort((a, b) => b.remainingPct - a.remainingPct);
+  return Array.from(latestByProvider.values()).sort(
+    (a, b) => (b.remainingPct ?? -1) - (a.remainingPct ?? -1)
+  );
 }
 
 export default function ProviderUtilizationTab() {
@@ -161,7 +163,8 @@ export default function ProviderUtilizationTab() {
         label: formatTimestamp(point.timestamp, data.timeRange),
       };
 
-      entry[point.provider] = Number(point.remainingPct.toFixed(2));
+      entry[point.provider] =
+        point.remainingPct === null ? null : Number(point.remainingPct.toFixed(2));
       byTimestamp.set(point.timestamp, entry);
     }
 
@@ -312,7 +315,7 @@ export default function ProviderUtilizationTab() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {latestPoints.map((point) => {
-                const isLow = point.remainingPct <= 20;
+                const isLow = point.remainingPct !== null && point.remainingPct <= 20;
 
                 // For Account Split, parse "provider:connectionId" and resolve display name
                 const colonIdx = point.provider.indexOf(":");
@@ -350,23 +353,29 @@ export default function ProviderUtilizationTab() {
                         className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
                           point.isExhausted
                             ? "bg-error/10 text-error"
-                            : isLow
-                              ? "bg-warning/10 text-warning"
-                              : "bg-success/10 text-success"
+                            : point.remainingPct === null
+                              ? "bg-surface text-text-muted"
+                              : isLow
+                                ? "bg-warning/10 text-warning"
+                                : "bg-success/10 text-success"
                         }`}
                       >
                         {point.isExhausted
                           ? t("statusExhausted")
-                          : isLow
-                            ? t("statusLow")
-                            : t("statusHealthy")}
+                          : point.remainingPct === null
+                            ? "Unknown"
+                            : isLow
+                              ? t("statusLow")
+                              : t("statusHealthy")}
                       </span>
                     </div>
 
                     <div className="flex items-end justify-between gap-3">
                       <div>
                         <p className="text-3xl font-bold text-text-main">
-                          {point.remainingPct.toFixed(point.remainingPct < 10 ? 1 : 0)}%
+                          {point.remainingPct === null
+                            ? "Unknown"
+                            : `${point.remainingPct.toFixed(point.remainingPct < 10 ? 1 : 0)}%`}
                         </p>
                         <p className="mt-1 text-xs text-text-muted">
                           {t("providerUtilizationRemainingCapacity")}
@@ -384,7 +393,7 @@ export default function ProviderUtilizationTab() {
                           className={`h-full rounded-full transition-all ${
                             point.isExhausted ? "bg-error" : isLow ? "bg-warning" : "bg-primary"
                           }`}
-                          style={{ width: `${Math.max(point.remainingPct, 0)}%` }}
+                          style={{ width: `${Math.max(point.remainingPct ?? 0, 0)}%` }}
                         />
                       </div>
                       <div className="flex items-center justify-between text-xs text-text-muted">

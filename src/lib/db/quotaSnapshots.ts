@@ -1,8 +1,6 @@
 import { getDbInstance, rowToCamel } from "./core";
 import type { QuotaSnapshotRow, ProviderUtilizationPoint } from "@/shared/types/utilization";
 
-type JsonRecord = Record<string, unknown>;
-
 interface StatementLike<TRow = unknown> {
   all: (...params: unknown[]) => TRow[];
   get: (...params: unknown[]) => TRow | undefined;
@@ -15,7 +13,11 @@ interface DbLike {
 
 let lastCleanupAt = 0;
 
-export function saveQuotaSnapshot(snapshot: Omit<QuotaSnapshotRow, "id" | "created_at">): void {
+export function saveQuotaSnapshot(
+  snapshot: Omit<QuotaSnapshotRow, "id" | "created_at" | "fraction_reported"> & {
+    fraction_reported?: number;
+  }
+): void {
   const db = getDbInstance() as unknown as DbLike;
   const now = new Date().toISOString();
 
@@ -23,8 +25,8 @@ export function saveQuotaSnapshot(snapshot: Omit<QuotaSnapshotRow, "id" | "creat
     db.prepare(
       `INSERT INTO quota_snapshots
        (provider, connection_id, window_key, remaining_percentage, is_exhausted,
-        next_reset_at, window_duration_ms, raw_data, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        next_reset_at, window_duration_ms, raw_data, fraction_reported, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       snapshot.provider,
       snapshot.connection_id,
@@ -34,6 +36,7 @@ export function saveQuotaSnapshot(snapshot: Omit<QuotaSnapshotRow, "id" | "creat
       snapshot.next_reset_at,
       snapshot.window_duration_ms,
       snapshot.raw_data,
+      snapshot.fraction_reported ?? 1,
       now
     );
   } catch (err: any) {
@@ -161,8 +164,8 @@ export function getAggregatedSnapshots(opts: {
       SELECT
         datetime((strftime('%s', created_at) / ${bucketSeconds}) * ${bucketSeconds}, 'unixepoch') as bucket,
         ${selectKey},
-        AVG(remaining_percentage) as remainingPct,
-        MAX(is_exhausted) as isExhausted,
+        AVG(CASE WHEN fraction_reported != 0 THEN remaining_percentage END) as remainingPct,
+        MAX(CASE WHEN fraction_reported != 0 THEN is_exhausted ELSE 0 END) as isExhausted,
         window_key
       FROM quota_snapshots
       WHERE ${conditions.join(" AND ")}
@@ -181,7 +184,7 @@ export function getAggregatedSnapshots(opts: {
     return rows.map((r) => ({
       timestamp: r.bucket,
       provider: r.provider,
-      remainingPct: r.remainingPct ?? 0,
+      remainingPct: r.remainingPct,
       isExhausted: r.isExhausted === 1,
       windowKey: r.windowKey,
     }));

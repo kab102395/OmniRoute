@@ -5,6 +5,7 @@ export interface QuotaSnapshotRow {
   window_key: string;
   remaining_percentage: number | null;
   is_exhausted: number;
+  fraction_reported: number;
   next_reset_at: string | null;
   window_duration_ms: number | null;
   raw_data: string | null;
@@ -14,7 +15,7 @@ export interface QuotaSnapshotRow {
 export interface ProviderUtilizationPoint {
   timestamp: string;
   provider: string;
-  remainingPct: number;
+  remainingPct: number | null;
   isExhausted: boolean;
   windowKey: string;
 }

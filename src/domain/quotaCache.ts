@@ -223,24 +223,29 @@ function earliestResetAt(quotas: Record<string, QuotaInfo>): string | null {
  * The background refresh ticks every 60s for ALL connections, so idle accounts
  * (whose quota never changes) were generating 400K+ identical snapshot rows/day.
  * Returns true only when this window has no prior cached observation, or when its
- * `remaining_percentage` / `is_exhausted` differs from the last cached entry — so
+ * `remaining_percentage` / `is_exhausted` / reported-state differs from the last cached entry — so
  * the first observation and every real change persist, but idle no-op refreshes
  * stop writing. Pure (no I/O) for trivial unit testing.
  */
 export function quotaSnapshotChanged(
   prior:
-    | { quotas?: Record<string, { remainingPercentage: number }>; exhausted?: boolean }
+    | {
+        quotas?: Record<string, { remainingPercentage: number; fractionReported?: boolean }>;
+        exhausted?: boolean;
+      }
     | null
     | undefined,
   windowKey: string,
   remainingPercentage: number,
-  exhausted: boolean
+  exhausted: boolean,
+  fractionReported = true
 ): boolean {
   if (!prior) return true;
   const priorWindow = prior.quotas?.[windowKey];
   if (!priorWindow) return true;
   return (
     priorWindow.remainingPercentage !== remainingPercentage ||
+    (priorWindow.fractionReported !== false) !== fractionReported ||
     (prior.exhausted ?? false) !== exhausted
   );
 }
@@ -479,19 +484,30 @@ export function setQuotaCache(
       // percentage, not the connection-wide AND-across-all-windows aggregate
       // (`entry.exhausted`). A connection with one 0% window and other non-zero
       // windows previously never flagged that window's row as exhausted.
-      const windowExhausted = remainingPercentage <= 0;
+      const fractionReported = quotaInfo.fractionReported !== false;
+      const windowExhausted = fractionReported && remainingPercentage <= 0;
       // #4438 — only persist on the first observation or a real change.
-      if (!quotaSnapshotChanged(prior, windowKey, remainingPercentage, windowExhausted)) continue;
+      if (
+        !quotaSnapshotChanged(
+          prior,
+          windowKey,
+          remainingPercentage,
+          windowExhausted,
+          fractionReported
+        )
+      )
+        continue;
       try {
         saveQuotaSnapshot({
           provider,
           connection_id: connectionId,
           window_key: windowKey,
-          remaining_percentage: remainingPercentage,
+          remaining_percentage: fractionReported ? remainingPercentage : null,
           is_exhausted: windowExhausted ? 1 : 0,
           next_reset_at: quotaInfo.resetAt ?? null,
           window_duration_ms: entry.windowDurationMs ?? null,
           raw_data: null,
+          fraction_reported: fractionReported ? 1 : 0,
         });
       } catch (error) {
         console.error("[quotaCache] Failed to save snapshot:", error);
@@ -529,6 +545,7 @@ function hydrateQuotaCacheFromSnapshots(connectionId: string): QuotaCacheEntry |
       windowKey?: string;
       remainingPercentage?: number | null;
       isExhausted?: number;
+      fractionReported?: number;
       nextResetAt?: string | null;
       windowDurationMs?: number | null;
       createdAt?: string;
@@ -541,6 +558,8 @@ function hydrateQuotaCacheFromSnapshots(connectionId: string): QuotaCacheEntry |
         Number(camelSnapshot.remainingPercentage ?? snapshot.remaining_percentage ?? 0)
       ),
       resetAt: camelSnapshot.nextResetAt ?? snapshot.next_reset_at ?? null,
+      fractionReported:
+        (camelSnapshot.fractionReported ?? snapshot.fraction_reported) === 0 ? false : undefined,
     };
     const snapshotWindowDurationMs =
       camelSnapshot.windowDurationMs ?? snapshot.window_duration_ms ?? null;
