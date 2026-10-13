@@ -1533,9 +1533,10 @@ async function buildUnifiedModelsResponseCore(
         for (const openRouterModel of openRouterCatalog.data || []) {
           if (!openRouterModel?.id || typeof openRouterModel.id !== "string") continue;
           const isDynamicFreeRouter = openRouterModel.id === "openrouter/free";
-          const isFreeVariant = isDynamicFreeRouter
-            ? !openRouterCatalog.stale && currentFreeRouteIds.size > 0
-            : isOpenRouterFreeModel(openRouterModel);
+          const catalogAdvertisesFreeVariant = isOpenRouterFreeModel(openRouterModel);
+          const isFreeVariant =
+            !openRouterCatalog.stale &&
+            (isDynamicFreeRouter ? currentFreeRouteIds.size > 0 : catalogAdvertisesFreeVariant);
           const qualifiedId = qualifyOpenRouterModelId(openRouterModel.id);
           const existingIndex = models.findIndex(
             (existingModel: any) => existingModel?.id === qualifiedId
@@ -1564,7 +1565,9 @@ async function buildUnifiedModelsResponseCore(
             retrievedAt: openRouterCatalog.cachedAt || "",
             stale: openRouterCatalog.stale,
             ttlMs: openRouterCatalog.cacheTtlMs,
-            isCurrentlyFree: isFreeVariant,
+            // Preserve the last-known classification as stale provenance, but do
+            // not expose it as current eligibility on the model's `free` field.
+            isCurrentlyFree: catalogAdvertisesFreeVariant,
           });
           const legacyPricing = toOpenRouterLegacyTokenPricing(pricingEvidence);
           // The dynamic router accepts tool parameters but may choose a current
@@ -1583,14 +1586,16 @@ async function buildUnifiedModelsResponseCore(
             permission: [],
             root: openRouterModel.id,
             parent: null,
-            name: getOpenRouterDisplayName(openRouterModel),
+            name: openRouterCatalog.stale
+              ? openRouterModel.name || openRouterModel.id
+              : getOpenRouterDisplayName(openRouterModel),
             type: modelType,
-            free: isFree,
+            free: openRouterCatalog.stale ? undefined : isFree,
             route_selection: isDynamicFreeRouter
               ? { kind: "dynamic_free_model", exactModelIdentity: false }
               : { kind: "exact_model", exactModelIdentity: true },
             route_availability: {
-              catalogListed: true,
+              catalogListed: openRouterCatalog.stale ? null : true,
               accountEligibility: "unknown",
               source: {
                 id: "openrouter.models_api",

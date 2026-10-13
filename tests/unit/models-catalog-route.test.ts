@@ -1451,6 +1451,11 @@ test("require_tool_calling does not treat stale OpenRouter capabilities as curre
             architecture: { input_modalities: ["text"], output_modalities: ["text"] },
             supported_parameters: ["tools"],
           },
+          {
+            id: "vendor/stale-free-model:free",
+            name: "Stale free route",
+            supported_parameters: ["tools"],
+          },
         ],
       }),
       { status: 200, headers: { "content-type": "application/json" } }
@@ -1475,8 +1480,11 @@ test("require_tool_calling does not treat stale OpenRouter capabilities as curre
     const displayBody = (await displayResponse.json()) as {
       data: Array<{
         id?: string;
+        name?: string;
+        free?: boolean;
+        pricing_provenance?: { state?: string; zeroCostEligibility?: string };
         capability_status?: { tool_calling?: { status?: string } };
-        route_availability?: { source?: { stale?: boolean } };
+        route_availability?: { catalogListed?: boolean | null; source?: { stale?: boolean } };
       }>;
     };
     const staleRoute = displayBody.data.find(
@@ -1485,6 +1493,19 @@ test("require_tool_calling does not treat stale OpenRouter capabilities as curre
     assert.ok(staleRoute, "stale route metadata remains available for display");
     assert.equal(staleRoute.route_availability?.source?.stale, true);
     assert.equal(staleRoute.capability_status?.tool_calling?.status, "supported");
+    const staleFreeRoute = displayBody.data.find(
+      (model) => model.id === "openrouter/vendor/stale-free-model:free"
+    );
+    assert.ok(staleFreeRoute, "last-known free route remains visible for display");
+    assert.equal(
+      staleFreeRoute.free,
+      undefined,
+      "stale membership is not current free eligibility"
+    );
+    assert.equal(staleFreeRoute.route_availability?.catalogListed, null);
+    assert.equal(staleFreeRoute.route_availability?.source?.stale, true);
+    assert.equal(staleFreeRoute.pricing_provenance?.zeroCostEligibility, "unknown_stale_catalog");
+    assert.doesNotMatch(staleFreeRoute.name ?? "", /gr[aá]tis/i);
 
     const constrainedResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
       new Request("http://localhost/v1/models?require_tool_calling=true")
@@ -1496,6 +1517,16 @@ test("require_tool_calling does not treat stale OpenRouter capabilities as curre
       constrainedBody.data.some((model) => model.id === "openrouter/vendor/stale-tools-model"),
       false,
       "stale route capabilities cannot qualify for a constrained selection query"
+    );
+
+    const freeOnlyResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models?free_only=true")
+    );
+    const freeOnlyBody = (await freeOnlyResponse.json()) as { data: Array<{ id?: string }> };
+    assert.equal(
+      freeOnlyBody.data.some((model) => model.id === "openrouter/vendor/stale-free-model:free"),
+      false,
+      "a stale OpenRouter snapshot cannot list a route as currently free"
     );
   } finally {
     globalThis.fetch = REAL_FETCH;
