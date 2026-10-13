@@ -18,6 +18,8 @@ export interface SyncedAvailableModel {
   supportsThinking?: boolean;
   alwaysThinking?: boolean;
   supportsTools?: boolean;
+  /** Explicit free/paid classification reported by this connection's model catalog. */
+  isFree?: boolean;
   /** Time the upstream model catalog supporting these facts was retrieved. */
   catalogRetrievedAt?: string;
   supportsVideo?: boolean;
@@ -168,6 +170,11 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
       : {}),
     ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
     ...(typeof record.supportsTools === "boolean" ? { supportsTools: record.supportsTools } : {}),
+    ...(typeof record.isFree === "boolean"
+      ? { isFree: record.isFree }
+      : typeof record.is_free === "boolean"
+        ? { isFree: record.is_free }
+        : {}),
     ...(toNonEmptyString(record.catalogRetrievedAt ?? record.catalog_retrieved_at)
       ? {
           catalogRetrievedAt: toNonEmptyString(

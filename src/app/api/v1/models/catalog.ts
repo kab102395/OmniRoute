@@ -1355,6 +1355,25 @@ async function buildUnifiedModelsResponseCore(
                   },
                 }
               : {}),
+            ...(typeof sm.isFree === "boolean"
+              ? {
+                  ...(providerCatalogIsStale ? {} : { free: sm.isFree }),
+                  free_route_provenance: {
+                    classification: providerCatalogIsStale
+                      ? "unknown_stale_catalog"
+                      : sm.isFree
+                        ? "free"
+                        : "paid",
+                    source: {
+                      id: "provider_model_catalog",
+                      modelId: sm.id,
+                      retrievedAt: sm.catalogRetrievedAt ?? null,
+                      stale: providerCatalogIsStale,
+                      cacheTtlMs: SYNCED_MODEL_CATALOG_MAX_AGE_MS,
+                    },
+                  },
+                }
+              : {}),
             ...(canonicalProviderId === "huggingface" && sm.providerRoutes?.length
               ? {
                   provider_routes: sm.providerRoutes.map((route) => ({

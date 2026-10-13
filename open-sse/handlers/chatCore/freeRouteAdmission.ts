@@ -16,7 +16,10 @@ export type FreeRouteAdmission =
   | {
       readonly kind: "eligible";
       readonly source:
-        "openrouter.models_api" | "huggingface.router_models_api" | "omniroute.free_model_catalog";
+        | "openrouter.models_api"
+        | "huggingface.router_models_api"
+        | "provider_model_catalog"
+        | "omniroute.free_model_catalog";
     }
   | { readonly kind: "ineligible"; readonly reason: "catalog_unverified" | "not_free" };
 
@@ -138,9 +141,11 @@ export async function checkToolCallingRouteAdmission(
  */
 export async function checkFreeRouteAdmission(
   provider: string,
-  model: string
+  model: string,
+  connectionId?: string | null
 ): Promise<FreeRouteAdmission> {
-  if (resolveProviderId(provider) === "openrouter") {
+  const canonicalProvider = resolveProviderId(provider);
+  if (canonicalProvider === "openrouter") {
     const currentFreeRoutes = await getCurrentOpenRouterFreeRouteIds();
     if (currentFreeRoutes === null) {
       return { kind: "ineligible", reason: "catalog_unverified" };
@@ -153,7 +158,7 @@ export async function checkFreeRouteAdmission(
       : { kind: "ineligible", reason: "not_free" };
   }
 
-  if (resolveProviderId(provider) === "huggingface") {
+  if (canonicalProvider === "huggingface") {
     const separator = model.lastIndexOf(":");
     if (separator <= 0 || separator === model.length - 1) {
       return { kind: "ineligible", reason: "not_free" };
@@ -182,6 +187,35 @@ export async function checkFreeRouteAdmission(
     const route = syncedModel?.providerRoutes?.find((entry) => entry.provider === providerRoute);
     return route?.status === "live" && route.isFree === true
       ? { kind: "eligible", source: "huggingface.router_models_api" }
+      : { kind: "ineligible", reason: "not_free" };
+  }
+
+  // Some provider model endpoints publish an explicit `is_free`/`isFree`
+  // fact per exact model. Prefer that connection-scoped, freshly synchronized
+  // provider fact over OmniRoute's release-curated fallback. An explicit paid
+  // verdict must also prevent a stale curated entry from making the route free.
+  const exactModelId = model.replace(/^[^/]+\//, "");
+  const syncedRows = connectionId
+    ? await getSyncedAvailableModelsForConnection(canonicalProvider, connectionId)
+    : Object.values(await getSyncedAvailableModelsByConnection(canonicalProvider)).flat();
+  const matchingCatalogRows = syncedRows
+    .filter((entry) => entry.id === model || entry.id === exactModelId)
+    .filter((entry) => typeof entry.isFree === "boolean")
+    .sort((left, right) => {
+      const leftRetrievedAt = Date.parse(left.catalogRetrievedAt ?? "");
+      const rightRetrievedAt = Date.parse(right.catalogRetrievedAt ?? "");
+      return (
+        (Number.isFinite(rightRetrievedAt) ? rightRetrievedAt : Number.NEGATIVE_INFINITY) -
+        (Number.isFinite(leftRetrievedAt) ? leftRetrievedAt : Number.NEGATIVE_INFINITY)
+      );
+    });
+  const providerCatalogVerdict = matchingCatalogRows[0];
+  if (providerCatalogVerdict) {
+    if (!isFreshCatalogTimestamp(providerCatalogVerdict.catalogRetrievedAt)) {
+      return { kind: "ineligible", reason: "catalog_unverified" };
+    }
+    return providerCatalogVerdict.isFree
+      ? { kind: "eligible", source: "provider_model_catalog" }
       : { kind: "ineligible", reason: "not_free" };
   }
 

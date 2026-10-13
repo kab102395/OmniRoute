@@ -601,7 +601,11 @@ export async function handleChatCore({
     );
   }
   if (freeRouteOnly) {
-    const admission = await checkFreeRouteAdmission(provider, model);
+    const admission = await checkFreeRouteAdmission(
+      provider,
+      model,
+      credentials?.connectionId ?? connectionId
+    );
     if (admission.kind !== "eligible") {
       const message =
         admission.reason === "catalog_unverified"

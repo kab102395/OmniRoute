@@ -414,6 +414,12 @@ export function normalizeDiscoveredModels(
         : supportedParameters === null
           ? undefined
           : supportedParameters.includes("tools");
+    const isFree =
+      typeof record.isFree === "boolean"
+        ? record.isFree
+        : typeof record.is_free === "boolean"
+          ? record.is_free
+          : undefined;
     const providerRoutes =
       providerId === "huggingface" ? normalizeProviderRoutes(record.provider_routes) : undefined;
     const providerRoutesRetrievedAt =
@@ -445,6 +451,7 @@ export function normalizeDiscoveredModels(
           : {}),
       ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
       ...(typeof supportsTools === "boolean" ? { supportsTools } : {}),
+      ...(typeof isFree === "boolean" ? { isFree } : {}),
       ...(toNonEmptyString(record.catalogRetrievedAt ?? record.catalog_retrieved_at)
         ? {
             catalogRetrievedAt: toNonEmptyString(

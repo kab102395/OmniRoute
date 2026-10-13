@@ -117,6 +117,72 @@ test("free admission uses OmniRoute's existing exact provider model catalog", as
   assert.deepEqual(unlistedSibling, { kind: "ineligible", reason: "not_free" });
 });
 
+test("free admission uses a fresh exact free verdict from the selected provider catalog", async () => {
+  await coreDb.ensureDbInitialized();
+  const retrievedAt = new Date().toISOString();
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", "groq-free-catalog-test", [
+    {
+      id: "llama/free-catalog-model",
+      name: "Free catalog model",
+      isFree: true,
+      catalogRetrievedAt: retrievedAt,
+    },
+    {
+      id: "llama/paid-catalog-model",
+      name: "Paid catalog model",
+      isFree: false,
+      catalogRetrievedAt: retrievedAt,
+    },
+  ]);
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", "groq-paid-catalog-test", [
+    {
+      id: "llama/free-catalog-model",
+      name: "Account-specific paid verdict",
+      isFree: false,
+      catalogRetrievedAt: retrievedAt,
+    },
+  ]);
+
+  assert.deepEqual(
+    await checkFreeRouteAdmission("groq", "llama/free-catalog-model", "groq-free-catalog-test"),
+    {
+      kind: "eligible",
+      source: "provider_model_catalog",
+    }
+  );
+  assert.deepEqual(
+    await checkFreeRouteAdmission("groq", "llama/free-catalog-model", "groq-paid-catalog-test"),
+    {
+      kind: "ineligible",
+      reason: "not_free",
+    }
+  );
+  assert.deepEqual(
+    await checkFreeRouteAdmission("groq", "llama/paid-catalog-model", "groq-free-catalog-test"),
+    {
+      kind: "ineligible",
+      reason: "not_free",
+    }
+  );
+});
+
+test("free admission does not use stale provider catalog free verdicts", async () => {
+  await coreDb.ensureDbInitialized();
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", "groq-stale-free-test", [
+    {
+      id: "llama/stale-free-model",
+      name: "Stale free model",
+      isFree: true,
+      catalogRetrievedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
+
+  assert.deepEqual(await checkFreeRouteAdmission("groq", "llama/stale-free-model"), {
+    kind: "ineligible",
+    reason: "catalog_unverified",
+  });
+});
+
 test("free admission rechecks exact current Hugging Face provider routes", async () => {
   await coreDb.ensureDbInitialized();
   await modelsDb.replaceSyncedAvailableModelsForConnection("huggingface", "hf-free-test", [

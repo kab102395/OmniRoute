@@ -889,7 +889,7 @@ test("v1 models free-only mode includes exact provider routes with guaranteed fr
   );
 });
 
-test("synced provider tool metadata preserves source freshness and filters stale routes", async () => {
+test("synced provider tool and free metadata preserve source freshness", async () => {
   const connection = await seedConnection("groq");
   const connectionId = connection.id as string;
   await modelsDb.replaceSyncedAvailableModelsForConnection("groq", connectionId, [
@@ -898,6 +898,7 @@ test("synced provider tool metadata preserves source freshness and filters stale
       name: "Current",
       source: "imported",
       supportsTools: true,
+      isFree: true,
       catalogRetrievedAt: new Date().toISOString(),
     },
     {
@@ -905,12 +906,13 @@ test("synced provider tool metadata preserves source freshness and filters stale
       name: "Stale",
       source: "imported",
       supportsTools: true,
+      isFree: true,
       catalogRetrievedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
     },
   ]);
 
   const response = await v1ModelsCatalog.getUnifiedModelsResponse(
-    new Request("http://localhost/v1/models?require_tool_calling=true")
+    new Request("http://localhost/v1/models")
   );
   const body = (await response.json()) as {
     data: Array<{
@@ -923,20 +925,39 @@ test("synced provider tool metadata preserves source freshness and filters stale
           stale?: boolean;
         };
       };
+      free?: boolean;
+      free_route_provenance?: {
+        classification?: string;
+        source?: { id?: string; stale?: boolean };
+      };
     }>;
   };
   const current = body.data.find((model) => model.id === "groq/llama/current-tool-model");
+  const stale = body.data.find((model) => model.id === "groq/llama/stale-tool-model");
 
   assert.equal(response.status, 200);
+  assert.equal(current?.free, true);
+  assert.deepEqual(current?.free_route_provenance, {
+    classification: "free",
+    source: {
+      id: "provider_model_catalog",
+      modelId: "llama/current-tool-model",
+      retrievedAt: current?.free_route_provenance?.source?.retrievedAt,
+      stale: false,
+      cacheTtlMs: 86_400_000,
+    },
+  });
+  assert.equal(stale?.free, undefined);
+  assert.equal(stale?.free_route_provenance?.classification, "unknown_stale_catalog");
   assert.ok(current, "a recently synced exact tool-capable route remains selectable");
   assert.deepEqual(current.capability_status?.tool_calling?.status, "supported");
   assert.equal(current.capability_status?.tool_calling?.source, "provider_model_catalog");
   assert.equal(current.capability_status?.tool_calling?.stale, false);
   assert.equal(
     body.data.some((model) => model.id === "groq/llama/stale-tool-model"),
-    false,
-    "stale provider capability evidence cannot qualify a constrained catalog query"
+    true
   );
+  assert.equal(stale?.capability_status?.tool_calling?.stale, true);
 });
 
 test("v1 models removes a retired synchronized OpenRouter free route in free-only mode", async () => {

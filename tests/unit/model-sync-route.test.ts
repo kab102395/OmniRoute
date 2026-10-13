@@ -120,7 +120,7 @@ test("model sync preserves provider catalog capability provenance and retrieval 
     return Response.json({
       source: "api",
       catalogRetrievedAt,
-      models: [{ id: "llama/tool-model", name: "Tool model", supportsTools: true }],
+      models: [{ id: "llama/tool-model", name: "Tool model", supportsTools: true, is_free: true }],
     });
   };
 
@@ -135,6 +135,7 @@ test("model sync preserves provider catalog capability provenance and retrieval 
 
   assert.equal(response.status, 200);
   assert.equal(synced[0]?.supportsTools, true);
+  assert.equal(synced[0]?.isFree, true);
   assert.equal(synced[0]?.catalogRetrievedAt, catalogRetrievedAt);
 });
 

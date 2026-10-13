@@ -156,6 +156,11 @@ export interface CatalogRouteAvailability {
   downstreamHostSelection?: "aggregator_selected" | "pinned";
 }
 
+export interface CatalogFreeRouteProvenance {
+  classification: "free" | "paid" | "unknown_stale_catalog";
+  source: CatalogMetadataSource;
+}
+
 export interface CatalogProviderRoute {
   provider: string;
   route_model?: string;
@@ -200,6 +205,8 @@ export interface ModelCatalogEntry extends Record<string, unknown> {
   supported_endpoints?: string[];
   supported_parameters?: string[];
   free_access?: CatalogFreeAccess;
+  /** Exact-route classification from a provider's own synchronized model catalog. */
+  free_route_provenance?: CatalogFreeRouteProvenance;
   route_selection?: CatalogRouteSelection;
   route_availability?: CatalogRouteAvailability;
   provider_routes?: CatalogProviderRoute[];

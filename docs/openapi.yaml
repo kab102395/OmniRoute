@@ -15671,6 +15671,32 @@ components:
                   type: string
                   format: date-time
                   nullable: true
+        free_route_provenance:
+          type: object
+          description: >-
+            Exact-route free or paid classification explicitly reported by a provider's synchronized
+            model catalog. This is separate from curated quota terms and account eligibility. Stale
+            catalog facts are marked unknown_stale_catalog and cannot authorize free-only dispatch.
+          properties:
+            classification:
+              type: string
+              enum: [free, paid, unknown_stale_catalog]
+            source:
+              type: object
+              properties:
+                id:
+                  type: string
+                  enum: [provider_model_catalog]
+                modelId:
+                  type: string
+                retrievedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                stale:
+                  type: boolean
+                cacheTtlMs:
+                  type: integer
         route_selection:
           type: object
           description: >-
