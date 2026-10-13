@@ -3,6 +3,7 @@ import {
   isOpenRouterZeroPriceRoute,
   type OpenRouterPricing,
 } from "@/lib/catalog/openrouterCatalog";
+import type { ModelPricingProvenanceState } from "@/domain/modelCatalogContract";
 
 // OpenRouter-specific catalog normalization helpers. Extracted verbatim from
 // ./catalog.ts as a cohesive leaf — id qualification, modality normalization,
@@ -19,7 +20,7 @@ export function normalizeOpenRouterModalities(value: unknown): string[] {
     : [];
 }
 
-export function getOpenRouterModelType(inputModalities: string[], outputModalities: string[]) {
+export function getOpenRouterModelType(_inputModalities: string[], outputModalities: string[]) {
   if (outputModalities.includes("image")) return "image";
   if (outputModalities.includes("audio")) return "audio";
   if (outputModalities.includes("video")) return "video";
@@ -218,7 +219,7 @@ export function buildOpenRouterPricingEvidence(
       !Number.isFinite(pricingDiscount) ||
       pricingDiscount < 0 ||
       pricingDiscount > 1);
-  const state = isFreeVariant
+  const state: ModelPricingProvenanceState = isFreeVariant
     ? "free_variant"
     : malformedPricingOverrides ||
         malformedReportedRates ||

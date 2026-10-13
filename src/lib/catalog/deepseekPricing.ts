@@ -1,3 +1,5 @@
+import type { ModelPricingProvenance } from "@/domain/modelCatalogContract";
+
 const DEEPSEEK_PRICING_URL = "https://api-docs.deepseek.com/quick_start/pricing/";
 const DEEPSEEK_FLASH_RELEASE_URL = "https://api-docs.deepseek.com/news/news260910/";
 const DEEPSEEK_PRO_RELEASE_URL = "https://api-docs.deepseek.com/news/news260813/";
@@ -51,7 +53,7 @@ export function getDeepseekPricingEvidence(modelId: string, now = Date.now()) {
         source: source(now, DEEPSEEK_FLASH_RELEASE_URL, "deepseek.api_model_routing"),
       },
       zeroCostEligibility: "no",
-    } as const;
+    } satisfies ModelPricingProvenance;
   }
 
   if (modelId === "deepseek-v4-pro") {
@@ -71,7 +73,7 @@ export function getDeepseekPricingEvidence(modelId: string, now = Date.now()) {
         source: source(now, DEEPSEEK_PRO_RELEASE_URL, "deepseek.api_model_routing"),
       },
       zeroCostEligibility: "no",
-    } as const;
+    } satisfies ModelPricingProvenance;
   }
 
   return null;

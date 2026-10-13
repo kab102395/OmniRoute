@@ -26,6 +26,7 @@ import {
 import { getSyncedPricing, getSyncStatus as getLiteLlmPricingSyncStatus } from "@/lib/pricingSync";
 import { getPricingForModel as getDefaultPricingForModel } from "@/shared/constants/pricing";
 import { getDeepseekPricingEvidence } from "@/lib/catalog/deepseekPricing";
+import type { ModelPricingProvenance } from "@/domain/modelCatalogContract";
 import {
   CANONICAL_EFFORT_VALUES,
   extendCodexGpt56EffortValues,
@@ -477,7 +478,7 @@ function buildSyncedPricingProvenance(
   retrievedAt: string | null,
   ttlMs: number,
   modelId: string
-): Record<string, unknown> {
+): ModelPricingProvenance {
   const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
   const validRetrievedAt = Number.isFinite(retrievedAtMs);
   const now = Date.now();
