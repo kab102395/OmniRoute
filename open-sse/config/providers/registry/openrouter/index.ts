@@ -25,5 +25,8 @@ export const openrouterProvider: RegistryEntry = {
   // OpenRouter model on the same connection for the cooldown window and surfacing
   // that first model's stale error message on their unrelated requests.
   passthroughModels: true,
-  models: [{ id: "auto", name: "Auto (Best Available)" }],
+  models: [
+    { id: "auto", name: "Auto (Best Available)" },
+    { id: "free", name: "Free Models Router" },
+  ],
 };

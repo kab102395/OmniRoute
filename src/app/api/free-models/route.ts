@@ -27,7 +27,8 @@ export async function GET(request: Request) {
       const staticKeys = new Set(models.map((m) => `${m.provider}:${m.modelId}`));
       const discovered = discoverOpenRouterFreeModels(
         catalog.data,
-        catalog.cachedAt ?? new Date().toISOString()
+        catalog.cachedAt ?? "",
+        catalog.stale
       )
         .filter((m) => !staticKeys.has(`${m.provider}:${m.modelId}`))
         .map((m) => ({ ...m, live: true, stale: catalog.stale }));

@@ -106,6 +106,9 @@ import {
   getOpenRouterModelType,
   isOpenRouterFreeModel,
   getOpenRouterDisplayName,
+  buildOpenRouterPricingEvidence,
+  toOpenRouterLegacyTokenPricing,
+  reconcileOpenRouterFreeRoutes,
 } from "./catalogOpenrouter";
 import { getVisionCapabilityFields, getCustomVisionCapabilityFields } from "./catalogVision";
 import {
@@ -1073,7 +1076,15 @@ async function buildUnifiedModelsResponseCore(
         const aliasId = `${alias}/${model.id}`;
         if (isModelHiddenBulk(alias, model.id, canonicalProviderId)) continue;
         if (isExcludedByProviderConnections(canonicalProviderId, model.id)) continue;
-        if (shouldHidePaid(canonicalProviderId, model.id, (model as { pricing?: unknown }).pricing))
+        const isOpenRouterFreeRouter = canonicalProviderId === "openrouter" && model.id === "free";
+        if (
+          shouldHidePaid(
+            canonicalProviderId,
+            model.id,
+            (model as { pricing?: unknown }).pricing,
+            isOpenRouterFreeRouter
+          )
+        )
           continue;
         if (shouldHideByExposure(canonicalProviderId, model.id)) continue;
 
@@ -1107,6 +1118,12 @@ async function buildUnifiedModelsResponseCore(
             permission: [],
             root: model.id,
             parent: null,
+            ...(canonicalProviderId === "openrouter" && model.id === "free"
+              ? {
+                  free: true,
+                  route_selection: { kind: "dynamic_free_model", exactModelIdentity: false },
+                }
+              : {}),
             ...(visionFields || {}),
             ...thinkingFields,
             ...thinkingCapabilities,
@@ -1129,6 +1146,12 @@ async function buildUnifiedModelsResponseCore(
             permission: [],
             root: model.id,
             parent: includeAlias ? aliasId : null,
+            ...(canonicalProviderId === "openrouter" && model.id === "free"
+              ? {
+                  free: true,
+                  route_selection: { kind: "dynamic_free_model", exactModelIdentity: false },
+                }
+              : {}),
             ...(providerVisionFields || {}),
             ...thinkingFields,
             ...thinkingCapabilities,
@@ -1348,17 +1371,31 @@ async function buildUnifiedModelsResponseCore(
       console.error("[catalog] Error fetching synced provider models:", err);
     }
 
-    if (
-      activeAliases.has("openrouter") &&
-      !blockedProviders.has("openrouter") &&
-      !providersWithSyncedModels.has("openrouter")
-    ) {
+    if (activeAliases.has("openrouter") && !blockedProviders.has("openrouter")) {
       try {
         const openRouterCatalog = await getOpenRouterCatalog();
+        const currentFreeRouteIds = new Set(
+          (openRouterCatalog.data || [])
+            .filter((entry) => entry?.id && isOpenRouterFreeModel(entry))
+            .map((entry) => entry.id)
+        );
+        const reconciledModels = reconcileOpenRouterFreeRoutes(models, currentFreeRouteIds, {
+          stale: openRouterCatalog.stale,
+          retrievedAt: openRouterCatalog.cachedAt || "",
+          ttlMs: openRouterCatalog.cacheTtlMs,
+          hidePaid,
+        });
+        models.splice(0, models.length, ...reconciledModels);
         for (const openRouterModel of openRouterCatalog.data || []) {
           if (!openRouterModel?.id || typeof openRouterModel.id !== "string") continue;
+          const isFreeVariant = isOpenRouterFreeModel(openRouterModel);
+          // Synced OpenRouter model records remain authoritative for paid routes;
+          // add the current free variants from the live source alongside them.
+          if (providersWithSyncedModels.has("openrouter") && !isFreeVariant) continue;
           const qualifiedId = qualifyOpenRouterModelId(openRouterModel.id);
-          if (models.some((existingModel: any) => existingModel?.id === qualifiedId)) continue;
+          const existingIndex = models.findIndex(
+            (existingModel: any) => existingModel?.id === qualifiedId
+          );
 
           const inputModalities = normalizeOpenRouterModalities(
             openRouterModel.architecture?.input_modalities
@@ -1367,7 +1404,7 @@ async function buildUnifiedModelsResponseCore(
             openRouterModel.architecture?.output_modalities
           );
           const modelType = getOpenRouterModelType(inputModalities, outputModalities);
-          const isFree = isOpenRouterFreeModel(openRouterModel);
+          const isFree = !openRouterCatalog.stale && isFreeVariant;
           if (hidePaid && !isFree) continue;
           // #9293: respect per-model hidden flags (e.g. operator hid google/chirp-3
           // from the OpenRouter provider, so it should not appear in the live catalog).
@@ -1375,23 +1412,34 @@ async function buildUnifiedModelsResponseCore(
           const supportedParameters = Array.isArray(openRouterModel.supported_parameters)
             ? openRouterModel.supported_parameters
             : [];
+          const pricingEvidence = buildOpenRouterPricingEvidence(openRouterModel, {
+            retrievedAt: openRouterCatalog.cachedAt || "",
+            stale: openRouterCatalog.stale,
+            ttlMs: openRouterCatalog.cacheTtlMs,
+          });
+          const legacyPricing = toOpenRouterLegacyTokenPricing(pricingEvidence);
           const capabilities: Record<string, boolean> = {};
-          if (inputModalities.includes("image")) capabilities.vision = true;
+          if (openRouterModel.architecture?.input_modalities)
+            capabilities.vision = inputModalities.includes("image");
           if (
             supportedParameters.includes("reasoning") ||
             supportedParameters.includes("include_reasoning")
           ) {
             capabilities.reasoning = true;
           }
-          if (supportedParameters.includes("tools")) capabilities.tool_calling = true;
+          if (Array.isArray(openRouterModel.supported_parameters))
+            capabilities.tool_calling = supportedParameters.includes("tools");
           if (
             supportedParameters.includes("structured_outputs") ||
             supportedParameters.includes("response_format")
           ) {
-            capabilities.structured_output = true;
+            capabilities.structured_output =
+              supportedParameters.includes("structured_outputs") ||
+              supportedParameters.includes("response_format");
           }
 
-          models.push({
+          const liveModel = {
+            ...(existingIndex >= 0 ? models[existingIndex] : {}),
             id: qualifiedId,
             object: "model",
             created: openRouterModel.created || timestamp,
@@ -1401,7 +1449,9 @@ async function buildUnifiedModelsResponseCore(
             parent: null,
             name: getOpenRouterDisplayName(openRouterModel),
             type: modelType,
-            ...(isFree ? { free: true } : {}),
+            free: isFree,
+            pricing_provenance: pricingEvidence,
+            ...(legacyPricing ? { pricing: legacyPricing } : {}),
             ...(typeof openRouterModel.context_length === "number"
               ? { context_length: openRouterModel.context_length }
               : {}),
@@ -1411,7 +1461,9 @@ async function buildUnifiedModelsResponseCore(
             ...(inputModalities.length > 0 ? { input_modalities: inputModalities } : {}),
             ...(outputModalities.length > 0 ? { output_modalities: outputModalities } : {}),
             ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
-          });
+          };
+          if (existingIndex >= 0) models[existingIndex] = liveModel;
+          else models.push(liveModel);
 
           // #9147: OpenRouter catalog can be large — yield periodically.
           await maybeYieldCatalogBuild();

@@ -1,3 +1,5 @@
+import { isOpenRouterFreeRoute } from "@/lib/catalog/openrouterCatalog";
+
 // OpenRouter-specific catalog normalization helpers. Extracted verbatim from
 // ./catalog.ts as a cohesive leaf — id qualification, modality normalization,
 // model-type inference, and the free-model / display-name heuristics that shape
@@ -23,30 +25,155 @@ export function getOpenRouterModelType(inputModalities: string[], outputModaliti
 
 export function isZeroPrice(value: unknown) {
   if (typeof value === "number") return value === 0;
-  if (typeof value !== "string") return false;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed === 0;
+  if (typeof value !== "string" || !/^\+?0(?:\.0+)?$/.test(value)) return false;
+  return true;
 }
 
 export function isOpenRouterFreeModel(model: {
   id?: string;
   pricing?: { prompt?: string; completion?: string };
 }) {
-  // Model identifiers are labels, not billing evidence. Require both token
-  // dimensions to be explicitly reported as zero by OpenRouter.
-  return (
-    model.pricing?.prompt !== undefined &&
-    model.pricing?.completion !== undefined &&
-    isZeroPrice(model.pricing.prompt) &&
-    isZeroPrice(model.pricing.completion)
-  );
+  // Exact `:free` variants in OpenRouter's current models catalog are its
+  // explicit free-route classification. A base/paid model sharing that family
+  // remains a separate route with its own pricing assessment.
+  return typeof model.id === "string" && isOpenRouterFreeRoute(model.id);
 }
 
 export function getOpenRouterDisplayName(model: {
   id?: string;
   name?: string;
-  pricing?: { prompt?: string; completion?: string };
+  pricing?: { prompt?: string; completion?: string; image?: string; request?: string };
 }) {
   const name = model.name || model.id || "OpenRouter model";
   return isOpenRouterFreeModel(model) && !/\bgr[aá]tis\b/i.test(name) ? `${name} (Grátis)` : name;
+}
+
+/**
+ * Synchronized rows can outlive the live free-route listing. Retain the row for
+ * display when allowed, but never retain current free eligibility based only
+ * on its older synchronized metadata.
+ */
+export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>(
+  models: T[],
+  currentRouteIds: ReadonlySet<string>,
+  options: { stale: boolean; retrievedAt: string; ttlMs: number; hidePaid: boolean }
+): T[] {
+  const result: T[] = [];
+  for (const model of models) {
+    const id = typeof model.id === "string" ? model.id : "";
+    const sourceModelId = id.replace(/^openrouter\//, "");
+    const isOpenRouterFreeRow =
+      model.owned_by === "openrouter" && model.free === true && isOpenRouterFreeModel({ id });
+    if (!isOpenRouterFreeRow || currentRouteIds.has(id) || currentRouteIds.has(sourceModelId)) {
+      result.push(model);
+      continue;
+    }
+    if (options.hidePaid) continue;
+
+    const oldPricing = model.pricing_provenance;
+    const wasCatalogFree =
+      oldPricing !== null &&
+      typeof oldPricing === "object" &&
+      (oldPricing as { state?: unknown }).state === "free_variant";
+    const reconciled = {
+      ...model,
+      free: options.stale ? undefined : false,
+      pricing_provenance: {
+        state: options.stale ? "unknown_stale_catalog" : "not_in_current_free_catalog",
+        routeModelId: sourceModelId,
+        source: {
+          id: "openrouter.models_api",
+          modelId: sourceModelId,
+          url: "https://openrouter.ai/api/v1/models",
+          retrievedAt: options.retrievedAt,
+          stale: options.stale,
+          cacheTtlMs: options.ttlMs,
+        },
+        zeroCostEligibility: options.stale ? "unknown_stale_catalog" : "no",
+      },
+    } as T;
+    if (wasCatalogFree) delete (reconciled as Record<string, unknown>).pricing;
+    result.push(reconciled);
+  }
+  return result;
+}
+
+type OpenRouterReportedPricing = {
+  prompt?: string;
+  completion?: string;
+  image?: string;
+  request?: string;
+};
+
+function parseReportedRate(value: unknown): string | null {
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return null;
+  return value;
+}
+
+/**
+ * Preserve OpenRouter's exact catalog rates and their source context. Its public
+ * model catalog reports prompt/completion rates per token but does not pin the
+ * downstream host, so this evidence must not be interpreted as a cost ceiling.
+ */
+export function buildOpenRouterPricingEvidence(
+  model: { id: string; pricing?: OpenRouterReportedPricing },
+  options: { retrievedAt: string; stale: boolean; ttlMs: number }
+) {
+  const rates = {
+    inputPerTokenUsd: parseReportedRate(model.pricing?.prompt),
+    outputPerTokenUsd: parseReportedRate(model.pricing?.completion),
+    imageReportedUsd: parseReportedRate(model.pricing?.image),
+    requestReportedUsd: parseReportedRate(model.pricing?.request),
+  };
+  const hasAnyRate = Object.values(rates).some((rate) => rate !== null);
+  const completeTokenRates = rates.inputPerTokenUsd !== null && rates.outputPerTokenUsd !== null;
+  const isFreeVariant = isOpenRouterFreeRoute(model.id);
+
+  return {
+    state: isFreeVariant
+      ? "free_variant"
+      : !hasAnyRate
+        ? "unavailable"
+        : completeTokenRates
+          ? "reported"
+          : "incomplete",
+    routeModelId: model.id,
+    source: {
+      id: "openrouter.models_api",
+      modelId: model.id,
+      url: "https://openrouter.ai/api/v1/models",
+      retrievedAt: options.retrievedAt,
+      stale: options.stale,
+      cacheTtlMs: options.ttlMs,
+    },
+    currency: "USD",
+    tokenRateUnit: "USD/token",
+    rates,
+    zeroCostEligibility: isFreeVariant
+      ? options.stale
+        ? "unknown_stale_catalog"
+        : "verified_free_variant"
+      : "no",
+    downstreamHost: { selection: "aggregator_selected", provider: null },
+  } as const;
+}
+
+/** Legacy /v1/models price shape is USD per million tokens. */
+export function toOpenRouterLegacyTokenPricing(
+  evidence: ReturnType<typeof buildOpenRouterPricingEvidence>
+): Record<string, number> | null {
+  if (
+    evidence.state === "free_variant" &&
+    evidence.zeroCostEligibility === "verified_free_variant"
+  ) {
+    return { input: 0, output: 0 };
+  }
+  const { inputPerTokenUsd, outputPerTokenUsd } = evidence.rates;
+  if (evidence.state !== "reported" || inputPerTokenUsd === null || outputPerTokenUsd === null) {
+    return null;
+  }
+  const input = Number(inputPerTokenUsd) * 1_000_000;
+  const output = Number(outputPerTokenUsd) * 1_000_000;
+  if (!Number.isFinite(input) || !Number.isFinite(output)) return null;
+  return { input, output };
 }

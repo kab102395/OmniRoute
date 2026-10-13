@@ -414,6 +414,17 @@ GET /v1/models?prefix=canonical    # only the full provider-id prefix
 A `dual`-mode mirror can also be recognised without the query parameter: it carries a `parent`
 field pointing at the primary id.
 
+OpenRouter model entries retain source-specific `pricing_provenance`: the exact reported
+prompt/completion values (USD per token), any reported image/request values, source model id,
+catalog retrieval time, cache TTL/stale state, and downstream-host selection status. The
+legacy `pricing` object remains in USD per million tokens when both token rates are reported.
+Incomplete OpenRouter prices do not fall back to a different provider's generic model price.
+OpenRouter selects the downstream host, so catalog prices do not prove which host will serve a
+future request and are not a guaranteed upper cost bound. Exact `:free` variants listed in the
+current OpenRouter catalog are selectable free routes even when numeric prices are omitted. Their
+paid sibling routes retain their own pricing. `openrouter/free` is a separate dynamic multi-model
+router and does not guarantee an exact model identity for a request.
+
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.
 

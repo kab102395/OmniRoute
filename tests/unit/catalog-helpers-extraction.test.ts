@@ -25,6 +25,9 @@ import {
   isZeroPrice,
   isOpenRouterFreeModel,
   getOpenRouterDisplayName,
+  buildOpenRouterPricingEvidence,
+  toOpenRouterLegacyTokenPricing,
+  reconcileOpenRouterFreeRoutes,
 } from "../../src/app/api/v1/models/catalogOpenrouter.ts";
 import {
   isVisionModelId,
@@ -181,24 +184,42 @@ test("catalogOpenrouter: qualify + modality normalization + type", () => {
 test("catalogOpenrouter: free-model detection + display name", () => {
   assert.equal(isZeroPrice(0), true);
   assert.equal(isZeroPrice("0"), true);
+  assert.equal(isZeroPrice("0.000"), true);
+  assert.equal(isZeroPrice(""), false);
+  assert.equal(isZeroPrice("   "), false);
+  assert.equal(isZeroPrice(null), false);
   assert.equal(isZeroPrice("0.5"), false);
   assert.equal(isZeroPrice("x"), false);
-  assert.equal(isOpenRouterFreeModel({ id: "z/model:free" }), false);
+  assert.equal(isOpenRouterFreeModel({ id: "z/model:free" }), true);
   assert.equal(
-    isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0", completion: "0" } }),
+    isOpenRouterFreeModel({
+      id: "z/model:free",
+      pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+    }),
     true
   );
   assert.equal(
-    isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0.1", completion: "0" } }),
+    isOpenRouterFreeModel({
+      id: "z/model",
+      pricing: { prompt: "0.1", completion: "0", image: "0", request: "0" },
+    }),
     false
   );
+  assert.equal(
+    isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0", completion: "0" } }),
+    false,
+    "a paid/base route is not free merely because its reported prices are zero"
+  );
   assert.equal(getOpenRouterDisplayName({ id: "z/m", name: "Some Model" }), "Some Model");
-  assert.equal(getOpenRouterDisplayName({ id: "z/m:free", name: "Free Model" }), "Free Model");
+  assert.equal(
+    getOpenRouterDisplayName({ id: "z/m:free", name: "Free Model" }),
+    "Free Model (Grátis)"
+  );
   assert.equal(
     getOpenRouterDisplayName({
       id: "z/m:free",
       name: "Free Model",
-      pricing: { prompt: "0", completion: "0" },
+      pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
     }),
     "Free Model (Grátis)"
   );
@@ -206,6 +227,78 @@ test("catalogOpenrouter: free-model detection + display name", () => {
   assert.equal(
     getOpenRouterDisplayName({ id: "z/m:free", name: "Modelo Grátis" }),
     "Modelo Grátis"
+  );
+});
+
+test("catalogOpenrouter: source pricing evidence preserves exact rates and host ambiguity", () => {
+  const evidence = buildOpenRouterPricingEvidence(
+    {
+      id: "deepseek/deepseek-v4-flash",
+      pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+    },
+    { retrievedAt: "2026-10-12T00:00:00.000Z", stale: false, ttlMs: 86_400_000 }
+  );
+
+  assert.equal(evidence.state, "reported");
+  assert.equal(evidence.rates.inputPerTokenUsd, "0");
+  assert.equal(evidence.source.retrievedAt, "2026-10-12T00:00:00.000Z");
+  assert.equal(evidence.zeroCostEligibility, "no");
+  assert.deepEqual(evidence.downstreamHost, {
+    selection: "aggregator_selected",
+    provider: null,
+  });
+  assert.deepEqual(toOpenRouterLegacyTokenPricing(evidence), { input: 0, output: 0 });
+});
+
+test("catalogOpenrouter: incomplete or malformed route prices do not become zero", () => {
+  const evidence = buildOpenRouterPricingEvidence(
+    { id: "deepseek/model", pricing: { prompt: "0.0000003", completion: "NaN" } },
+    { retrievedAt: "2026-10-12T00:00:00.000Z", stale: true, ttlMs: 86_400_000 }
+  );
+
+  assert.equal(evidence.state, "incomplete");
+  assert.equal(evidence.rates.inputPerTokenUsd, "0.0000003");
+  assert.equal(evidence.rates.outputPerTokenUsd, null);
+  assert.equal(evidence.source.stale, true);
+  assert.equal(evidence.zeroCostEligibility, "no");
+  assert.equal(toOpenRouterLegacyTokenPricing(evidence), null);
+});
+
+test("catalogOpenrouter: synchronized free routes lose eligibility when absent from current catalog", () => {
+  const oldRoute = {
+    id: "openrouter/provider/model:free",
+    owned_by: "openrouter",
+    free: true,
+    pricing: { input: 0, output: 0 },
+    pricing_provenance: { state: "free_variant" },
+  };
+  const options = {
+    stale: false,
+    retrievedAt: "2026-10-12T00:00:00.000Z",
+    ttlMs: 3_600_000,
+    hidePaid: false,
+  };
+
+  const removed = reconcileOpenRouterFreeRoutes([oldRoute], new Set(), options)[0];
+  assert.equal(removed?.free, false);
+  assert.equal(removed?.pricing, undefined);
+  assert.equal(
+    (removed?.pricing_provenance as { zeroCostEligibility?: string }).zeroCostEligibility,
+    "no"
+  );
+
+  const stale = reconcileOpenRouterFreeRoutes([oldRoute], new Set(), {
+    ...options,
+    stale: true,
+  })[0];
+  assert.equal(stale?.free, undefined);
+  assert.equal(
+    (stale?.pricing_provenance as { zeroCostEligibility?: string }).zeroCostEligibility,
+    "unknown_stale_catalog"
+  );
+  assert.deepEqual(
+    reconcileOpenRouterFreeRoutes([oldRoute], new Set(), { ...options, hidePaid: true }),
+    []
   );
 });
 

@@ -1,44 +1,41 @@
-import type { OpenRouterCatalogEntry } from "./openrouterCatalog";
+import { isOpenRouterFreeRoute, type OpenRouterCatalogEntry } from "./openrouterCatalog";
 
 export interface DiscoveredFreeModel {
   provider: "openrouter";
   modelId: string;
+  routeId: string;
+  providerModelId: string;
   displayName: string;
-  monthlyTokens: 0;
-  creditTokens: 0;
-  freeType: "recurring-uncapped";
+  monthlyTokens: null;
+  creditTokens: null;
+  freeType: "provider-free-variant";
   poolKey: "openrouter-free";
   tos: "caution";
   source: "openrouter";
   sourceUrl: string;
   lastSeenAt: string;
+  catalogAvailability: "listed" | "stale";
+  accountEligibility: "unknown";
+  freeEligibility: "verified_free_variant" | "unknown_stale_catalog";
   contextWindow: number | null;
   modalities: string[];
   supportsTools: boolean | null;
   supportsReasoning: boolean | null;
 }
 
-function isZero(value: string | undefined): boolean {
-  return value !== undefined && Number.isFinite(Number(value)) && Number(value) === 0;
-}
-
 function isFree(entry: OpenRouterCatalogEntry): boolean {
-  return (
-    entry.pricing?.prompt !== undefined &&
-    entry.pricing?.completion !== undefined &&
-    isZero(entry.pricing.prompt) &&
-    isZero(entry.pricing.completion)
-  );
+  return isOpenRouterFreeRoute(entry.id);
 }
 
 /**
  * Convert the public OpenRouter catalog into discovery-only free entries.
- * These entries are intentionally marked recurring-uncapped and caution:
- * OpenRouter publishes price, but not a guaranteed quota or proxy permission.
+ * OpenRouter's exact `:free` variant in the current catalog is authoritative
+ * free-route membership. Quotas and account eligibility remain unknown.
  */
 export function discoverOpenRouterFreeModels(
   entries: readonly OpenRouterCatalogEntry[],
-  lastSeenAt: string
+  lastSeenAt: string,
+  stale = false
 ): DiscoveredFreeModel[] {
   const seen = new Set<string>();
   const result: DiscoveredFreeModel[] = [];
@@ -52,15 +49,20 @@ export function discoverOpenRouterFreeModels(
     result.push({
       provider: "openrouter",
       modelId,
+      routeId: `openrouter/${modelId}`,
+      providerModelId: modelId,
       displayName: entry.name?.trim() || modelId,
-      monthlyTokens: 0,
-      creditTokens: 0,
-      freeType: "recurring-uncapped",
+      monthlyTokens: null,
+      creditTokens: null,
+      freeType: "provider-free-variant",
       poolKey: "openrouter-free",
       tos: "caution",
       source: "openrouter",
       sourceUrl: `https://openrouter.ai/${modelId.split("/").map(encodeURIComponent).join("/")}`,
       lastSeenAt,
+      catalogAvailability: stale ? "stale" : "listed",
+      accountEligibility: "unknown",
+      freeEligibility: stale ? "unknown_stale_catalog" : "verified_free_variant",
       contextWindow: entry.context_length ?? null,
       modalities:
         entry.architecture?.output_modalities ?? entry.architecture?.input_modalities ?? [],

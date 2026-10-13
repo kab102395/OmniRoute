@@ -18,6 +18,7 @@ const ccAliases = await import("../../src/lib/db/ccDiscoveryAliases.ts");
 const featureFlags = await import("../../src/lib/db/featureFlags.ts");
 const readCache = await import("../../src/lib/db/readCache.ts");
 const openRouterCatalog = await import("../../src/lib/catalog/openrouterCatalog.ts");
+const openRouterFreeModels = await import("../../src/lib/catalog/openrouterFreeModels.ts");
 
 function resetStorage() {
   core.resetDbInstance();
@@ -191,7 +192,11 @@ test("refreshOpenRouterCatalog invalidates only on success", async () => {
   installMockOpenRouterFetch({ data: [{ id: "openrouter/fake", source: "test" }] });
   try {
     const beforeGet = catalogVersion();
-    await openRouterCatalog.getOpenRouterCatalog();
+    const catalog = await openRouterCatalog.getOpenRouterCatalog();
+    assert.equal(catalog.stale, false);
+    assert.equal(typeof catalog.cachedAt, "string");
+    assert.ok(Number.isFinite(Date.parse(catalog.cachedAt ?? "")));
+    assert.ok(catalog.cacheTtlMs > 0);
     assert.equal(
       catalogVersion(),
       beforeGet,
@@ -211,4 +216,44 @@ test("refreshOpenRouterCatalog invalidates only on success", async () => {
   } finally {
     restoreRealFetch();
   }
+});
+
+test("OpenRouter free route eligibility follows each successful catalog refresh", async () => {
+  const snapshots = [
+    { data: [{ id: "provider/new-free:free", supported_parameters: ["tools"] }] },
+    { data: [{ id: "provider/replacement:free", supported_parameters: ["tools"] }] },
+  ];
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(snapshots.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+
+  const firstRefresh = await openRouterCatalog.refreshOpenRouterCatalog();
+  assert.equal(firstRefresh.ok, true);
+  const firstCatalog = await openRouterCatalog.getOpenRouterCatalog();
+  assert.deepEqual(
+    openRouterFreeModels
+      .discoverOpenRouterFreeModels(
+        firstCatalog.data,
+        firstCatalog.cachedAt ?? "",
+        firstCatalog.stale
+      )
+      .map((model) => model.modelId),
+    ["provider/new-free:free"]
+  );
+
+  const secondRefresh = await openRouterCatalog.refreshOpenRouterCatalog();
+  assert.equal(secondRefresh.ok, true);
+  const secondCatalog = await openRouterCatalog.getOpenRouterCatalog();
+  assert.deepEqual(
+    openRouterFreeModels
+      .discoverOpenRouterFreeModels(
+        secondCatalog.data,
+        secondCatalog.cachedAt ?? "",
+        secondCatalog.stale
+      )
+      .map((model) => model.modelId),
+    ["provider/replacement:free"]
+  );
 });

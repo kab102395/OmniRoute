@@ -54,9 +54,31 @@ export interface OpenRouterCatalogEntry {
   created?: number;
 }
 
+/** OpenRouter expresses its catalog-level free offering as an exact `:free` route variant. */
+export function isOpenRouterFreeRoute(modelId: string): boolean {
+  return /^[^\s]+:free$/.test(modelId);
+}
+
 interface CacheFile {
   fetchedAt: string;
   data: OpenRouterCatalogEntry[];
+}
+
+let inFlightCatalogFetch: Promise<OpenRouterCatalogEntry[]> | null = null;
+
+function fetchCatalogOnce(): Promise<OpenRouterCatalogEntry[]> {
+  if (inFlightCatalogFetch) return inFlightCatalogFetch;
+  const pending = fetchFromAPI();
+  inFlightCatalogFetch = pending;
+  void pending.then(
+    () => {
+      if (inFlightCatalogFetch === pending) inFlightCatalogFetch = null;
+    },
+    () => {
+      if (inFlightCatalogFetch === pending) inFlightCatalogFetch = null;
+    }
+  );
+  return pending;
 }
 
 /** Read cached catalog from disk. Returns null if not found or unparseable. */
@@ -72,10 +94,10 @@ function readCache(): CacheFile | null {
 }
 
 /** Write catalog to disk cache. */
-function writeCache(data: OpenRouterCatalogEntry[]): void {
+function writeCache(data: OpenRouterCatalogEntry[], fetchedAt: string): void {
   const filePath = getCacheFilePath();
   const cache: CacheFile = {
-    fetchedAt: new Date().toISOString(),
+    fetchedAt,
     data,
   };
   try {
@@ -110,13 +132,14 @@ async function fetchFromAPI(): Promise<OpenRouterCatalogEntry[]> {
  * Returns { data, stale, cachedAt } where:
  * - data: list of models
  * - stale: true if data is from a stale cache (fetch failed)
- * - cachedAt: ISO string of when the data was cached (null if fresh fetch)
+ * - cachedAt: ISO string of when the source catalog was retrieved
  */
 export async function getOpenRouterCatalog(): Promise<{
   data: OpenRouterCatalogEntry[];
   stale: boolean;
   cachedAt: string | null;
   fromCache: boolean;
+  cacheTtlMs: number;
 }> {
   const ttl = getTTL();
   const cache = readCache();
@@ -131,15 +154,17 @@ export async function getOpenRouterCatalog(): Promise<{
         stale: false,
         cachedAt: cache.fetchedAt,
         fromCache: true,
+        cacheTtlMs: ttl,
       };
     }
   }
 
   // Cache expired or missing — attempt fresh fetch
   try {
-    const data = await fetchFromAPI();
-    writeCache(data);
-    return { data, stale: false, cachedAt: null, fromCache: false };
+    const data = await fetchCatalogOnce();
+    const fetchedAt = new Date().toISOString();
+    writeCache(data, fetchedAt);
+    return { data, stale: false, cachedAt: fetchedAt, fromCache: false, cacheTtlMs: ttl };
   } catch (err) {
     console.warn("[OpenRouterCatalog] Fetch failed, using stale cache:", err);
 
@@ -150,11 +175,12 @@ export async function getOpenRouterCatalog(): Promise<{
         stale: true,
         cachedAt: cache.fetchedAt,
         fromCache: true,
+        cacheTtlMs: ttl,
       };
     }
 
     // No cache at all — return empty with error signal
-    return { data: [], stale: true, cachedAt: null, fromCache: false };
+    return { data: [], stale: true, cachedAt: null, fromCache: false, cacheTtlMs: ttl };
   }
 }
 
@@ -168,8 +194,8 @@ export async function refreshOpenRouterCatalog(): Promise<{
   error?: string;
 }> {
   try {
-    const data = await fetchFromAPI();
-    writeCache(data);
+    const data = await fetchCatalogOnce();
+    writeCache(data, new Date().toISOString());
     invalidateModelCatalogCache();
     return { data, ok: true };
   } catch (err) {

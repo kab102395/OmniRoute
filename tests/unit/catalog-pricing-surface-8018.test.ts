@@ -64,4 +64,18 @@ describe("catalog pricing surface (#8018)", () => {
     });
     assert.equal(entry.pricing, undefined);
   });
+
+  it("does not replace explicit route pricing uncertainty with generic model pricing", () => {
+    const entry = enrichCatalogModelEntry({
+      id: "openai/gpt-4o",
+      owned_by: "openai",
+      root: "gpt-4o",
+      pricing_provenance: { state: "incomplete", source: { id: "route-catalog" } },
+    });
+    assert.equal(entry.pricing, undefined);
+    assert.deepEqual(entry.pricing_provenance, {
+      state: "incomplete",
+      source: { id: "route-catalog" },
+    });
+  });
 });

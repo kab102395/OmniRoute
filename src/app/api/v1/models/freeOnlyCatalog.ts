@@ -1,4 +1,4 @@
-/** Return true only for OpenRouter rows carrying verified zero-price evidence. */
+/** Return true for an exact current free route or OpenRouter's dynamic free router. */
 export function isExplicitOpenRouterFreeCatalogModel(model: Record<string, unknown>): boolean {
   return (
     typeof model.id === "string" &&

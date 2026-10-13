@@ -626,7 +626,9 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     nextEntry.name = metadata.displayName;
   }
 
-  if (nextEntry.pricing == null) {
+  // A provider-specific pricing assessment (including an explicit unknown or
+  // incomplete state) takes precedence over unrelated generic model prices.
+  if (nextEntry.pricing == null && nextEntry.pricing_provenance == null) {
     const pricing = resolveCatalogPricing(provider, model, snapshot);
     if (pricing) nextEntry.pricing = pricing;
   }
