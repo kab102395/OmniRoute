@@ -3,7 +3,10 @@ import {
   isOpenRouterZeroPriceRoute,
   type OpenRouterPricing,
 } from "@/lib/catalog/openrouterCatalog";
-import type { ModelPricingProvenanceState } from "@/domain/modelCatalogContract";
+import type {
+  ModelPricingProvenance,
+  ModelPricingProvenanceState,
+} from "@/domain/modelCatalogContract";
 
 // OpenRouter-specific catalog normalization helpers. Extracted verbatim from
 // ./catalog.ts as a cohesive leaf — id qualification, modality normalization,
@@ -129,7 +132,9 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
         downstreamHostSelection: "aggregator_selected",
       },
       pricing_provenance: {
-        state: options.stale ? "unknown_stale_catalog" : "not_in_current_free_catalog",
+        state: (options.stale
+          ? "unknown_stale_catalog"
+          : "not_in_current_free_catalog") satisfies ModelPricingProvenanceState,
         routeModelId: sourceModelId,
         source: {
           id: "openrouter.models_api",
@@ -140,7 +145,7 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
           cacheTtlMs: options.ttlMs,
         },
         zeroCostEligibility: options.stale ? "unknown_stale_catalog" : "no",
-      },
+      } satisfies ModelPricingProvenance,
     } as T;
     if (wasCatalogFree || hadZeroLegacyPricing || model.free === true) {
       delete (reconciled as Record<string, unknown>).pricing;

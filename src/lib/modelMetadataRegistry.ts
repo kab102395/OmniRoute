@@ -463,7 +463,7 @@ function resolveCatalogPricing(
           currency: "USD",
           rateUnit: "Source-native USD units; token rates use USD / 1M tokens",
           authority: "OmniRoute-maintained estimate; not provider billing evidence",
-        },
+        } satisfies ModelPricingProvenance,
       };
     }
   } catch {
@@ -842,7 +842,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       currency: "USD",
       source: { id: "catalog_entry.unattributed", retrievedAt: null, stale: null },
       authority: "The catalog contains rates, but their source and freshness are unavailable",
-    };
+    } satisfies ModelPricingProvenance;
   } else if (nextEntry.pricing_provenance == null) {
     nextEntry.pricing_provenance = {
       state: "unavailable",
@@ -851,7 +851,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       source: { id: "omniroute.catalog_pricing_resolution", retrievedAt: null, stale: null },
       reason:
         "No matching provider pricing metadata was available from the configured catalog sources",
-    };
+    } satisfies ModelPricingProvenance;
   }
 
   return nextEntry as T;
