@@ -10,6 +10,7 @@ process.env.OPENROUTER_CATALOG_TTL_MS = "900000";
 
 const core = await import("../../src/lib/db/core.ts");
 core.getDbInstance();
+const settings = await import("../../src/lib/db/settings.ts");
 const pricingSync = await import("../../src/lib/pricingSync.ts");
 const { calculateCostWithEvidence, calculateModalCostWithEvidence } =
   await import("../../src/lib/usage/costCalculator.ts");
@@ -60,6 +61,31 @@ test("OpenRouter estimates use exact route catalog rates instead of generic sync
   assert.equal(estimate.pricingEvidence.modelId, routeId);
   assert.equal(estimate.pricingEvidence.stale, false);
   assert.equal(estimate.pricingEvidence.rateSources?.input?.source, "openrouter");
+});
+
+test("explicit OpenRouter pricing overrides avoid an unnecessary catalog refresh", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  await settings.updatePricing({
+    openrouter: { [routeId]: { input: 0.5, output: 1 } },
+  });
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("catalog refresh should not be needed for an explicit override");
+  };
+  try {
+    const estimate = await calculateCostWithEvidence("openrouter", routeId, {
+      input: 1_000_000,
+      output: 1_000_000,
+    });
+    assert.equal(estimate.costUsd, 1.5);
+    assert.equal(estimate.costKnown, true);
+    assert.equal(estimate.pricingEvidence.source, "user");
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await settings.resetPricing("openrouter", routeId);
+  }
 });
 
 test("stale OpenRouter rates remain estimates and cannot be marked known", async () => {

@@ -342,7 +342,7 @@ export async function calculateCostWithEvidence(
           freeVariant: boolean;
         }
       | undefined;
-    if (normalizeServiceTier(provider) === "openrouter") {
+    if (normalizeServiceTier(provider) === "openrouter" && resolvedPricing?.source !== "user") {
       const { getOpenRouterCatalog, isOpenRouterFreeRouteModel } =
         await import("@/lib/catalog/openrouterCatalog");
       const catalog = await getOpenRouterCatalog();
