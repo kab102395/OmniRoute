@@ -175,6 +175,37 @@ test("a current exact free route is zero-cost even when numeric rates are absent
   assert.equal(accounting.source, "openrouter.models_api");
 });
 
+test("a stale exact free route stays unverified and is not described as currently free", async () => {
+  const originalFetch = globalThis.fetch;
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  fs.writeFileSync(
+    cachePath,
+    JSON.stringify({
+      fetchedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      data: [{ id: "vendor/stale-free:free" }],
+    }),
+    "utf8"
+  );
+  globalThis.fetch = async () => {
+    throw new Error("catalog refresh unavailable");
+  };
+
+  try {
+    const estimate = await calculateCostWithEvidence("openrouter", "vendor/stale-free:free", {
+      input: 1_000_000,
+      output: 1_000_000,
+    });
+
+    assert.equal(estimate.costUsd, 0);
+    assert.equal(estimate.costKnown, false);
+    assert.equal(estimate.pricingEvidence.stale, true);
+    assert.match(estimate.pricingEvidence.condition || "", /last cached catalog/);
+    assert.match(estimate.pricingEvidence.condition || "", /eligibility is unverified/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test.after(() => {
   pricingSync.clearSyncedPricing();
   core.resetDbInstance();

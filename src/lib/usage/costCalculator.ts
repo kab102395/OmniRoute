@@ -474,7 +474,9 @@ export async function calculateCostWithEvidence(
       pricingCondition = openRouterEvidence.conditional
         ? "OpenRouter reports route-specific pricing conditions; estimate is not an upper bound."
         : openRouterEvidence.freeVariant
-          ? "OpenRouter currently advertises this exact route as free."
+          ? openRouterEvidence.stale
+            ? "OpenRouter's last cached catalog advertised this exact route as free; current eligibility is unverified."
+            : "OpenRouter currently advertises this exact route as free."
           : null;
     }
     if (resolvedPricing.source === "modelsDev") {
