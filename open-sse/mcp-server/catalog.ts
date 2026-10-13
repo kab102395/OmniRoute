@@ -4,16 +4,33 @@ import { AI_PROVIDERS, NOAUTH_PROVIDERS } from "../../src/shared/constants/provi
 
 type JsonRecord = Record<string, unknown>;
 type McpCatalogStatus = "available" | "degraded" | "unavailable";
+type McpToolSupportStatus = "supported" | "unsupported" | "unknown";
+
+type McpCatalogModel = {
+  id: string;
+  provider: string;
+  capabilities: string[];
+  status: McpCatalogStatus;
+  thinkingEffort?: string;
+  pricing?: unknown;
+  pricingProvenance?: JsonRecord;
+  capabilityStatus?: JsonRecord;
+  toolCallingStatus: McpToolSupportStatus;
+  supportedParameters?: string[];
+  inputModalities?: string[];
+  outputModalities?: string[];
+  contextLength?: number;
+  maxOutputTokens?: number;
+  free?: boolean;
+  freeAccess?: JsonRecord;
+  routeSelection?: JsonRecord;
+  routeAvailability?: JsonRecord;
+  providerRoutes?: JsonRecord[];
+  providerRoutesProvenance?: JsonRecord;
+};
 
 type McpCatalogResponse = {
-  models: Array<{
-    id: string;
-    provider: string;
-    capabilities: string[];
-    status: McpCatalogStatus;
-    thinkingEffort?: string;
-    pricing?: unknown;
-  }>;
+  models: McpCatalogModel[];
   source: string;
   warning?: string;
 };
@@ -136,12 +153,83 @@ function normalizeProviderModelRecord(
 ) {
   const model = toRecord(rawModel);
   const id = toString(model.id, "");
+  const capabilityStatus = toRecord(model.capability_status);
+  const toolCalling = toRecord(capabilityStatus.tool_calling);
+  const explicitToolStatus = toString(toolCalling.status);
+  const legacyToolSupport =
+    typeof model.supports_tools === "boolean"
+      ? model.supports_tools
+      : typeof toRecord(model.capabilities).tool_calling === "boolean"
+        ? (toRecord(model.capabilities).tool_calling as boolean)
+        : undefined;
+  const contextLength =
+    typeof model.context_length === "number" &&
+    Number.isFinite(model.context_length) &&
+    model.context_length > 0
+      ? model.context_length
+      : typeof model.inputTokenLimit === "number" &&
+          Number.isFinite(model.inputTokenLimit) &&
+          model.inputTokenLimit > 0
+        ? model.inputTokenLimit
+        : undefined;
+  const maxOutputTokens =
+    typeof model.max_output_tokens === "number" &&
+    Number.isFinite(model.max_output_tokens) &&
+    model.max_output_tokens > 0
+      ? model.max_output_tokens
+      : typeof model.outputTokenLimit === "number" &&
+          Number.isFinite(model.outputTokenLimit) &&
+          model.outputTokenLimit > 0
+        ? model.outputTokenLimit
+        : undefined;
+  const toolCallingStatus: McpToolSupportStatus =
+    explicitToolStatus === "supported" ||
+    explicitToolStatus === "unsupported" ||
+    explicitToolStatus === "unknown"
+      ? explicitToolStatus
+      : legacyToolSupport === true
+        ? "supported"
+        : legacyToolSupport === false
+          ? "unsupported"
+          : "unknown";
 
   return {
     id,
     provider: toString(model.owned_by, toString(model.provider, fallbackProvider)),
     capabilities: getCatalogModelCapabilities(model),
     status: normalizeCatalogStatus(model, source, warning),
+    toolCallingStatus,
+    ...(contextLength !== undefined ? { contextLength } : {}),
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    ...(typeof model.free === "boolean" ? { free: model.free } : {}),
+    ...(Object.keys(toRecord(model.pricing_provenance)).length > 0
+      ? { pricingProvenance: toRecord(model.pricing_provenance) }
+      : {}),
+    ...(Object.keys(capabilityStatus).length > 0 ? { capabilityStatus } : {}),
+    ...(Array.isArray(model.supported_parameters)
+      ? { supportedParameters: toStringArray(model.supported_parameters) }
+      : {}),
+    ...(Array.isArray(model.input_modalities)
+      ? { inputModalities: toStringArray(model.input_modalities) }
+      : {}),
+    ...(Array.isArray(model.output_modalities)
+      ? { outputModalities: toStringArray(model.output_modalities) }
+      : {}),
+    ...(Object.keys(toRecord(model.free_access)).length > 0
+      ? { freeAccess: toRecord(model.free_access) }
+      : {}),
+    ...(Object.keys(toRecord(model.route_selection)).length > 0
+      ? { routeSelection: toRecord(model.route_selection) }
+      : {}),
+    ...(Object.keys(toRecord(model.route_availability)).length > 0
+      ? { routeAvailability: toRecord(model.route_availability) }
+      : {}),
+    ...(Array.isArray(model.provider_routes)
+      ? { providerRoutes: model.provider_routes.map(toRecord) }
+      : {}),
+    ...(Object.keys(toRecord(model.provider_routes_provenance)).length > 0
+      ? { providerRoutesProvenance: toRecord(model.provider_routes_provenance) }
+      : {}),
     ...(thinkingEffort ? { thinkingEffort } : {}),
     pricing: model.pricing,
   };

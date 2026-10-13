@@ -436,14 +436,25 @@ export const listModelsCatalogOutput = z.object({
       capabilities: z.array(z.string()),
       status: z.enum(["available", "degraded", "unavailable"]),
       thinkingEffort: z.string().optional(),
-      pricing: z
-        .object({
-          inputPerMillion: z.number().nullable(),
-          outputPerMillion: z.number().nullable(),
-        })
-        .optional(),
+      pricing: z.unknown().optional(),
+      pricingProvenance: z.record(z.string(), z.unknown()).optional(),
+      capabilityStatus: z.record(z.string(), z.unknown()).optional(),
+      toolCallingStatus: z.enum(["supported", "unsupported", "unknown"]),
+      supportedParameters: z.array(z.string()).optional(),
+      inputModalities: z.array(z.string()).optional(),
+      outputModalities: z.array(z.string()).optional(),
+      contextLength: z.number().positive().optional(),
+      maxOutputTokens: z.number().positive().optional(),
+      free: z.boolean().optional(),
+      freeAccess: z.record(z.string(), z.unknown()).optional(),
+      routeSelection: z.record(z.string(), z.unknown()).optional(),
+      routeAvailability: z.record(z.string(), z.unknown()).optional(),
+      providerRoutes: z.array(z.record(z.string(), z.unknown())).optional(),
+      providerRoutesProvenance: z.record(z.string(), z.unknown()).optional(),
     })
   ),
+  source: z.string(),
+  warning: z.string().optional(),
 });
 
 export const listModelsCatalogTool: McpToolDefinition<

@@ -131,7 +131,7 @@ omniroute --mcp
 | 5   | `omniroute_check_quota`         | `read:quota`          | Remaining API quota per provider with token health status                                           |
 | 6   | `omniroute_route_request`       | `execute:completions` | Send a chat completion through intelligent routing                                                  |
 | 7   | `omniroute_cost_report`         | `read:usage`          | Cost report by period (session/day/week/month) with per-provider breakdown                          |
-| 8   | `omniroute_list_models_catalog` | `read:models`         | List all available models across providers with capabilities and pricing                            |
+| 8   | `omniroute_list_models_catalog` | `read:models`         | List model routes with capability status, limits, pricing provenance, and route eligibility facts  |
 
 ### Phase 2: Advanced Tools (8)
 
@@ -592,30 +592,33 @@ async function debugRouting(client: Client, requestId: string) {
 }
 ```
 
-### 📋 Use Case 5: Model Discovery Agent
+The catalog tool preserves provider pricing fields and their accompanying `pricingProvenance` as
+source evidence. Pricing fields can use provider-specific units and shapes; consumers must not
+assume a per-million token rate unless the returned evidence explicitly identifies that unit.
+Tool support is returned as `toolCallingStatus` (`supported`, `unsupported`, or `unknown`). The
+catalog also retains context/output limits, exact-versus-dynamic route selection, availability,
+the full `capabilityStatus`, supported parameters, input/output modalities, documented free-access
+facts, and provider-specific routes when the source endpoint supplies them.
 
-An agent that discovers the cheapest models for a given capability.
+### 📋 Use Case 5: Tool-Capable Model Discovery
+
+An agent that finds currently listed routes with verified tool support and exact model identity.
 
 ```python
-async def find_cheapest_models(session, capability="chat"):
-    """Find the cheapest available models for a capability."""
+async def find_tool_capable_exact_routes(session):
+    """Find available routes with known tool support and exact model identity."""
     catalog = await session.call_tool("omniroute_list_models_catalog", {
-        "capability": capability,
+        "capability": "chat",
     })
     models = json.loads(catalog.content[0].text)["models"]
 
-    # Filter available models with pricing
-    priced = [
+    eligible = [
         m for m in models
-        if m["status"] == "available" and m.get("pricing")
+        if m["status"] == "available"
+        and m["toolCallingStatus"] == "supported"
+        and m.get("routeSelection", {}).get("exactModelIdentity") is True
     ]
-    priced.sort(key=lambda m: m["pricing"]["inputPerMillion"] or float("inf"))
-
-    print(f"💡 Cheapest {capability} models:")
-    for m in priced[:5]:
-        input_cost = m["pricing"]["inputPerMillion"] or 0
-        output_cost = m["pricing"]["outputPerMillion"] or 0
-        print(f"  {m['id']} ({m['provider']}): ${input_cost}/M in, ${output_cost}/M out")
+    return eligible
 ```
 
 ---

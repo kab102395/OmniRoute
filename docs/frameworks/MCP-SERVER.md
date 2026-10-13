@@ -76,7 +76,7 @@ Cursor, Cline, and compatible MCP client setup.
 | `omniroute_check_quota`         | `read:quota`          | Quota used/total, percent remaining, reset time, token health                                                                  |
 | `omniroute_route_request`       | `execute:completions` | Send a chat completion through OmniRoute routing                                                                               |
 | `omniroute_cost_report`         | `read:usage`          | Cost report by period (session/day/week/month)                                                                                 |
-| `omniroute_list_models_catalog` | `read:models`         | Full model catalog with capabilities, status, pricing                                                                          |
+| `omniroute_list_models_catalog` | `read:models`         | Model routes with capability status, limits, source-preserved pricing evidence, and route eligibility facts                    |
 | `omniroute_radar_catalog`       | `read:radar`          | Local signed Radar catalog; optional provider/family filters                                                                   |
 | `omniroute_tool_search`         | `read:tools`          | Discover tools from the registered MCP catalog                                                                                 |
 | `omniroute_web_search`          | `execute:search`      | Web search through the configured search providers. Not X/Twitter.                                                             |

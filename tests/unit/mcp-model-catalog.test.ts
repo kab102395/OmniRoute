@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { getMcpModelsCatalog } from "../../open-sse/mcp-server/server.ts";
+import { listModelsCatalogOutput } from "../../open-sse/mcp-server/schemas/tools.ts";
 
 test("getMcpModelsCatalog aggregates only active connection model endpoints", async () => {
   const calls: string[] = [];
@@ -42,6 +43,7 @@ test("getMcpModelsCatalog aggregates only active connection model endpoints", as
         provider: "github",
         capabilities: ["chat"],
         status: "available",
+        toolCallingStatus: "unknown",
         pricing: undefined,
       },
       {
@@ -49,11 +51,94 @@ test("getMcpModelsCatalog aggregates only active connection model endpoints", as
         provider: "github",
         capabilities: ["embedding"],
         status: "available",
+        toolCallingStatus: "unknown",
         pricing: undefined,
       },
     ],
     source: "api",
   });
+});
+
+test("getMcpModelsCatalog preserves route eligibility, limits, and price evidence", async () => {
+  const result = await getMcpModelsCatalog(
+    { provider: "openrouter" },
+    {
+      listProviderConnections: async () => [
+        { id: "conn-openrouter", provider: "openrouter", isActive: true },
+      ],
+      fetchJson: async () => ({
+        source: "api",
+        models: [
+          {
+            id: "openrouter/vendor/coder:free",
+            owned_by: "openrouter",
+            supportedEndpoints: ["chat-completions"],
+            context_length: 65536,
+            max_output_tokens: 8192,
+            pricing: { prompt: "0", completion: "0" },
+            pricing_provenance: {
+              state: "free_variant",
+              zeroCostEligibility: "verified_free_variant",
+              source: { id: "openrouter.models_api", stale: false },
+            },
+            capability_status: {
+              tool_calling: { status: "supported", source: "openrouter.models_api" },
+              structured_output: { status: "supported", source: "openrouter.models_api" },
+            },
+            supported_parameters: ["tools", "response_format"],
+            input_modalities: ["text", "image"],
+            output_modalities: ["text"],
+            free: true,
+            route_selection: { kind: "exact_model", exactModelIdentity: true },
+            route_availability: {
+              catalogListed: true,
+              accountEligibility: "unknown",
+            },
+          },
+        ],
+      }),
+    }
+  );
+
+  const model = result.models[0];
+  assert.equal(model?.toolCallingStatus, "supported");
+  assert.equal(model?.contextLength, 65536);
+  assert.equal(model?.maxOutputTokens, 8192);
+  assert.deepEqual(model?.pricing, { prompt: "0", completion: "0" });
+  assert.equal(model?.pricingProvenance?.state, "free_variant");
+  assert.deepEqual(model?.capabilityStatus?.structured_output, {
+    status: "supported",
+    source: "openrouter.models_api",
+  });
+  assert.deepEqual(model?.supportedParameters, ["tools", "response_format"]);
+  assert.deepEqual(model?.inputModalities, ["text", "image"]);
+  assert.deepEqual(model?.outputModalities, ["text"]);
+  assert.deepEqual(model?.routeSelection, { kind: "exact_model", exactModelIdentity: true });
+  assert.equal(listModelsCatalogOutput.parse(result).models[0]?.toolCallingStatus, "supported");
+});
+
+test("explicit unknown tool support is not promoted by a legacy capability hint", async () => {
+  const result = await getMcpModelsCatalog(
+    { provider: "openrouter" },
+    {
+      listProviderConnections: async () => [
+        { id: "conn-openrouter", provider: "openrouter", isActive: true },
+      ],
+      fetchJson: async () => ({
+        source: "api",
+        models: [
+          {
+            id: "vendor/unknown-tools",
+            owned_by: "openrouter",
+            supports_tools: true,
+            capability_status: { tool_calling: { status: "unknown" } },
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(result.models[0]?.toolCallingStatus, "unknown");
 });
 
 test("getMcpModelsCatalog exposes codex default thinking effort when no override is stored", async () => {
