@@ -8,6 +8,7 @@
  */
 
 import { toNumber } from "@/shared/utils/numeric";
+import { getDeepseekPricingEvidence } from "@/lib/catalog/deepseekPricing";
 import { isFlatRateProvider } from "./flatRateProviders";
 
 /**
@@ -39,7 +40,7 @@ export type CostCalculationOptions = {
 };
 
 export type CostPricingEvidence = {
-  source: "default" | "litellm" | "modelsDev" | "user" | null;
+  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | null;
   modelId: string | null;
   retrievedAt: string | null;
   ttlMs: number | null;
@@ -238,7 +239,7 @@ export async function calculateCost(
 }
 
 export function buildCostPricingEvidence(
-  source: "default" | "litellm" | "modelsDev" | "user" | null,
+  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | null,
   modelId: string | null,
   retrievedAt: string | null,
   ttlMs: number | null,
@@ -305,6 +306,7 @@ export async function calculateCostWithEvidence(
         : {};
     let retrievedAt: string | null = null;
     let ttlMs: number | null = null;
+    let evidenceSource: CostPricingEvidence["source"] = resolvedPricing.source;
     if (resolvedPricing.source === "modelsDev") {
       const { getSyncStatus } = await import("@/lib/modelsDevSync");
       const status = getSyncStatus();
@@ -315,6 +317,16 @@ export async function calculateCostWithEvidence(
       const status = getSyncStatus();
       retrievedAt = status.lastSync;
       ttlMs = status.intervalMs;
+    } else if (
+      resolvedPricing.source === "default" &&
+      normalizeServiceTier(provider) === "deepseek"
+    ) {
+      const deepseekEvidence = getDeepseekPricingEvidence(normalizeModelName(model));
+      if (deepseekEvidence) {
+        evidenceSource = "deepseek";
+        retrievedAt = deepseekEvidence.source.retrievedAt;
+        ttlMs = deepseekEvidence.source.cacheTtlMs;
+      }
     }
     const inputTokens = Math.max(
       0,
@@ -336,13 +348,13 @@ export async function calculateCostWithEvidence(
     const nonCachedInputTokens = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
     const hasRate = (value: unknown) => toNonNegativePrice(value) !== null;
     const pricingEvidence = buildCostPricingEvidence(
-      resolvedPricing.source,
+      evidenceSource,
       resolvedPricing.modelKey,
       retrievedAt,
       ttlMs
     );
     const pricingFreshnessKnown =
-      resolvedPricing.source === "default" ||
+      (resolvedPricing.source === "default" && evidenceSource !== "deepseek") ||
       resolvedPricing.source === "user" ||
       (retrievedAt !== null && ttlMs !== null && pricingEvidence.stale === false);
     const costKnown =

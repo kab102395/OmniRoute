@@ -16,8 +16,9 @@ const usageHistory = await import("../../src/lib/usage/usageHistory.ts");
 const usageStats = await import("../../src/lib/usage/usageStats.ts");
 const legacyUsageAnalytics = await import("../../src/lib/usageAnalytics.ts");
 const callLogs = await import("../../src/lib/usage/callLogs.ts");
-const { calculateCost, getCodexFastCostMultiplier } =
+const { calculateCost, calculateCostWithEvidence, getCodexFastCostMultiplier } =
   await import("../../src/lib/usage/costCalculator.ts");
+const { classifyCostAccounting } = await import("../../src/lib/usage/costAccounting.ts");
 
 // Use the official clearPendingRequests export instead of manual cleanup
 const clearPendingRequests = usageHistory.clearPendingRequests;
@@ -421,6 +422,48 @@ test("Codex Fast service tier applies GPT-5.5 and GPT-5.6 credit multipliers", a
   assert.equal(getCodexFastCostMultiplier("codex", "gpt-5.6-luna-max", "priority"), 1.5);
   assert.equal(await calculateCost("openai", "gpt-5.5", tokens, { serviceTier: "priority" }), 0.02);
   assert.equal(await calculateCost("openai", "gpt-5.5", tokens, { serviceTier: "flex" }), 0.02);
+});
+
+test("DeepSeek estimates carry provider pricing provenance and freshness", async () => {
+  const originalNow = Date.now;
+  Date.now = () => Date.parse("2026-10-13T12:00:00.000Z");
+  try {
+    const estimate = await calculateCostWithEvidence("deepseek", "deepseek-v4-pro", {
+      input: 1000,
+      output: 1000,
+    });
+
+    assert.equal(estimate.costUsd, 0.00528);
+    assert.equal(estimate.costKnown, true);
+    assert.equal(estimate.pricingEvidence.source, "deepseek");
+    assert.equal(estimate.pricingEvidence.modelId, "deepseek-v4-pro");
+    assert.equal(estimate.pricingEvidence.retrievedAt, "2026-10-13T06:56:49.000Z");
+    assert.equal(estimate.pricingEvidence.ttlMs, 7 * 24 * 60 * 60 * 1000);
+    assert.equal(estimate.pricingEvidence.stale, false);
+
+    const accounting = classifyCostAccounting({
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+      calculatedCostUsd: estimate.costUsd,
+      calculatedCostKnown: estimate.costKnown,
+      pricingEvidence: estimate.pricingEvidence,
+    });
+    assert.equal(accounting.source, "deepseek.api_pricing");
+    assert.equal(accounting.pricingRetrievedAt, "2026-10-13T06:56:49.000Z");
+    assert.equal(accounting.pricingStale, false);
+
+    Date.now = () => Date.parse("2026-10-21T12:00:00.000Z");
+    const staleEstimate = await calculateCostWithEvidence("deepseek", "deepseek-v4-pro", {
+      input: 1000,
+      output: 1000,
+    });
+    assert.equal(staleEstimate.costUsd, 0.00528);
+    assert.equal(staleEstimate.costKnown, false);
+    assert.equal(staleEstimate.pricingEvidence.stale, true);
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test("recent request summaries are generated from SQLite call logs", async () => {

@@ -33,6 +33,8 @@ function accountingSource(
       return "omniroute.user_pricing";
     case "default":
       return "omniroute.static_pricing";
+    case "deepseek":
+      return "deepseek.api_pricing";
     default:
       return null;
   }
@@ -161,7 +163,9 @@ export function classifyCostAccounting(args: {
             ? "omniroute.user_pricing"
             : pricingSource === "default"
               ? "omniroute.static_pricing"
-              : "omniroute_local_pricing_table";
+              : pricingSource === "deepseek"
+                ? "deepseek.api_pricing"
+                : "omniroute_local_pricing_table";
     return {
       kind: "estimated_cost",
       amountUsd: calculatedCostUsd,
