@@ -221,3 +221,24 @@ test("malformed metadata.reasoning shape degrades to undefined, does not throw",
     assert.equal("supportedThinkingEfforts" in model, false);
   }
 });
+
+test("OpenRouter supported_parameters survives discovery as tool capability", () => {
+  const [toolModel, textOnlyModel, unknownModel, normalizedModel] = normalizeDiscoveredModels(
+    [
+      { id: "vendor/tool-model:free", supported_parameters: ["tools", "reasoning"] },
+      { id: "vendor/text-model:free", supported_parameters: ["temperature"] },
+      { id: "vendor/unknown-model:free" },
+      {
+        id: "vendor/normalized-model:free",
+        supportsTools: false,
+        supported_parameters: ["tools"],
+      },
+    ],
+    "openrouter"
+  );
+
+  assert.equal(toolModel.supportsTools, true);
+  assert.equal(textOnlyModel.supportsTools, false);
+  assert.equal("supportsTools" in unknownModel, false);
+  assert.equal(normalizedModel.supportsTools, false);
+});

@@ -328,6 +328,21 @@ export function normalizeDiscoveredModels(
     // models reached the catalog with no vision flag and vision-capable models
     // (which work at request time) showed up as non-vision after import.
     const supportsVision = detectVisionInput(record);
+    // OpenRouter's /models catalog publishes tool capability as a list of
+    // supported request parameters. Preserve an explicit catalog verdict when
+    // normalizing the raw model, while leaving it unknown when the upstream
+    // omitted that list. An explicitly normalized flag still takes precedence.
+    const supportedParameters = Array.isArray(record.supported_parameters)
+      ? record.supported_parameters.filter(
+          (parameter): parameter is string => typeof parameter === "string"
+        )
+      : null;
+    const supportsTools =
+      typeof record.supportsTools === "boolean"
+        ? record.supportsTools
+        : supportedParameters === null
+          ? undefined
+          : supportedParameters.includes("tools");
 
     deduped.set(id, {
       id,
@@ -354,7 +369,7 @@ export function normalizeDiscoveredModels(
           ? { supportsThinking: true }
           : {}),
       ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
-      ...(typeof record.supportsTools === "boolean" ? { supportsTools: record.supportsTools } : {}),
+      ...(typeof supportsTools === "boolean" ? { supportsTools } : {}),
       ...(typeof record.supportsVideo === "boolean" ? { supportsVideo: record.supportsVideo } : {}),
       ...(supportsVision ? { supportsVision: true } : {}),
     });
