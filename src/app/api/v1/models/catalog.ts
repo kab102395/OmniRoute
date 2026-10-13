@@ -2061,7 +2061,14 @@ async function buildUnifiedModelsResponseCore(
       }
     }
     finalModels = finalModels.map((model) => {
-      if (!model || typeof model !== "object" || model.owned_by === "combo") return model;
+      if (
+        !model ||
+        typeof model !== "object" ||
+        model.owned_by === "combo" ||
+        model.custom === true
+      ) {
+        return model;
+      }
       const provider =
         typeof model.owned_by === "string"
           ? aliasToProviderId[model.owned_by] || model.owned_by
