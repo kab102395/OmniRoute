@@ -129,6 +129,66 @@ test("attributes usage and cost only to the final successful upstream attempt", 
   assert.equal("accounting" in (attempts[1] ?? {}), false, "source attempts are not mutated");
 });
 
+test("persists per-attempt usage and accounting in the compact execution receipt", async () => {
+  const id = "attempt-accounting-receipt-1";
+  persistAttemptLogs(
+    {
+      status: 200,
+      tokens: { prompt_tokens: 12, completion_tokens: 8 },
+      accounting: {
+        kind: "estimated_cost",
+        amountUsd: 0.0004,
+        currency: "USD",
+        source: "models_dev.api_json",
+        pricingProvider: "openai",
+        pricingModel: "gpt-x",
+        pricingVersion: null,
+        pricingEffectiveAt: null,
+        pricingRetrievedAt: "2026-10-12T10:00:00.000Z",
+        pricingStale: false,
+        usageKind: "provider_reported_usage",
+      },
+    },
+    baseCtx({
+      pendingRequestId: id,
+      getExecutionAttempts: () => [
+        { index: 1, statusCode: 429, outcome: "response", costAttribution: "unknown" },
+        { index: 2, statusCode: 200, outcome: "response", costAttribution: "unknown" },
+      ],
+    })
+  );
+
+  const row = await pollForCallLog(id);
+  assert.ok(row);
+  const pipelinePayloads = row.pipelinePayloads as { executionAttempts?: unknown[] } | null;
+  assert.deepEqual(pipelinePayloads?.executionAttempts, [
+    { index: 1, statusCode: 429, outcome: "response", costAttribution: "unknown" },
+    {
+      index: 2,
+      statusCode: 200,
+      outcome: "response",
+      costAttribution: "estimated",
+      usage: {
+        kind: "provider_reported_usage",
+        dimensions: { prompt_tokens: 12, completion_tokens: 8 },
+      },
+      accounting: {
+        kind: "estimated_cost",
+        amountUsd: 0.0004,
+        currency: "USD",
+        source: "models_dev.api_json",
+        pricingProvider: "openai",
+        pricingModel: "gpt-x",
+        pricingVersion: null,
+        pricingEffectiveAt: null,
+        pricingRetrievedAt: "2026-10-12T10:00:00.000Z",
+        pricingStale: false,
+        usageKind: "provider_reported_usage",
+      },
+    },
+  ]);
+});
+
 test("uses final credentials connectionId when Codex failover rotates the account", async () => {
   const id = "attempt-codex-rotation-1";
   persistAttemptLogs(
