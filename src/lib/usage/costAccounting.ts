@@ -97,7 +97,12 @@ export function classifyCostAccounting(args: {
   pricingEvidence?: import("./costCalculator").CostPricingEvidence | null;
 }): CostAccountingFacts {
   const ticks = args.usage?.cost_in_usd_ticks;
-  const usageKind = args.usage?.estimated === true ? "estimated_usage" : "provider_reported_usage";
+  const usageKind =
+    args.usage?.estimated === true
+      ? "estimated_usage"
+      : hasUsage(args.usage)
+        ? "provider_reported_usage"
+        : "unknown";
   const identity = {
     pricingProvider: args.provider || null,
     pricingModel: args.model || null,

@@ -166,6 +166,26 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
   );
 });
 
+test("an exact provider-reported charge does not imply provider-reported token usage", () => {
+  const openRouterCostOnly = classifyCostAccounting({
+    provider: "openrouter",
+    model: "vendor/model",
+    usage: { provider_reported_cost_usd: 0.0042 },
+    calculatedCostUsd: 0.0042,
+  });
+  assert.equal(openRouterCostOnly.kind, "provider_reported_billed_cost");
+  assert.equal(openRouterCostOnly.usageKind, "unknown");
+
+  const xaiCostOnly = classifyCostAccounting({
+    provider: "xai",
+    model: "grok-model",
+    usage: { cost_in_usd_ticks: 42_000_000 },
+    calculatedCostUsd: 0.0042,
+  });
+  assert.equal(xaiCostOnly.kind, "provider_reported_billed_cost");
+  assert.equal(xaiCostOnly.usageKind, "unknown");
+});
+
 test("modal cost accounting distinguishes unknown pricing from an explicitly zero rate", () => {
   const pricingEvidence = {
     source: "modelsDev" as const,
