@@ -145,6 +145,9 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     // fallback in the three write-path functions): not introduced by this PR.
     "src/lib/db/providers.ts": 3,
     "src/lib/db/readCache.ts": 2,
+    // Deterministic aliases inspect active Mistral connections before dispatch;
+    // chat.ts passes the chosen connection/key slot into auth for strict selection.
+    "src/lib/deterministicProviderRoutes.ts": 1,
     "src/lib/freeProviderRankings.ts": 1,
     "src/lib/guardrails/visionBridgeCredentials.ts": 1,
     "src/lib/kimi/tokenRefresh.ts": 1,
@@ -174,7 +177,7 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/lib/usage/callLogs.ts": 1,
     "src/lib/usage/codexResetCredits.ts": 1,
     "src/lib/usage/comboScoringInspector.ts": 1,
-    "src/lib/usage/providerLimits.ts": 4,
+    "src/lib/usage/providerLimits.ts": 5,
     "src/lib/usage/resilienceExplain.ts": 1,
     "src/lib/usage/usageStats.ts": 1,
     "src/lib/vncSession/service.ts": 2,
@@ -220,6 +223,7 @@ const CLASSIFICATION: Record<InventoryKind, Record<string, BypassClass>> = {
         "open-sse/services/tokenRefresh.ts",
         "src/app/api/translator/send/route.ts",
         "src/lib/credentialHealth/scheduler.ts",
+        "src/lib/deterministicProviderRoutes.ts",
         "src/lib/providers/volcPlanAutoSyncBackfill.ts",
         "src/lib/providers/volcenginePlanBinding.ts",
         "src/lib/services/quotaAutoPing.ts",

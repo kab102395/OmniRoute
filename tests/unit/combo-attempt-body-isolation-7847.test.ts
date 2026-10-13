@@ -64,7 +64,6 @@ function agentBody() {
       { role: "user", content: "first" },
       { role: "assistant", content: "second" },
     ],
-    tools: [{ type: "function", function: { name: "t", parameters: { type: "object" } } }],
   };
 }
 
