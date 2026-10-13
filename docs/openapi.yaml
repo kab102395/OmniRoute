@@ -14802,6 +14802,60 @@ components:
             downstreamHostSelection:
               type: string
               enum: [aggregator_selected]
+        provider_routes:
+          type: array
+          description: >-
+            Provider-specific route facts from the Hugging Face Inference Providers catalog.
+            These describe eligible downstream choices and do not mean OmniRoute can pin the
+            provider for execution. A free flag applies only to the named downstream provider.
+          items:
+            type: object
+            required: [provider]
+            properties:
+              provider:
+                type: string
+              status:
+                type: string
+                enum: [live, error]
+              context_length:
+                type: integer
+              pricing:
+                type: object
+                description: USD per million tokens, as reported by Hugging Face.
+                properties:
+                  input:
+                    type: number
+                  output:
+                    type: number
+              is_free:
+                type: boolean
+                description: Current free-promotion status for this downstream provider only.
+              supports_tools:
+                type: boolean
+              supports_structured_output:
+                type: boolean
+              first_token_latency_ms:
+                type: number
+              throughput:
+                type: number
+              is_model_author:
+                type: boolean
+        provider_routes_provenance:
+          type: object
+          description: Retrieval provenance and freshness for provider_routes.
+          properties:
+            source:
+              type: string
+              enum: [huggingface.router_models_api]
+            pricing_unit:
+              type: string
+              enum: [USD / 1M tokens]
+            retrieved_at:
+              type: string
+              format: date-time
+              nullable: true
+            stale:
+              type: boolean
 
     ProxySubscription:
       type: object

@@ -22,6 +22,23 @@ export interface SyncedAvailableModel {
   // #4264: image-input capability captured at sync time (e.g. OpenRouter
   // `architecture.input_modalities`/`modality`) so the catalog can surface vision.
   supportsVision?: boolean;
+  /** Per-host facts from an upstream router catalog; these do not prove that
+   * OmniRoute can pin that host for execution. */
+  providerRoutes?: SyncedProviderRoute[];
+  providerRoutesRetrievedAt?: string;
+}
+
+export interface SyncedProviderRoute {
+  provider: string;
+  status?: "live" | "error";
+  contextLength?: number;
+  pricing?: { input?: number; output?: number };
+  isFree?: boolean;
+  supportsTools?: boolean;
+  supportsStructuredOutput?: boolean;
+  firstTokenLatencyMs?: number;
+  throughput?: number;
+  isModelAuthor?: boolean;
 }
 
 export type SyncedAvailableModelInput = Omit<SyncedAvailableModel, "source"> & {
@@ -47,6 +64,54 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
             .filter((endpoint): endpoint is string => Boolean(endpoint))
         )
       ).sort()
+    : undefined;
+  const rawProviderRoutes = record.providerRoutes ?? record.provider_routes;
+  const providerRoutes = Array.isArray(rawProviderRoutes)
+    ? rawProviderRoutes.flatMap((value): SyncedProviderRoute[] => {
+        const route = asRecord(value);
+        const provider = toNonEmptyString(route.provider);
+        if (!provider) return [];
+        const pricingRecord = asRecord(route.pricing);
+        const input = finiteNonNegative(pricingRecord.input);
+        const output = finiteNonNegative(pricingRecord.output);
+        const contextLength = finitePositive(route.contextLength ?? route.context_length);
+        const firstTokenLatencyMs = finiteNonNegative(
+          route.firstTokenLatencyMs ?? route.first_token_latency_ms
+        );
+        const throughput = finiteNonNegative(route.throughput);
+        const isFree = typeof route.isFree === "boolean" ? route.isFree : route.is_free;
+        const supportsTools =
+          typeof route.supportsTools === "boolean" ? route.supportsTools : route.supports_tools;
+        const supportsStructuredOutput =
+          typeof route.supportsStructuredOutput === "boolean"
+            ? route.supportsStructuredOutput
+            : route.supports_structured_output;
+        const isModelAuthor =
+          typeof route.isModelAuthor === "boolean" ? route.isModelAuthor : route.is_model_author;
+        return [
+          {
+            provider,
+            ...(route.status === "live" || route.status === "error"
+              ? { status: route.status }
+              : {}),
+            ...(contextLength !== undefined ? { contextLength } : {}),
+            ...(input !== undefined || output !== undefined
+              ? {
+                  pricing: {
+                    ...(input !== undefined ? { input } : {}),
+                    ...(output !== undefined ? { output } : {}),
+                  },
+                }
+              : {}),
+            ...(typeof isFree === "boolean" ? { isFree } : {}),
+            ...(typeof supportsTools === "boolean" ? { supportsTools } : {}),
+            ...(typeof supportsStructuredOutput === "boolean" ? { supportsStructuredOutput } : {}),
+            ...(firstTokenLatencyMs !== undefined ? { firstTokenLatencyMs } : {}),
+            ...(throughput !== undefined ? { throughput } : {}),
+            ...(typeof isModelAuthor === "boolean" ? { isModelAuthor } : {}),
+          },
+        ];
+      })
     : undefined;
 
   return {
@@ -87,7 +152,23 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
     ...(typeof record.supportsTools === "boolean" ? { supportsTools: record.supportsTools } : {}),
     ...(typeof record.supportsVideo === "boolean" ? { supportsVideo: record.supportsVideo } : {}),
     ...(record.supportsVision === true ? { supportsVision: true } : {}),
+    ...(providerRoutes && providerRoutes.length > 0 ? { providerRoutes } : {}),
+    ...(toNonEmptyString(record.providerRoutesRetrievedAt ?? record.provider_routes_retrieved_at)
+      ? {
+          providerRoutesRetrievedAt: toNonEmptyString(
+            record.providerRoutesRetrievedAt ?? record.provider_routes_retrieved_at
+          )!,
+        }
+      : {}),
   };
+}
+
+function finiteNonNegative(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function finitePositive(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 export function normalizeSyncedAvailableModels(

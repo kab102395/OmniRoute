@@ -107,6 +107,52 @@ test("normalizers.normalizeOpenAiLikeModelsResponse maps ids and applies the fal
   ]);
 });
 
+test("Hugging Face normalization preserves provider-specific route facts and filters malformed values", () => {
+  const out = normalizeOpenAiLikeModelsResponse(
+    {
+      data: [
+        {
+          id: "zai-org/GLM-5.2",
+          providers: [
+            {
+              provider: "together",
+              status: "live",
+              context_length: 262144,
+              pricing: { input: 1.4, output: 4.4, invalid: "unknown" },
+              is_free: true,
+              supports_tools: true,
+              supports_structured_output: false,
+              first_token_latency_ms: 120,
+              throughput: 45.5,
+              is_model_author: false,
+            },
+            { provider: "broken", status: "disabled", context_length: -1, pricing: { input: -1 } },
+            { status: "live" },
+          ],
+        },
+      ],
+    },
+    "huggingface"
+  );
+
+  assert.deepEqual(out[0]?.provider_routes, [
+    {
+      provider: "together",
+      status: "live",
+      context_length: 262144,
+      pricing: { input: 1.4, output: 4.4 },
+      is_free: true,
+      supports_tools: true,
+      supports_structured_output: false,
+      first_token_latency_ms: 120,
+      throughput: 45.5,
+      is_model_author: false,
+    },
+    { provider: "broken" },
+  ]);
+  assert.match(out[0]?.provider_routes_retrieved_at ?? "", /^\d{4}-\d\d-\d\dT/);
+});
+
 test("normalizers.normalizeOpenAiLikeModelsResponse drops entries without an id", () => {
   const out = normalizeOpenAiLikeModelsResponse({ data: [{}, { id: "ok" }] }, "acme");
   assert.deepEqual(

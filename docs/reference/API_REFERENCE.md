@@ -450,6 +450,14 @@ heuristic when authoritative capability metadata is unavailable. For OpenRouter,
 `supported_parameters` list takes precedence for the exact route; `route_availability.source`
 provides its retrieval time and freshness.
 
+Hugging Face Router model rows can also expose `provider_routes`, containing each downstream
+provider's reported status, context limit, USD-per-million-token input/output rates, free-promotion
+flag, tool/structured-output support, latency, and throughput. These facts are scoped to each
+downstream provider; a free provider entry does not classify the aggregate Hugging Face route as
+free, and the catalog does not pin that provider during inference. `provider_routes_provenance`
+identifies `huggingface.router_models_api`, its retrieval time, price unit, and whether the
+15-minute freshness window has elapsed.
+
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.
 

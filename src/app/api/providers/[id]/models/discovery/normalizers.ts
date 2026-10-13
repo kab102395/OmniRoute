@@ -240,7 +240,13 @@ export function normalizeDataRobotCatalogResponse(
 export function normalizeOpenAiLikeModelsResponse(
   data: unknown,
   fallbackOwner: string
-): Array<{ id: string; name: string; owned_by: string }> {
+): Array<{
+  id: string;
+  name: string;
+  owned_by: string;
+  provider_routes?: Array<Record<string, unknown>>;
+  provider_routes_retrieved_at?: string;
+}> {
   const payload = asRecord(data);
   const items = Array.isArray(data)
     ? data
@@ -263,9 +269,73 @@ export function normalizeOpenAiLikeModelsResponse(
         id;
       const ownedBy =
         toNonEmptyString(item.owned_by) || toNonEmptyString(item.provider) || fallbackOwner;
-      return { id, name, owned_by: ownedBy };
+      const providerRoutes =
+        fallbackOwner === "huggingface" ? normalizeHuggingFaceProviderRoutes(item.providers) : [];
+      return {
+        id,
+        name,
+        owned_by: ownedBy,
+        ...(providerRoutes.length > 0
+          ? {
+              provider_routes: providerRoutes,
+              provider_routes_retrieved_at: new Date().toISOString(),
+            }
+          : {}),
+      };
     })
     .filter((value): value is { id: string; name: string; owned_by: string } => Boolean(value));
+}
+
+function normalizeHuggingFaceProviderRoutes(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    const route = asRecord(candidate);
+    const provider = toNonEmptyString(route.provider);
+    if (!provider) return [];
+
+    const normalized: Record<string, unknown> = { provider };
+    if (route.status === "live" || route.status === "error") normalized.status = route.status;
+    if (
+      typeof route.context_length === "number" &&
+      Number.isFinite(route.context_length) &&
+      route.context_length > 0
+    ) {
+      normalized.context_length = route.context_length;
+    }
+    if (typeof route.is_free === "boolean") normalized.is_free = route.is_free;
+    if (typeof route.supports_tools === "boolean") normalized.supports_tools = route.supports_tools;
+    if (typeof route.supports_structured_output === "boolean") {
+      normalized.supports_structured_output = route.supports_structured_output;
+    }
+    if (
+      typeof route.first_token_latency_ms === "number" &&
+      Number.isFinite(route.first_token_latency_ms) &&
+      route.first_token_latency_ms >= 0
+    ) {
+      normalized.first_token_latency_ms = route.first_token_latency_ms;
+    }
+    if (
+      typeof route.throughput === "number" &&
+      Number.isFinite(route.throughput) &&
+      route.throughput >= 0
+    ) {
+      normalized.throughput = route.throughput;
+    }
+    if (typeof route.is_model_author === "boolean")
+      normalized.is_model_author = route.is_model_author;
+
+    const pricing = asRecord(route.pricing);
+    const normalizedPricing = Object.fromEntries(
+      ["input", "output"].flatMap((dimension) => {
+        const price = pricing[dimension];
+        return typeof price === "number" && Number.isFinite(price) && price >= 0
+          ? [[dimension, price]]
+          : [];
+      })
+    );
+    if (Object.keys(normalizedPricing).length > 0) normalized.pricing = normalizedPricing;
+    return [normalized];
+  });
 }
 
 export function normalizeSapModelsResponse(

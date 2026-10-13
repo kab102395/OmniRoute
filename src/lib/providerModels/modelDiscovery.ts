@@ -3,6 +3,7 @@ import {
   getSyncedAvailableModelsForConnection,
   replaceSyncedAvailableModelsForConnection,
   type SyncedAvailableModel,
+  type SyncedProviderRoute,
 } from "@/lib/db/models";
 import { CANONICAL_EFFORT_VALUES } from "@/shared/reasoning/effortStandardization";
 import { isObsoleteKiroModelAlias } from "@omniroute/open-sse/services/kiroModels.ts";
@@ -31,6 +32,53 @@ function firstPositiveNumber(...candidates: unknown[]): number | undefined {
     }
   }
   return undefined;
+}
+
+function normalizeProviderRoutes(value: unknown): SyncedProviderRoute[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const routes = value.flatMap((candidate): SyncedProviderRoute[] => {
+    const route = asRecord(candidate);
+    const provider = toNonEmptyString(route.provider);
+    if (!provider) return [];
+    const pricing = asRecord(route.pricing);
+    const input = finiteNonNegativeNumber(pricing.input);
+    const output = finiteNonNegativeNumber(pricing.output);
+    const contextLength = firstPositiveNumber(route.context_length);
+    const firstTokenLatencyMs = finiteNonNegativeNumber(route.first_token_latency_ms);
+    const throughput = finiteNonNegativeNumber(route.throughput);
+    return [
+      {
+        provider,
+        ...(route.status === "live" || route.status === "error" ? { status: route.status } : {}),
+        ...(contextLength !== undefined ? { contextLength } : {}),
+        ...(input !== undefined || output !== undefined
+          ? {
+              pricing: {
+                ...(input !== undefined ? { input } : {}),
+                ...(output !== undefined ? { output } : {}),
+              },
+            }
+          : {}),
+        ...(typeof route.is_free === "boolean" ? { isFree: route.is_free } : {}),
+        ...(typeof route.supports_tools === "boolean"
+          ? { supportsTools: route.supports_tools }
+          : {}),
+        ...(typeof route.supports_structured_output === "boolean"
+          ? { supportsStructuredOutput: route.supports_structured_output }
+          : {}),
+        ...(firstTokenLatencyMs !== undefined ? { firstTokenLatencyMs } : {}),
+        ...(throughput !== undefined ? { throughput } : {}),
+        ...(typeof route.is_model_author === "boolean"
+          ? { isModelAuthor: route.is_model_author }
+          : {}),
+      },
+    ];
+  });
+  return routes.length > 0 ? routes : undefined;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function modalitiesIncludeImage(value: unknown): boolean {
@@ -343,6 +391,10 @@ export function normalizeDiscoveredModels(
         : supportedParameters === null
           ? undefined
           : supportedParameters.includes("tools");
+    const providerRoutes =
+      providerId === "huggingface" ? normalizeProviderRoutes(record.provider_routes) : undefined;
+    const providerRoutesRetrievedAt =
+      providerId === "huggingface" ? toNonEmptyString(record.provider_routes_retrieved_at) : null;
 
     deduped.set(id, {
       id,
@@ -372,6 +424,8 @@ export function normalizeDiscoveredModels(
       ...(typeof supportsTools === "boolean" ? { supportsTools } : {}),
       ...(typeof record.supportsVideo === "boolean" ? { supportsVideo: record.supportsVideo } : {}),
       ...(supportsVision ? { supportsVision: true } : {}),
+      ...(providerRoutes ? { providerRoutes } : {}),
+      ...(providerRoutesRetrievedAt ? { providerRoutesRetrievedAt } : {}),
     });
   }
 

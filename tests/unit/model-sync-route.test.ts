@@ -520,6 +520,68 @@ test("model sync route writes synced available models for non-Gemini providers t
   ]);
 });
 
+test("model sync preserves Hugging Face per-provider pricing and capability metadata", async () => {
+  await resetStorage();
+
+  const connection = await providersDb.createProviderConnection({
+    provider: "huggingface",
+    authType: "apikey",
+    name: "Hugging Face Router",
+    apiKey: "hf-test-key",
+  });
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("__readiness_probe__")) return new Response(null, { status: 404 });
+    assert.equal(
+      String(url),
+      `http://127.0.0.1:20128/api/providers/${connection.id}/models?refresh=true&excludeCustom=true`
+    );
+    return Response.json({
+      models: [
+        {
+          id: "zai-org/GLM-5.2",
+          name: "GLM-5.2",
+          provider_routes: [
+            {
+              provider: "together",
+              status: "live",
+              context_length: 262144,
+              pricing: { input: 1.4, output: 4.4 },
+              is_free: false,
+              supports_tools: true,
+            },
+            { provider: "promo-host", status: "live", is_free: true, supports_tools: false },
+          ],
+          provider_routes_retrieved_at: "2026-10-13T00:00:00.000Z",
+        },
+      ],
+    });
+  };
+
+  const response = await modelSyncRoute.POST(
+    new Request(`http://localhost/api/providers/${connection.id}/sync-models`, {
+      method: "POST",
+      headers: scheduler.buildModelSyncInternalHeaders(),
+    }),
+    { params: { id: connection.id } }
+  );
+  const synced = await modelsDb.getSyncedAvailableModels("huggingface");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(synced[0]?.providerRoutes, [
+    {
+      provider: "together",
+      status: "live",
+      contextLength: 262144,
+      pricing: { input: 1.4, output: 4.4 },
+      isFree: false,
+      supportsTools: true,
+    },
+    { provider: "promo-host", status: "live", isFree: true, supportsTools: false },
+  ]);
+  assert.equal(synced[0]?.providerRoutesRetrievedAt, "2026-10-13T00:00:00.000Z");
+});
+
 // #10603 ("make upstream model sync opt-in and preserve manual overrides") also applies to
 // import/merge mode: a manual custom-model row sharing an id with a discovered model is kept
 // as the user-owned overlay instead of being demoted/removed. See the comment above the

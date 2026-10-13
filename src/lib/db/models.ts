@@ -52,7 +52,7 @@ export {
   deleteModelAliasesForProvider,
 } from "./models/aliases";
 export { getMitmAlias, setMitmAliasAll } from "./models/mitmAlias";
-export type { SyncedAvailableModel } from "./models/synced";
+export type { SyncedAvailableModel, SyncedProviderRoute } from "./models/synced";
 
 // ──────────────── Custom Models ────────────────
 

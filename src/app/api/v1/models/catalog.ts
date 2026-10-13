@@ -1297,6 +1297,13 @@ async function buildUnifiedModelsResponseCore(
           // Same owned_by the alias/canonical entries below will carry — computed once
           // so the effort_tiers exclusion (codex/glm/kimi) and the entries agree.
           const syncedOwnedBy = resolvePublicOwnerId(providerId, canonicalProviderId);
+          const providerRoutesRetrievedAtMs = sm.providerRoutesRetrievedAt
+            ? Date.parse(sm.providerRoutesRetrievedAt)
+            : Number.NaN;
+          const providerRoutesAreStale =
+            !Number.isFinite(providerRoutesRetrievedAtMs) ||
+            providerRoutesRetrievedAtMs > Date.now() ||
+            Date.now() - providerRoutesRetrievedAtMs > 15 * 60 * 1000;
           const syncedFields = {
             ...(modelType ? { type: modelType } : {}),
             ...(apiFormat !== "chat-completions" ? { api_format: apiFormat } : {}),
@@ -1313,6 +1320,36 @@ async function buildUnifiedModelsResponseCore(
             // ownedBy gates effort_tiers off for codex/glm/kimi (own suffix mechanism).
             ...(buildSyncedCapabilities(sm, syncedOwnedBy)
               ? { capabilities: buildSyncedCapabilities(sm, syncedOwnedBy) }
+              : {}),
+            ...(canonicalProviderId === "huggingface" && sm.providerRoutes?.length
+              ? {
+                  provider_routes: sm.providerRoutes.map((route) => ({
+                    provider: route.provider,
+                    ...(route.status ? { status: route.status } : {}),
+                    ...(route.contextLength ? { context_length: route.contextLength } : {}),
+                    ...(route.pricing ? { pricing: route.pricing } : {}),
+                    ...(typeof route.isFree === "boolean" ? { is_free: route.isFree } : {}),
+                    ...(typeof route.supportsTools === "boolean"
+                      ? { supports_tools: route.supportsTools }
+                      : {}),
+                    ...(typeof route.supportsStructuredOutput === "boolean"
+                      ? { supports_structured_output: route.supportsStructuredOutput }
+                      : {}),
+                    ...(route.firstTokenLatencyMs !== undefined
+                      ? { first_token_latency_ms: route.firstTokenLatencyMs }
+                      : {}),
+                    ...(route.throughput !== undefined ? { throughput: route.throughput } : {}),
+                    ...(typeof route.isModelAuthor === "boolean"
+                      ? { is_model_author: route.isModelAuthor }
+                      : {}),
+                  })),
+                  provider_routes_provenance: {
+                    source: "huggingface.router_models_api",
+                    pricing_unit: "USD / 1M tokens",
+                    retrieved_at: sm.providerRoutesRetrievedAt ?? null,
+                    stale: providerRoutesAreStale,
+                  },
+                }
               : {}),
           };
 

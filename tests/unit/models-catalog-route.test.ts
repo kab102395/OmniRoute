@@ -821,6 +821,69 @@ test("current OpenRouter paid metadata refreshes matching synchronized route ide
   }
 });
 
+test("v1 models preserves Hugging Face provider-level capability and pricing facts with freshness", async () => {
+  const connection = await seedConnection("huggingface");
+  await modelsDb.replaceSyncedAvailableModelsForConnection("huggingface", connection.id as string, [
+    {
+      id: "zai-org/GLM-5.2",
+      name: "GLM-5.2",
+      source: "imported",
+      providerRoutes: [
+        {
+          provider: "together",
+          status: "live",
+          contextLength: 262144,
+          pricing: { input: 1.4, output: 4.4 },
+          isFree: false,
+          supportsTools: true,
+          supportsStructuredOutput: true,
+        },
+        { provider: "promo-host", status: "live", isFree: true, supportsTools: false },
+      ],
+      providerRoutesRetrievedAt: new Date().toISOString(),
+    },
+  ]);
+
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models")
+  );
+  const body = (await response.json()) as {
+    data: Array<{
+      id: string;
+      provider_routes?: Array<{
+        provider?: string;
+        status?: string;
+        context_length?: number;
+        pricing?: { input?: number; output?: number };
+        is_free?: boolean;
+        supports_tools?: boolean;
+      }>;
+      provider_routes_provenance?: { source?: string; pricing_unit?: string; stale?: boolean };
+      free?: boolean;
+    }>;
+  };
+  const model = body.data.find((entry) => entry.id === "huggingface/zai-org/GLM-5.2");
+
+  assert.equal(response.status, 200);
+  assert.ok(model);
+  assert.equal(model.free, undefined, "a free downstream host does not make the router route free");
+  assert.deepEqual(model.provider_routes, [
+    {
+      provider: "together",
+      status: "live",
+      context_length: 262144,
+      pricing: { input: 1.4, output: 4.4 },
+      is_free: false,
+      supports_tools: true,
+      supports_structured_output: true,
+    },
+    { provider: "promo-host", status: "live", is_free: true, supports_tools: false },
+  ]);
+  assert.equal(model.provider_routes_provenance?.source, "huggingface.router_models_api");
+  assert.equal(model.provider_routes_provenance?.pricing_unit, "USD / 1M tokens");
+  assert.equal(model.provider_routes_provenance?.stale, false);
+});
+
 test("v1 models catalog does not final-enrich combo names as real models", async () => {
   await combosDb.createCombo({
     name: "gpt-5.5",
