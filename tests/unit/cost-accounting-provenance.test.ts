@@ -68,6 +68,20 @@ test("served identity follows the final successful outbound model after fallback
   assert.equal(resolveServedIdentity("openai", { model: " " }), null);
 });
 
+test("served identity resolves the concrete model returned by the OpenRouter free router", () => {
+  assert.deepEqual(
+    resolveServedIdentity("openrouter", { model: "openrouter/free" }, undefined, {
+      model: "meta-llama/llama-3.3-70b-instruct:free",
+    }),
+    {
+      provider: "openrouter",
+      model: "meta-llama/llama-3.3-70b-instruct:free",
+      modelSource: "provider_response",
+      providerInstanceId: null,
+    }
+  );
+});
+
 test("served provider maps an exact internal node to its configured public prefix", () => {
   const lookup = (id: string) =>
     id === "codex-node-id"

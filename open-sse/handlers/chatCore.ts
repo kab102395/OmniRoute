@@ -5832,6 +5832,13 @@ export async function handleChatCore({
       }
     }
     effectiveServiceTier = resolveReportedServiceTier(streamResponseBody) ?? effectiveServiceTier;
+    const completedStreamIdentity = resolveServedIdentity(
+      provider,
+      finalBody,
+      undefined,
+      streamResponseBody
+    );
+    const completedStreamModel = completedStreamIdentity?.model || streamModel;
 
     // Context Editing telemetry (streaming): the reconstructed stream body now carries
     // context_management.applied_edits from the final message_delta snapshot. Mirror the
@@ -5947,12 +5954,7 @@ export async function handleChatCore({
       cacheSource: "upstream" as const,
     };
     if (normalizedStreamStatus === 200) {
-      const servedIdentity = resolveServedIdentity(
-        provider,
-        finalBody,
-        undefined,
-        streamResponseBody
-      );
+      const servedIdentity = completedStreamIdentity;
       const pricingModel = servedIdentity?.model || currentModel || effectiveModel;
       const costUsage = normalizeUsage(streamUsage as Record<string, unknown> | null | undefined);
       const usageForAccounting =
@@ -5992,7 +5994,7 @@ export async function handleChatCore({
     recordStreamingCost({
       apiKeyId: apiKeyInfo?.id,
       provider,
-      model: streamModel,
+      model: completedStreamModel,
       streamUsage,
       serviceTier: effectiveServiceTier,
       calculateCostWithEvidence,
@@ -6009,7 +6011,7 @@ export async function handleChatCore({
       apiKeyId: apiKeyInfo?.id,
       connectionId: credentials?.connectionId,
       provider,
-      model: streamModel,
+      model: completedStreamModel,
       streamUsage,
       streamStatus: normalizedStreamStatus,
       serviceTier: effectiveServiceTier,
