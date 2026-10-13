@@ -1,7 +1,7 @@
 ---
 title: "Routing provenance and accounting contract"
 version: 3.8.51
-lastUpdated: 2026-10-12
+lastUpdated: 2026-10-13
 ---
 
 # Routing provenance and accounting contract
@@ -10,6 +10,46 @@ This note describes the additive metadata available to a client integrating with
 OmniRoute's OpenAI-compatible chat completions endpoint (`POST /api/v1/chat/completions`).
 The normal request remains `{ "model": "…", "messages": [...], "stream": false }`
 with the usual bearer authentication. The OpenAI-compatible response body is unchanged.
+
+## Discovering constrained model routes
+
+`GET /api/v1/models` is the unified route catalog. Consumers can ask OmniRoute to filter
+the catalog using the assignment's hard requirements instead of implementing provider
+catalog or free-tier logic themselves:
+
+```http
+GET /api/v1/models?free_only=true&require_tool_calling=true&configuredOnly=true
+```
+
+`free_only=true` includes exact OpenRouter variants that are in the fresh authoritative
+OpenRouter catalog and documented provider free routes with a guaranteed hard stop before
+paid overage. It excludes unknown or merely promotional free tiers. `require_tool_calling=true`
+keeps only routes whose `capability_status.tool_calling.status` is `supported`; unknown
+capability is not treated as support. `configuredOnly=true` limits results to routes backed
+by an active configured connection and allowed by that connection's model rules.
+
+The returned route metadata remains authoritative for the facts it names:
+
+- An exact OpenRouter route such as `openrouter/vendor/model:free` is individually
+  selectable and is distinct from its paid sibling. The optional `openrouter/free` entry is
+  a dynamic selector, not an exact model identity; its selected model and tool support are
+  unknown before execution. It is therefore omitted when tool calling is required.
+- `pricing_provenance`, `free_access`, `route_selection`, `route_availability`,
+  `capability_status`, token limits, modalities, and any `provider_routes` should be retained
+  with the model record. Do not flatten them into the legacy `free`, `pricing`, or boolean
+  `capabilities` fields.
+- `configuredOnly` establishes configured route coverage, not live account eligibility,
+  remaining quota, or current execution health. OmniRoute reports those as unknown unless
+  an existing provider/account observation establishes them. Catalog discovery does not run
+  a billable health probe.
+
+For strict identity, select an exact route and send that exact model id with
+`X-OmniRoute-Strict-Model: true`. A dynamic router or a route whose aggregator may choose a
+downstream host cannot satisfy a requirement that pins that downstream identity. For free-only
+dispatch, also send `X-OmniRoute-Require-Free-Route: true`; this rechecks current free-route
+eligibility at dispatch and rejects stale/unverified OpenRouter catalog data. These dispatch
+constraints do not establish account quota or a provider hard-stop guarantee beyond the route's
+catalog facts.
 
 ## Non-streaming completions
 
@@ -29,6 +69,7 @@ On success, read these headers:
 | `X-OmniRoute-Pricing-Retrieved-At`        | UTC timestamp when the referenced price metadata was retrieved, when known.                 |
 | `X-OmniRoute-Pricing-Stale`               | `true` or `false` when source freshness can be established.                                 |
 | `X-OmniRoute-Usage-Kind`                  | `provider_reported_usage`, `estimated_usage`, or `unknown`.                                 |
+| `X-OmniRoute-Fallback-Attempts`           | Count of additional upstream dispatch attempts recorded before the final response.          |
 
 The existing `X-OmniRoute-Provider` and `X-OmniRoute-Model` headers remain for
 compatibility; use the `Served-*` headers for final identity. If attempt A fails and
