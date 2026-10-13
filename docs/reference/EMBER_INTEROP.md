@@ -69,13 +69,17 @@ On success, read these headers:
 | `X-OmniRoute-Request-Id`                  | ID of the successful attempt's call-log row.                                                |
 | `X-OmniRoute-Served-Provider`             | Canonical public provider prefix for the successful execution.                              |
 | `X-OmniRoute-Served-Model`                | Concrete model in the final captured outbound provider request.                             |
+| `X-OmniRoute-Served-Model-Source`         | `provider_response` or `outbound_request`, showing how Served-Model was established.        |
 | `X-OmniRoute-Served-Provider-Instance-Id` | Internal provider-node ID, for diagnostics only.                                            |
 | `X-OmniRoute-Connection-Id`               | Selected connection ID when the adapter has one.                                            |
+| `X-OmniRoute-Provider-Request-Id`         | Provider-supplied ID for the final upstream dispatch, when available.                       |
+| `X-OmniRoute-Decision`                    | Routing strategy, provider, and latency summary for this response.                          |
 | `X-OmniRoute-Accounting-Kind`             | `provider_reported_billed_cost`, `estimated_cost`, `usage_only`, `zero_cost`, or `unknown`. |
 | `X-OmniRoute-Response-Cost`               | USD amount formatted to 10 decimal places; interpret only with accounting kind/source.      |
 | `X-OmniRoute-Cost-Currency`               | Currency when an amount is available (`USD`).                                               |
 | `X-OmniRoute-Cost-Source`                 | Source of the amount, when present.                                                         |
 | `X-OmniRoute-Pricing-Retrieved-At`        | UTC timestamp when the referenced price metadata was retrieved, when known.                 |
+| `X-OmniRoute-Pricing-Condition`           | Source-defined condition attached to an estimate, when applicable.                          |
 | `X-OmniRoute-Pricing-Stale`               | `true` or `false` when source freshness can be established.                                 |
 | `X-OmniRoute-Usage-Kind`                  | `provider_reported_usage`, `estimated_usage`, or `unknown`.                                 |
 | `X-OmniRoute-Fallback-Attempts`           | Count of additional upstream dispatch attempts recorded before the final response.          |
@@ -89,6 +93,12 @@ The served-provider header uses the configured public provider-node prefix when 
 uses a provider node. Its internal node ID is carried separately and must never be used as
 the public provider identity. Praxis can validate the exact public identity from completion
 headers without querying OmniRoute's management API.
+
+`X-OmniRoute-Fallback-Attempts` is a count, not a per-attempt receipt list. The call-log
+detail endpoint contains recorded attempt receipts, but requires management authentication;
+Praxis must not assume its inference credential can access that endpoint. Persist the
+available response headers with Work Evidence and leave unavailable per-attempt details
+unknown.
 
 Modality endpoints retain the legacy numeric `X-OmniRoute-Response-Cost` format. When the
 provider-reported amount or billable usage/pricing dimensions cannot be established,
