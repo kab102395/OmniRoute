@@ -40,7 +40,7 @@ function deriveTokenStatus(connection: ProviderConnectionRecord): QuotaTokenStat
   return "valid";
 }
 
-function buildQuotaEntry(
+export function buildQuotaEntry(
   connection: ProviderConnectionRecord,
   learnedLimit: unknown,
   rateStatus: Record<string, unknown>
@@ -64,6 +64,8 @@ function buildQuotaEntry(
   let quotaTotal: number | null = null;
   let quotaUsed = 0;
   let percentRemaining = 100;
+  let quotaSource: QuotaProviderEntry["quotaSource"] = "unknown";
+  let quotaRetrievedAt: string | null = null;
   const learned =
     learnedLimit && typeof learnedLimit === "object" && !Array.isArray(learnedLimit)
       ? (learnedLimit as Record<string, unknown>)
@@ -80,18 +82,27 @@ function buildQuotaEntry(
 
   if (learnedLimitValue !== null && learnedLimitValue > 0) {
     quotaTotal = learnedLimitValue;
-    const remaining =
-      learnedRemainingValue !== null
-        ? Math.min(Math.max(learnedRemainingValue, 0), learnedLimitValue)
-        : learnedLimitValue;
-    quotaUsed = learnedLimitValue - remaining;
-    percentRemaining = (remaining / learnedLimitValue) * 100;
+    if (learnedRemainingValue !== null) {
+      const remaining = Math.min(Math.max(learnedRemainingValue, 0), learnedLimitValue);
+      quotaUsed = learnedLimitValue - remaining;
+      percentRemaining = (remaining / learnedLimitValue) * 100;
+      quotaSource = "learned_limit";
+      const learnedAt = learned?.lastUpdated;
+      quotaRetrievedAt =
+        typeof learnedAt === "number" &&
+        Number.isFinite(learnedAt) &&
+        Math.abs(learnedAt) <= 8.64e15
+          ? new Date(learnedAt).toISOString()
+          : null;
+    }
   } else {
     const resetAtMs = toDateMs(resetAt);
     if (resetAtMs !== null && resetAtMs > Date.now()) {
       quotaTotal = 100;
       quotaUsed = 100;
       percentRemaining = 0;
+      quotaSource = "observed_rate_limit";
+      quotaRetrievedAt = new Date().toISOString();
     } else {
       // Fallback synthetic signal from queue pressure when limit headers are unavailable.
       const queued = typeof rateStatus.queued === "number" ? rateStatus.queued : 0;
@@ -103,6 +114,8 @@ function buildQuotaEntry(
         quotaTotal = 100;
         quotaUsed = syntheticUsage;
         percentRemaining = 100 - syntheticUsage;
+        quotaSource = "observed_queue_pressure";
+        quotaRetrievedAt = new Date().toISOString();
       }
     }
   }
@@ -114,6 +127,8 @@ function buildQuotaEntry(
     quotaUsed,
     quotaTotal,
     percentRemaining,
+    quotaSource,
+    quotaRetrievedAt,
     resetAt,
     tokenStatus: deriveTokenStatus(connection),
   });

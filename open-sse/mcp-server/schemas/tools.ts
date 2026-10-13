@@ -635,17 +635,33 @@ export const simulateRouteOutput = z.object({
     z.object({
       provider: z.string(),
       model: z.string(),
-      probability: z.number(),
-      estimatedCost: z.number(),
-      healthStatus: z.enum(["CLOSED", "OPEN", "HALF_OPEN"]),
-      quotaAvailable: z.number(),
+      probability: z.number().nullable(),
+      probabilitySource: z.literal("unavailable"),
+      estimatedCost: z.number().nullable(),
+      costEstimate: z.object({
+        state: z.enum(["input_estimate", "unknown"]),
+        source: z.enum(["combo_config", "unavailable"]),
+        currency: z.literal("USD"),
+        scope: z.literal("input_tokens_only"),
+      }),
+      healthStatus: z.enum(["CLOSED", "DEGRADED", "OPEN", "HALF_OPEN", "unknown"]),
+      healthSource: z.enum(["provider_breaker", "unknown"]),
+      quotaAvailable: z.number().nullable(),
+      quotaSource: z.enum([
+        "learned_limit",
+        "observed_rate_limit",
+        "observed_queue_pressure",
+        "unknown",
+      ]),
+      quotaRetrievedAt: z.string().nullable(),
     })
   ),
   fallbackTree: z.object({
     primary: z.string(),
     fallbacks: z.array(z.string()),
-    worstCaseCost: z.number(),
-    bestCaseCost: z.number(),
+    worstCaseCost: z.number().nullable(),
+    bestCaseCost: z.number().nullable(),
+    costEstimateState: z.enum(["input_estimate", "unknown"]),
   }),
 });
 
@@ -655,7 +671,7 @@ export const simulateRouteTool: McpToolDefinition<
 > = {
   name: "omniroute_simulate_route",
   description:
-    "Simulates (dry-run) the routing path a request would take without actually executing it. Shows the fallback tree, provider probabilities, estimated costs, and health status.",
+    "Previews the configured combo candidate order without executing a request. Probabilities are unknown; quota and health remain unknown when OmniRoute has no provider evidence; costs use an explicitly configured input rate only and do not estimate output tokens or hidden retries.",
   inputSchema: simulateRouteInput,
   outputSchema: simulateRouteOutput,
   scopes: ["read:health", "read:combos"],

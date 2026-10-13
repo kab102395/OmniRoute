@@ -137,7 +137,7 @@ omniroute --mcp
 
 | #   | Tool                               | Scopes                               | Description                                                                                    |
 | --- | ---------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| 9   | `omniroute_simulate_route`         | `read:health`, `read:combos`         | Dry-run routing simulation showing fallback tree and estimated costs                           |
+| 9   | `omniroute_simulate_route`         | `read:health`, `read:combos`         | Candidate-order preview with unknown probability, cost, health, and quota preserved explicitly |
 | 10  | `omniroute_set_budget_guard`       | `write:budget`                       | Set session budget with action on exceed: `degrade`, `block`, or `alert`                       |
 | 11  | `omniroute_set_resilience_profile` | `write:resilience`                   | Apply resilience profile: `aggressive`, `balanced`, or `conservative`                          |
 | 12  | `omniroute_test_combo`             | `execute:completions`, `read:combos` | Test each provider in a combo with a real prompt and a real upstream call, report latency/cost |
@@ -506,7 +506,10 @@ async def budget_aware_coding(session, task: str, max_budget: float):
     })
     sim_data = json.loads(sim.content[0].text)
     estimated_cost = sim_data["fallbackTree"]["bestCaseCost"]
-    print(f"Estimated cost: ${estimated_cost:.4f}")
+    if estimated_cost is None:
+        print("Input cost is unknown; simulation does not establish a request budget.")
+    else:
+        print(f"Estimated input-only cost: ${estimated_cost:.4f}")
 
     # Send request
     result = await session.call_tool("omniroute_route_request", {

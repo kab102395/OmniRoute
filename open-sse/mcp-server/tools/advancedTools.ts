@@ -54,10 +54,10 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<unknow
 
 type JsonRecord = Record<string, unknown>;
 
-interface ComboModel {
+export interface ComboModel {
   provider: string;
   model: string;
-  inputCostPer1M: number;
+  inputCostPer1M: number | null;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -86,19 +86,108 @@ function toNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function toFiniteNonNegativeNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function toBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function getComboModels(combo: JsonRecord): ComboModel[] {
+export function getComboModels(combo: JsonRecord): ComboModel[] {
   const directModels = toArrayOfRecords(combo.models);
   const nestedModels = toArrayOfRecords(toRecord(combo.data).models);
   const sourceModels = directModels.length > 0 ? directModels : nestedModels;
   return sourceModels.map((model) => ({
     provider: getComboModelProvider(model) || (getComboModelString(model) ? "unknown" : "combo"),
     model: getComboModelString(model) || getComboStepTarget(model) || "",
-    inputCostPer1M: toNumber(model.inputCostPer1M, 3.0),
+    inputCostPer1M: toFiniteNonNegativeNumber(model.inputCostPer1M),
   }));
+}
+
+function getObservedQuotaPercent(value: unknown): number | null {
+  const percent = toFiniteNonNegativeNumber(value);
+  return percent !== null && percent <= 100 ? percent : null;
+}
+
+/** Build a route preview without inventing probabilities or missing provider facts. */
+export function buildRouteSimulation(
+  models: ComboModel[],
+  promptTokenEstimate: number,
+  breakers: JsonRecord[],
+  providers: Array<{
+    provider: string;
+    percentRemaining?: number | null;
+    quotaSource?: string;
+    quotaRetrievedAt?: string | null;
+  }>,
+  requestedModel = ""
+) {
+  const simulatedPath = models.map((model) => {
+    const breaker = breakers.find((candidate) => toString(candidate.provider) === model.provider);
+    const quota = providers.find((candidate) => candidate.provider === model.provider);
+    const quotaSource = [
+      "learned_limit",
+      "observed_rate_limit",
+      "observed_queue_pressure",
+      "unknown",
+    ].includes(quota?.quotaSource ?? "unknown")
+      ? (quota?.quotaSource ?? "unknown")
+      : "unknown";
+    const rawHealthState = toString(breaker?.state);
+    const healthStatus = ["CLOSED", "DEGRADED", "OPEN", "HALF_OPEN"].includes(rawHealthState)
+      ? rawHealthState
+      : "unknown";
+    const estimatedCost =
+      model.inputCostPer1M === null
+        ? null
+        : Math.round(
+            ((promptTokenEstimate / 1_000_000) * model.inputCostPer1M + Number.EPSILON) * 1e4
+          ) / 1e4;
+
+    return {
+      provider: model.provider,
+      model: model.model || requestedModel,
+      probability: null,
+      probabilitySource: "unavailable",
+      estimatedCost,
+      costEstimate: {
+        state: estimatedCost === null ? "unknown" : "input_estimate",
+        source: estimatedCost === null ? "unavailable" : "combo_config",
+        currency: "USD",
+        scope: "input_tokens_only",
+      },
+      healthStatus,
+      healthSource: healthStatus === "unknown" ? "unknown" : "provider_breaker",
+      quotaAvailable:
+        quotaSource === "learned_limit"
+          ? getObservedQuotaPercent(quota?.percentRemaining)
+          : quotaSource === "observed_rate_limit"
+            ? 0
+            : null,
+      quotaSource,
+      quotaRetrievedAt: quota?.quotaRetrievedAt ?? null,
+    };
+  });
+  const costs = simulatedPath.map((entry) => entry.estimatedCost);
+  const allCostsKnown = costs.length > 0 && costs.every((cost): cost is number => cost !== null);
+
+  return {
+    simulatedPath,
+    fallbackTree: {
+      primary: simulatedPath[0]?.provider || "unknown",
+      fallbacks: simulatedPath.slice(1).map((entry) => entry.provider),
+      worstCaseCost: allCostsKnown ? Math.max(...(costs as number[])) : null,
+      bestCaseCost: allCostsKnown ? Math.min(...(costs as number[])) : null,
+      costEstimateState: allCostsKnown ? "input_estimate" : "unknown",
+    },
+  };
 }
 
 function normalizeCombosResponse(raw: unknown): JsonRecord[] {
@@ -292,31 +381,13 @@ export async function handleSimulateRoute(args: {
     const breakers = toArrayOfRecords(health.circuitBreakers);
     const providers = quota.providers;
 
-    // Simulate path
-    const simulatedPath = models.map((model, idx: number) => {
-      const cb = breakers.find((breaker) => toString(breaker.provider) === model.provider);
-      const q = providers.find((providerEntry) => providerEntry.provider === model.provider);
-      const estimatedCost = (args.promptTokenEstimate / 1_000_000) * model.inputCostPer1M;
-      return {
-        provider: model.provider,
-        model: model.model || args.model,
-        probability: idx === 0 ? 0.85 : 0.15 / Math.max(models.length - 1, 1),
-        estimatedCost: Math.round(estimatedCost * 10000) / 10000,
-        healthStatus: toString(cb?.state, "CLOSED"),
-        quotaAvailable: q?.percentRemaining ?? 100,
-      };
-    });
-
-    const costs = simulatedPath.map((pathEntry) => pathEntry.estimatedCost);
-    const result = {
-      simulatedPath,
-      fallbackTree: {
-        primary: simulatedPath[0]?.provider || "unknown",
-        fallbacks: simulatedPath.slice(1).map((pathEntry) => pathEntry.provider),
-        worstCaseCost: Math.max(...costs, 0),
-        bestCaseCost: Math.min(...costs, 0),
-      },
-    };
+    const result = buildRouteSimulation(
+      models,
+      args.promptTokenEstimate,
+      breakers,
+      providers,
+      args.model
+    );
 
     await logToolCall("omniroute_simulate_route", args, result, Date.now() - start, true);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };

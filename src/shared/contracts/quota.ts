@@ -1,4 +1,6 @@
 export type QuotaTokenStatus = "valid" | "expiring" | "expired" | "refreshing";
+export type QuotaSource =
+  "learned_limit" | "observed_rate_limit" | "observed_queue_pressure" | "unknown";
 
 export interface QuotaProviderEntry {
   name: string;
@@ -7,6 +9,9 @@ export interface QuotaProviderEntry {
   quotaUsed: number;
   quotaTotal: number | null;
   percentRemaining: number;
+  /** Evidence source for percentRemaining; legacy percentages may be synthetic. */
+  quotaSource: QuotaSource;
+  quotaRetrievedAt: string | null;
   resetAt: string | null;
   tokenStatus: QuotaTokenStatus;
 }
@@ -26,6 +31,12 @@ export interface QuotaResponse {
 }
 
 const TOKEN_STATUS_VALUES: QuotaTokenStatus[] = ["valid", "expiring", "expired", "refreshing"];
+const QUOTA_SOURCES: QuotaSource[] = [
+  "learned_limit",
+  "observed_rate_limit",
+  "observed_queue_pressure",
+  "unknown",
+];
 
 function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -72,6 +83,17 @@ export function sanitizeQuotaProvider(input: unknown): QuotaProviderEntry {
     }
   }
   const percentRemaining = clamp(percentRemainingRaw, 0, 100);
+  const quotaSource =
+    typeof source.quotaSource === "string" &&
+    QUOTA_SOURCES.includes(source.quotaSource as QuotaSource)
+      ? (source.quotaSource as QuotaSource)
+      : "unknown";
+  const quotaRetrievedAt =
+    typeof source.quotaRetrievedAt === "string" &&
+    source.quotaRetrievedAt.trim() &&
+    Number.isFinite(Date.parse(source.quotaRetrievedAt))
+      ? source.quotaRetrievedAt
+      : null;
 
   const resetAt =
     typeof source.resetAt === "string" && source.resetAt.trim() ? source.resetAt : null;
@@ -83,6 +105,8 @@ export function sanitizeQuotaProvider(input: unknown): QuotaProviderEntry {
     quotaUsed,
     quotaTotal,
     percentRemaining,
+    quotaSource,
+    quotaRetrievedAt,
     resetAt,
     tokenStatus: normalizeTokenStatus(source.tokenStatus),
   };

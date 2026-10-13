@@ -12472,6 +12472,41 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                        connectionId:
+                          type: string
+                        quotaTotal:
+                          type: number
+                          nullable: true
+                        quotaUsed:
+                          type: number
+                        percentRemaining:
+                          type: number
+                          description: >-
+                            Backward-compatible numeric projection. Consult quotaSource before
+                            interpreting 100 as known available capacity.
+                        quotaSource:
+                          type: string
+                          enum:
+                            - learned_limit
+                            - observed_rate_limit
+                            - observed_queue_pressure
+                            - unknown
+                        quotaRetrievedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
   /api/usage/requests-by-provider-date:
     get:
       tags:
