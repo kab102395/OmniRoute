@@ -1545,6 +1545,18 @@ paths:
       tags: [Chat]
       summary: Create chat completion
       description: OpenAI-compatible chat completions endpoint. Routes to configured providers.
+      parameters:
+        - in: header
+          name: X-OmniRoute-Strict-Model
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: >-
+            When true, preserve the requested model identity and disable cross-model family,
+            context-overflow, global, and emergency fallback. Retries may still use another
+            configured account for the same provider/model. This does not pin an aggregator's
+            downstream serving provider or host.
       security:
         - BearerAuth: []
       requestBody:

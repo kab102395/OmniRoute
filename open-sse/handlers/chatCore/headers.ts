@@ -16,6 +16,21 @@ export function getHeaderValueCaseInsensitive(
 }
 
 /**
+ * Request-level opt-in to preserve the requested model identity. This blocks
+ * cross-model fallbacks while leaving same-model account/connection retries
+ * available. Aggregators may still choose their own downstream serving host.
+ */
+export function isStrictModelIdentityRequested(
+  headers: Record<string, unknown> | Headers | null | undefined
+): boolean {
+  return (
+    (getHeaderValueCaseInsensitive(headers, "x-omniroute-strict-model") || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+/**
  * Per-request opt-out of memory (and skills) injection via the
  * `x-omniroute-no-memory` header. Mirrors the existing `x-omniroute-no-cache`
  * convention. Truthy values: `true` / `1` / `yes` (case-insensitive). Clients that

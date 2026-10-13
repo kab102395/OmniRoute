@@ -2476,6 +2476,30 @@ test("chatCore keeps an approved free-only exact route after model-unavailable",
     registry.replace(previousApprovals);
   }
 });
+test("chatCore honors X-OmniRoute-Strict-Model without provider-specific policy", async () => {
+  const { calls, result } = await invokeChatCore({
+    provider: "claude",
+    model: "claude-sonnet-5",
+    body: {
+      model: "claude-sonnet-5",
+      stream: false,
+      messages: [{ role: "user", content: "preserve exact model" }],
+    },
+    requestHeaders: { "X-OmniRoute-Strict-Model": "true" },
+    responseFormat: "claude",
+    responseFactory() {
+      return new Response(JSON.stringify({ error: { message: "model not found" } }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.status, 404);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.model, "claude-sonnet-5");
+});
 test("chatCore preserves an OpenRouter usage.cost receipt without token counts", async () => {
   const { result } = await invokeChatCore({
     provider: "openrouter",

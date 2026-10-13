@@ -570,6 +570,35 @@ test("handleChat uses the emergency fallback model on budget exhaustion", async 
   assert.equal(json.choices[0].message.content, "Emergency fallback answered");
 });
 
+test("handleChat suppresses cross-model emergency fallback for strict model requests", async () => {
+  clearProviderFailure("openai");
+  await seedConnection("openai", { apiKey: "sk-openai-strict-model" });
+  await seedConnection("nvidia", { apiKey: "sk-nvidia-strict-model-fallback" });
+  const seenModels: string[] = [];
+
+  globalThis.fetch = async (_url, init = {}) => {
+    seenModels.push(JSON.parse(String(init.body)).model);
+    return new Response(JSON.stringify({ error: { message: "billing limit exceeded" } }), {
+      status: 402,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const response = await handleChat(
+    buildRequest({
+      headers: { "X-OmniRoute-Strict-Model": "true" },
+      body: {
+        model: "openai/gpt-4.1",
+        stream: false,
+        messages: [{ role: "user", content: "keep requested model" }],
+      },
+    })
+  );
+
+  assert.equal(response.status, 402);
+  assert.deepEqual(seenModels, ["gpt-4.1"]);
+});
+
 test("handleChat returns the primary budget error when emergency fallback also fails", async () => {
   // Reset provider failure state to avoid circuit breaker interference
   clearProviderFailure("openai");
