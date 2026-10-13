@@ -1,7 +1,7 @@
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { NOAUTH_PROVIDERS } from "@/shared/constants/providers";
 import { getCombos } from "@/lib/db/combos";
-import { getSettings } from "@/lib/db/settings";
+import { getPricingWithSources, getSettings } from "@/lib/db/settings";
 import { getUserDatabaseSettings } from "@/lib/db/databaseSettings";
 import { createLazyConnectionView } from "@/lib/db/providers/lazyConnectionView";
 import { extractAliasBackedModels } from "./aliasBackedModels";
@@ -2262,8 +2262,14 @@ async function buildUnifiedModelsResponseCore(
       }
       const modelsDevStatus = getModelsDevSyncStatus();
       const liteLlmPricingStatus = getLiteLlmPricingSyncStatus();
+      const effectivePricing = await getPricingWithSources();
       enrichmentSnapshot = {
         modelsDevPricing,
+        effectivePricing: {
+          pricing: effectivePricing.pricing,
+          sourceMap: effectivePricing.sourceMap,
+          rateSourceMap: effectivePricing.rateSourceMap,
+        },
         pricingSourceStatus: {
           modelsDevRetrievedAt: modelsDevStatus.sourceRetrievedAt,
           modelsDevTtlMs: modelsDevStatus.intervalMs,

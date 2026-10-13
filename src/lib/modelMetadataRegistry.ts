@@ -43,6 +43,11 @@ type JsonRecord = Record<string, unknown>;
 
 export interface CatalogEnrichmentSnapshot {
   modelsDevPricing: PricingByProvider | null;
+  effectivePricing?: {
+    pricing: Record<string, Record<string, Record<string, unknown>>>;
+    sourceMap: Record<string, Record<string, string>>;
+    rateSourceMap: Record<string, Record<string, Record<string, string>>>;
+  };
   pricingSourceStatus?: {
     modelsDevRetrievedAt: string | null;
     modelsDevTtlMs: number;
@@ -345,6 +350,20 @@ function findInsensitive<T>(obj: Record<string, T> | null | undefined, key: stri
   return index.get(key.toLowerCase()) as T | undefined;
 }
 
+function findInsensitiveEntry<T>(
+  obj: Record<string, T> | null | undefined,
+  key: string
+): { key: string; value: T } | null {
+  if (!obj || !key) return null;
+  if (Object.hasOwn(obj, key)) return { key, value: obj[key] };
+  const value = findInsensitive(obj, key);
+  if (value === undefined) return null;
+  const matchedKey = Object.keys(obj).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase()
+  );
+  return matchedKey === undefined ? null : { key: matchedKey, value };
+}
+
 function extractNumericPricing(entry: Record<string, unknown>): Record<string, number> {
   return Object.fromEntries(
     Object.entries(entry).filter(
@@ -360,6 +379,154 @@ function resolveCatalogPricing(
   snapshot?: CatalogEnrichmentSnapshot
 ): { pricing: Record<string, number>; provenance: Record<string, unknown> } | null {
   if (!provider || !model) return null;
+
+  // Use the same layer merge as usage accounting (defaults → LiteLLM → models.dev → user),
+  // preserving provenance for each effective rate instead of returning only the first
+  // source row that happens to contain this model.
+  if (snapshot?.effectivePricing) {
+    try {
+      const effective = snapshot.effectivePricing;
+      const providerKeys = [provider, provider.replace(/-cn$/, "")];
+      let providerPricing: { key: string; value: Record<string, Record<string, unknown>> } | null =
+        null;
+      for (const key of providerKeys) {
+        providerPricing = findInsensitiveEntry(effective.pricing, key);
+        if (providerPricing) break;
+      }
+      if (providerPricing) {
+        const modelKeys = [
+          model,
+          model.replace(/\./g, "-"),
+          model.includes("/") ? model.split("/").pop() || model : model,
+        ];
+        let modelPricing: { key: string; value: Record<string, unknown> } | null = null;
+        for (const key of modelKeys) {
+          modelPricing = findInsensitiveEntry(providerPricing.value, key);
+          if (modelPricing) break;
+        }
+        if (modelPricing) {
+          const pricing = extractNumericPricing(modelPricing.value);
+          if (Object.keys(pricing).length > 0) {
+            const sourceProvider = findInsensitive(effective.sourceMap, providerPricing.key);
+            const modelSource = findInsensitive(sourceProvider, modelPricing.key) ?? null;
+            const rateSourceProvider = findInsensitive(
+              effective.rateSourceMap,
+              providerPricing.key
+            );
+            const rateSources = findInsensitive(rateSourceProvider, modelPricing.key) ?? {};
+            const status = snapshot.pricingSourceStatus;
+            const now = Date.now();
+            const sourceMetadata = (sourceType: string) => {
+              const sourceId =
+                sourceType === "modelsDev"
+                  ? "models_dev.api_json"
+                  : sourceType === "litellm"
+                    ? "litellm.model_prices"
+                    : sourceType === "user"
+                      ? "omniroute.user_pricing"
+                      : "omniroute.static_pricing";
+              const retrievedAt =
+                sourceType === "modelsDev"
+                  ? (status?.modelsDevRetrievedAt ?? null)
+                  : sourceType === "litellm"
+                    ? (status?.liteLlmRetrievedAt ?? null)
+                    : null;
+              const ttlMs =
+                sourceType === "modelsDev"
+                  ? (status?.modelsDevTtlMs ?? null)
+                  : sourceType === "litellm"
+                    ? (status?.liteLlmTtlMs ?? null)
+                    : null;
+              const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
+              const validRetrievedAt = Number.isFinite(retrievedAtMs);
+              const futureDated = validRetrievedAt && retrievedAtMs > now;
+              const ageMs = validRetrievedAt && !futureDated ? now - retrievedAtMs : null;
+              return {
+                id: sourceId,
+                sourceType:
+                  sourceType === "modelsDev"
+                    ? "models_dev"
+                    : sourceType === "litellm"
+                      ? "litellm"
+                      : sourceType === "user"
+                        ? "user"
+                        : "static_default",
+                retrievedAt: validRetrievedAt ? retrievedAt : null,
+                cacheTtlMs: ttlMs,
+                ageMs,
+                stale:
+                  sourceType === "default" || sourceType === "user"
+                    ? null
+                    : validRetrievedAt && typeof ttlMs === "number"
+                      ? futureDated || ageMs! > ttlMs
+                      : null,
+              };
+            };
+            const rateSourceEntries = Object.fromEntries(
+              Object.entries(rateSources)
+                .filter(([, sourceType]) => typeof sourceType === "string")
+                .map(([rate, sourceType]) => [rate, sourceMetadata(sourceType)])
+            );
+            const sourceIds = [
+              ...new Set(
+                Object.values(rateSourceEntries).map((source) => (source as { id: string }).id)
+              ),
+            ];
+            const hasEstimateSource = Object.values(rateSources).some(
+              (sourceType) => sourceType === "user" || sourceType === "default"
+            );
+            const hasInputRate = typeof pricing.input === "number";
+            const hasOutputRate = typeof pricing.output === "number";
+            const tokenPricingIncomplete = !hasInputRate || !hasOutputRate;
+            const homogeneousSource = sourceIds.length === 1 ? sourceIds[0] : null;
+            const provenanceSource = homogeneousSource
+              ? sourceMetadata(String(modelSource || Object.values(rateSources)[0] || "default"))
+              : {
+                  id: "omniroute.mixed_pricing_sources",
+                  retrievedAt: null,
+                  stale: Object.values(rateSourceEntries).some(
+                    (source) => (source as { stale: boolean | null }).stale === true
+                  )
+                    ? true
+                    : Object.values(rateSourceEntries).length > 0 &&
+                        Object.values(rateSourceEntries).every(
+                          (source) => (source as { stale: boolean | null }).stale === false
+                        )
+                      ? false
+                      : null,
+                };
+            return {
+              pricing,
+              provenance: {
+                state: tokenPricingIncomplete
+                  ? "incomplete"
+                  : hasEstimateSource
+                    ? "estimated_pricing"
+                    : "third_party_reported_pricing",
+                source: provenanceSource,
+                routeModelId: model,
+                currency: "USD",
+                rateUnit: "Source-native USD units; token rates use USD / 1M tokens",
+                authority: hasEstimateSource
+                  ? "Effective pricing includes operator-configured or OmniRoute-maintained rates; these are not provider billing evidence"
+                  : "Effective pricing is sourced from third-party model catalogs; it is not provider-authenticated billing evidence",
+                rateSources: rateSourceEntries,
+                ...(tokenPricingIncomplete
+                  ? {
+                      reason:
+                        "Effective pricing does not include both input and output token rates",
+                    }
+                  : {}),
+              },
+            };
+          }
+        }
+      }
+    } catch {
+      // Fall through to the established source-specific resolution if the merged
+      // snapshot is malformed or unavailable.
+    }
+  }
 
   // Prefer models.dev synced pricing when present; fall back to hardcoded defaults.
   try {
@@ -839,7 +1006,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       routeContextOverride !== null) &&
     typeof metadata.limits.contextWindow === "number"
   ) {
-    nextEntry.context_length = metadata.limits.contextWindow;
+    nextEntry.context_length = authoritativeContextWindow ?? metadata.limits.contextWindow;
   } else if (specialtySurface && routeContextOverride !== null) {
     // Exact persisted overrides are authoritative for every surface of the model.
     nextEntry.context_length = routeContextOverride;
@@ -898,7 +1065,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     typeof metadata.limits.maxInputTokens === "number" &&
     (typeof nextEntry.max_input_tokens !== "number" || authoritativeContextWindow !== null)
   ) {
-    nextEntry.max_input_tokens = metadata.limits.maxInputTokens;
+    nextEntry.max_input_tokens = authoritativeContextWindow ?? metadata.limits.maxInputTokens;
   }
 
   if (metadata.metadata.family) nextEntry.family = metadata.metadata.family;

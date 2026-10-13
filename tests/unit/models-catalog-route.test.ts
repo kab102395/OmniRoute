@@ -18,6 +18,7 @@ const contextOverrides = await import("../../src/lib/db/modelContextOverrides.ts
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const featureFlagsDb = await import("../../src/lib/db/featureFlags.ts");
 const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
+const pricingSync = await import("../../src/lib/pricingSync.ts");
 const v1ModelsCatalog = await import("../../src/app/api/v1/models/catalog.ts");
 const { normalizeOpenAiLikeModelsResponse } =
   await import("../../src/app/api/providers/[id]/models/discovery/normalizers.ts");
@@ -2100,13 +2101,23 @@ test("v1 models catalog uses synced models.dev limits instead of provider defaul
 
 test("v1 models catalog preserves synchronized pricing provenance in serialized rows", async () => {
   await seedConnection("openai", { name: "openai-pricing-provenance" });
+  await modelsDb.addCustomModel("openai", "catalog-pricing-incomplete-test", "Incomplete Test");
 
   try {
     modelsDevSync.saveModelsDevPricing({
       openai: {
         "gpt-4o": { input: 2.5, output: 10 },
         "gpt-4o-mini": { input: 0.15 },
+        "catalog-pricing-incomplete-test": { input: 0.15 },
       },
+    });
+    pricingSync.saveSyncedPricing({
+      openai: {
+        "gpt-4o-mini": { output: 0.7 },
+      },
+    });
+    await settingsDb.updatePricing({
+      openai: { "gpt-4o-mini": { input: 0.25 } },
     });
     const response = await v1ModelsCatalog.getUnifiedModelsResponse(
       new Request("http://localhost/api/v1/models")
@@ -2114,11 +2125,12 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
     const body = (await response.json()) as {
       data: Array<{
         id: string;
-        pricing?: { input?: number; output?: number };
+        pricing?: Record<string, number>;
         pricing_provenance?: {
           state: string;
           reason?: string;
           source: { id: string; retrievedAt: string | null; stale: boolean | null };
+          rateSources?: Record<string, { id: string; sourceType: string; stale: boolean | null }>;
         };
       }>;
     };
@@ -2129,15 +2141,32 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
     assert.ok(model);
     assert.equal(model.pricing.input, 2.5);
     assert.equal(model.pricing.output, 10);
-    assert.equal(model.pricing_provenance.state, "third_party_reported_pricing");
-    assert.equal(model.pricing_provenance.source.id, "models_dev.api_json");
-    assert.equal(model.pricing_provenance.source.retrievedAt, null);
-    assert.equal(model.pricing_provenance.source.stale, null);
+    assert.equal(model.pricing_provenance.state, "estimated_pricing");
+    assert.equal(model.pricing_provenance.source.id, "omniroute.mixed_pricing_sources");
+    assert.equal(model.pricing_provenance.rateSources?.input?.sourceType, "models_dev");
+    assert.equal(model.pricing_provenance.rateSources?.output?.sourceType, "models_dev");
+    assert.equal(model.pricing_provenance.rateSources?.cached?.sourceType, "static_default");
     assert.ok(incompleteModel);
-    assert.deepEqual(incompleteModel.pricing, { input: 0.15 });
-    assert.equal(incompleteModel.pricing_provenance?.state, "incomplete");
-    assert.match(incompleteModel.pricing_provenance?.reason ?? "", /input and output token rates/);
+    assert.equal(incompleteModel.pricing?.input, 0.25);
+    assert.equal(incompleteModel.pricing?.output, 0.7);
+    assert.equal(incompleteModel.pricing_provenance?.state, "estimated_pricing");
+    assert.equal(incompleteModel.pricing_provenance?.source.id, "omniroute.mixed_pricing_sources");
+    assert.equal(incompleteModel.pricing_provenance?.rateSources?.input?.sourceType, "user");
+    assert.equal(incompleteModel.pricing_provenance?.rateSources?.output?.sourceType, "litellm");
+    const partialModel = body.data.find(
+      (item) => item.id === "openai/catalog-pricing-incomplete-test"
+    );
+    assert.ok(partialModel);
+    assert.deepEqual(partialModel.pricing, { input: 0.15 });
+    assert.equal(partialModel.pricing_provenance?.state, "incomplete");
+    assert.equal(partialModel.pricing_provenance?.rateSources?.input?.sourceType, "models_dev");
+    assert.match(
+      partialModel.pricing_provenance?.reason ?? "",
+      /both input and output token rates/
+    );
   } finally {
+    await settingsDb.resetPricing("openai", "gpt-4o-mini");
+    pricingSync.clearSyncedPricing();
     modelsDevSync.clearModelsDevPricing();
   }
 });

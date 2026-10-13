@@ -15489,6 +15489,33 @@ components:
                 cacheTtlMs:
                   type: integer
                   nullable: true
+            rateSources:
+              type: object
+              description: >-
+                Provenance for each effective rate after default, LiteLLM, models.dev, and
+                operator pricing layers are merged. Static and operator rates have unknown
+                retrieval freshness; synchronized rates include their retrieval time and TTL.
+              additionalProperties:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  sourceType:
+                    type: string
+                    enum: [user, models_dev, litellm, static_default]
+                  retrievedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  cacheTtlMs:
+                    type: integer
+                    nullable: true
+                  ageMs:
+                    type: integer
+                    nullable: true
+                  stale:
+                    type: boolean
+                    nullable: true
         capability_status:
           type: object
           description: >-

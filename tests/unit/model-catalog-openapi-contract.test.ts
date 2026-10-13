@@ -72,6 +72,21 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
                   };
                 };
               };
+              rateSources: {
+                type: string;
+                description: string;
+                additionalProperties: {
+                  type: string;
+                  properties: {
+                    id: { type: string };
+                    sourceType: { type: string; enum: string[] };
+                    retrievedAt: { type: string; nullable: boolean };
+                    cacheTtlMs: { type: string; nullable: boolean };
+                    ageMs: { type: string; nullable: boolean };
+                    stale: { type: string; nullable: boolean };
+                  };
+                };
+              };
             };
           };
           route_selection: {
@@ -119,6 +134,19 @@ test("model catalog OpenAPI exposes provider-resolved pricing identity", () => {
     spec.components.schemas.Model.properties.pricing_provenance.properties.resolvedModelId.type,
     "string"
   );
+});
+
+test("model catalog OpenAPI exposes source and freshness per effective pricing rate", () => {
+  const rateSources =
+    spec.components.schemas.Model.properties.pricing_provenance.properties.rateSources;
+  assert.equal(rateSources.type, "object");
+  assert.deepEqual(rateSources.additionalProperties.properties.sourceType.enum, [
+    "user",
+    "models_dev",
+    "litellm",
+    "static_default",
+  ]);
+  assert.equal(rateSources.additionalProperties.properties.stale.nullable, true);
 });
 
 test("model catalog OpenAPI types emitted effort tiers and supported endpoints", () => {

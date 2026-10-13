@@ -49,6 +49,10 @@ export interface ModelPricingRates extends Record<string, unknown> {
   output?: { offPeak: string; peak: string };
 }
 
+export interface CatalogPricingRateSource extends CatalogMetadataSource {
+  sourceType: "user" | "models_dev" | "litellm" | "static_default";
+}
+
 export interface ModelPricingProvenance extends Record<string, unknown> {
   state: ModelPricingProvenanceState;
   routeModelId?: string;
@@ -58,6 +62,8 @@ export interface ModelPricingProvenance extends Record<string, unknown> {
   tokenRateUnit?: string;
   rateUnit?: string;
   source?: CatalogMetadataSource;
+  /** Source and freshness for each rate in a merged effective pricing record. */
+  rateSources?: Record<string, CatalogPricingRateSource>;
   zeroCostEligibility?: "verified_free_variant" | "unknown_stale_catalog" | "no";
   rates?: ModelPricingRates;
   reportedPricing?: Record<string, unknown> | null;
