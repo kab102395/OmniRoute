@@ -1101,6 +1101,55 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
   assert.equal(staleModel.provider_routes_provenance?.stale, true);
   assert.equal(staleModel.provider_routes?.[0]?.is_free, true);
   assert.equal(staleModel.provider_routes?.[0]?.free_catalog_eligible, false);
+
+  const freeToolRouteResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request(
+      "http://localhost/v1/models?free_only=true&require_tool_calling=true&configuredOnly=true"
+    )
+  );
+  const freeToolRouteBody = (await freeToolRouteResponse.json()) as {
+    data: Array<{
+      id?: string;
+      free?: boolean;
+      capabilities?: Record<string, boolean>;
+      capability_status?: { tool_calling?: { status?: string; source?: string } };
+      route_selection?: { kind?: string; exactModelIdentity?: boolean };
+      route_availability?: {
+        accountEligibility?: string;
+        downstreamHostSelection?: string;
+      };
+      provider_routes_provenance?: { stale?: boolean };
+    }>;
+  };
+  const freeToolRoute = freeToolRouteBody.data.find(
+    (entry) => entry.id === "hf/fixture-org/route-metadata-model:promo-host"
+  );
+  assert.ok(freeToolRoute, "current HF free host should be a selectable exact route");
+  assert.equal(freeToolRoute.free, true);
+  assert.equal(freeToolRoute.capabilities?.tool_calling, true);
+  assert.deepEqual(freeToolRoute.capability_status?.tool_calling, {
+    status: "supported",
+    source: "huggingface.router_models_api",
+  });
+  assert.deepEqual(freeToolRoute.route_selection, {
+    kind: "exact_model",
+    exactModelIdentity: true,
+  });
+  assert.equal(freeToolRoute.route_availability?.accountEligibility, "unknown");
+  assert.equal(freeToolRoute.route_availability?.downstreamHostSelection, "pinned");
+  assert.equal(freeToolRoute.provider_routes_provenance?.stale, false);
+  assert.equal(
+    freeToolRouteBody.data.some(
+      (entry) => entry.id === "hf/fixture-org/route-metadata-model:together"
+    ),
+    false,
+    "a paid host must not be included in a free-only catalog"
+  );
+  assert.equal(
+    freeToolRouteBody.data.some((entry) => entry.id === "hf/zai-org/GLM-stale:promo-host"),
+    false,
+    "a stale provider-route catalog cannot authorize free-only use"
+  );
 });
 
 test("Hugging Face model modalities survive discovery sync and reach the unified catalog", async () => {

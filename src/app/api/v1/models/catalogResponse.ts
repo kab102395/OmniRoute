@@ -41,6 +41,8 @@ import {
 import { extractApiKey } from "@/sse/services/auth";
 import { maybeOmitCatalogModelName } from "./catalogHelpers";
 import { isCodexModelCatalogClient } from "./catalogRequest";
+import { expandHuggingFaceProviderRoutes } from "./catalogProviderRoutes";
+import { isFreeOnlyCatalogModel } from "./freeOnlyCatalog";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -55,6 +57,61 @@ function hasVerifiedToolCalling(model: Record<string, unknown>): boolean {
     isRecord(capabilityStatus.tool_calling) &&
     capabilityStatus.tool_calling.status === "supported"
   );
+}
+
+function preservePinnedHuggingFaceRouteFacts(
+  listedModel: Record<string, unknown>,
+  sourceModel: Record<string, unknown>
+): Record<string, unknown> {
+  const routes = sourceModel.provider_routes;
+  const routeSelection = sourceModel.route_selection;
+  if (
+    (sourceModel.owned_by !== "hf" && sourceModel.owned_by !== "huggingface") ||
+    typeof sourceModel.id !== "string" ||
+    !Array.isArray(routes) ||
+    routes.length !== 1 ||
+    !isRecord(routes[0]) ||
+    routes[0].route_model !== sourceModel.id ||
+    !isRecord(routeSelection) ||
+    routeSelection.kind !== "exact_model"
+  ) {
+    return listedModel;
+  }
+
+  const route = routes[0];
+  const capabilities = isRecord(listedModel.capabilities) ? { ...listedModel.capabilities } : {};
+  if (typeof route.supports_tools === "boolean") {
+    capabilities.tool_calling = route.supports_tools;
+  } else {
+    delete capabilities.tool_calling;
+  }
+  if (typeof route.supports_structured_output === "boolean") {
+    capabilities.structured_output = route.supports_structured_output;
+  }
+
+  return {
+    ...listedModel,
+    ...(typeof sourceModel.free === "boolean" ? { free: sourceModel.free } : {}),
+    ...(sourceModel.pricing !== undefined ? { pricing: sourceModel.pricing } : {}),
+    capabilities,
+    capability_status: {
+      ...(isRecord(listedModel.capability_status) ? listedModel.capability_status : {}),
+      tool_calling: {
+        status:
+          route.supports_tools === true
+            ? "supported"
+            : route.supports_tools === false
+              ? "unsupported"
+              : "unknown",
+        source: "huggingface.router_models_api",
+      },
+    },
+    route_selection: sourceModel.route_selection,
+    route_availability: sourceModel.route_availability,
+    pricing_provenance: sourceModel.pricing_provenance,
+    provider_routes: sourceModel.provider_routes,
+    provider_routes_provenance: sourceModel.provider_routes_provenance,
+  };
 }
 
 /**
@@ -254,8 +311,9 @@ export async function finalizeCatalogResponse(
   }
 
   const includeModelNames = isModelCatalogNamesEnabled();
-  const requireToolCalling =
-    new URL(request.url).searchParams.get("require_tool_calling") === "true";
+  const query = new URL(request.url).searchParams;
+  const freeOnly = query.get("free_only") === "true";
+  const requireToolCalling = query.get("require_tool_calling") === "true";
   // #9147: enrichment is the most expensive single stage of the catalog build —
   // per-entry provider/model resolution plus pricing + token/context override
   // lookups. Two fixes so a large catalog cannot pin the Node.js thread here:
@@ -295,7 +353,7 @@ export async function finalizeCatalogResponse(
       delete capabilities.tool_calling;
       listedModel = { ...listedModel, capabilities };
     }
-    if (requireToolCalling && !hasVerifiedToolCalling(listedModel)) continue;
+    listedModel = preservePinnedHuggingFaceRouteFacts(listedModel, model);
     enriched.push(listedModel);
     catEnrichCount++;
     if (catEnrichCount % catYIELD_EVERY === 0) {
@@ -303,7 +361,17 @@ export async function finalizeCatalogResponse(
     }
   }
   await yieldTurn();
-  const enrichedModels = disambiguateCatalogModelNames(enriched);
+  const routeCandidates = expandHuggingFaceProviderRoutes(enriched, {
+    freeOnly: false,
+    requireToolCalling,
+  });
+  const capabilityFilteredCandidates = requireToolCalling
+    ? routeCandidates.filter(hasVerifiedToolCalling)
+    : routeCandidates;
+  const filteredCandidates = freeOnly
+    ? capabilityFilteredCandidates.filter(isFreeOnlyCatalogModel)
+    : capabilityFilteredCandidates;
+  const enrichedModels = disambiguateCatalogModelNames(filteredCandidates);
   await yieldTurn();
   const orderedModels = sortCatalogModelsProviderGrouped(enrichedModels);
   await yieldTurn();

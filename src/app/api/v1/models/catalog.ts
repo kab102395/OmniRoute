@@ -135,8 +135,9 @@ import { isFreeModel } from "@/shared/utils/freeModels";
 import { isModelExposureAllowed } from "@/shared/utils/modelExposureList";
 import { isCodexDiscoveryModelExcluded } from "@/shared/services/codexDiscoveryPolicy";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
-import { isFreeOnlyCatalogModel } from "./freeOnlyCatalog";
 import { getCatalogFreeAccess } from "./catalogFreeAccess";
+import { isFreeOnlyCatalogModel } from "./freeOnlyCatalog";
+import { expandHuggingFaceProviderRoutes } from "./catalogProviderRoutes";
 
 // Public API of this module is preserved after the catalog helper extraction:
 // `isVisionModelId` (vision-detection-consistency.test.ts) and
@@ -338,8 +339,8 @@ async function buildUnifiedModelsResponseCore(
 
     const capabilityResolutionSnapshot = createModelCapabilityResolutionSnapshot();
     const { aliasToProviderId, providerIdToAlias } = buildAliasMaps();
-    const _qp = new URL(request.url).searchParams.get("prefix");
     const freeOnlyCatalog = new URL(request.url).searchParams.get("free_only") === "true";
+    const _qp = new URL(request.url).searchParams.get("prefix");
     const prefixMode =
       _qp === "alias" || _qp === "canonical" || _qp === "dual" ? _qp : getModelsCatalogPrefixMode();
     const includeAlias = prefixMode !== "canonical";
@@ -2200,9 +2201,11 @@ async function buildUnifiedModelsResponseCore(
       hideNoThinkVariants: settings.hideNoThinkVariants === true,
     });
     if (freeOnlyCatalog) {
-      finalModels = finalModels.filter(isFreeOnlyCatalogModel);
+      finalModels = expandHuggingFaceProviderRoutes(finalModels, {
+        freeOnly: true,
+        requireToolCalling: false,
+      }).filter(isFreeOnlyCatalogModel);
     }
-
     const getDefaultContextFallback = (model: any): number | undefined => {
       if (typeof model.context_length === "number") return undefined;
       if (model.owned_by === "combo") return undefined;

@@ -160,7 +160,7 @@ test("model catalog distinguishes exact free variants from the dynamic OpenRoute
 
   const availability = properties.route_availability.properties;
   assert.deepEqual(availability.accountEligibility.enum, ["unknown"]);
-  assert.deepEqual(availability.downstreamHostSelection.enum, ["aggregator_selected"]);
+  assert.deepEqual(availability.downstreamHostSelection.enum, ["aggregator_selected", "pinned"]);
   assert.deepEqual(availability.catalogListed, { type: "boolean", nullable: true });
   assert.equal(availability.source.properties.id.type, "string");
   assert.equal(availability.source.properties.modelId.type, "string");

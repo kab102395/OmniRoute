@@ -13,6 +13,8 @@ const { checkFreeRouteAdmission } =
 const { getCurrentOpenRouterFreeRouteIds } =
   await import("../../src/lib/catalog/openrouterCatalog.ts");
 const { FREE_MODEL_BUDGETS } = await import("../../open-sse/config/freeModelCatalog.data.ts");
+const coreDb = await import("../../src/lib/db/core.ts");
+const modelsDb = await import("../../src/lib/db/models.ts");
 const realFetch = globalThis.fetch;
 
 test.after(() => {
@@ -96,4 +98,47 @@ test("free admission uses OmniRoute's existing exact provider model catalog", as
     source: "omniroute.free_model_catalog",
   });
   assert.deepEqual(unlistedSibling, { kind: "ineligible", reason: "not_free" });
+});
+
+test("free admission rechecks exact current Hugging Face provider routes", async () => {
+  await coreDb.ensureDbInitialized();
+  await modelsDb.replaceSyncedAvailableModelsForConnection("huggingface", "hf-free-test", [
+    {
+      id: "org/tool-model",
+      name: "Tool model",
+      source: "imported",
+      providerRoutesRetrievedAt: new Date().toISOString(),
+      providerRoutes: [
+        { provider: "free-host", status: "live", isFree: true, supportsTools: true },
+        { provider: "paid-host", status: "live", isFree: false, supportsTools: true },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(await checkFreeRouteAdmission("huggingface", "org/tool-model:free-host"), {
+    kind: "eligible",
+    source: "huggingface.router_models_api",
+  });
+  assert.deepEqual(await checkFreeRouteAdmission("huggingface", "org/tool-model:paid-host"), {
+    kind: "ineligible",
+    reason: "not_free",
+  });
+});
+
+test("free admission rejects stale Hugging Face provider-route metadata", async () => {
+  await coreDb.ensureDbInitialized();
+  await modelsDb.replaceSyncedAvailableModelsForConnection("huggingface", "hf-free-stale", [
+    {
+      id: "org/stale-model",
+      name: "Stale model",
+      source: "imported",
+      providerRoutesRetrievedAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+      providerRoutes: [{ provider: "free-host", status: "live", isFree: true }],
+    },
+  ]);
+
+  assert.deepEqual(await checkFreeRouteAdmission("huggingface", "org/stale-model:free-host"), {
+    kind: "ineligible",
+    reason: "catalog_unverified",
+  });
 });

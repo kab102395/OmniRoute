@@ -2172,12 +2172,16 @@ paths:
       summary: List available models
       description: >-
         Returns the unified model catalog. `free_only=true` filters to exact OpenRouter free
-        variants and the optional dynamic OpenRouter free router, based on a fresh upstream
-        catalog, plus exact provider routes whose `free_access.hardStopGuaranteed` metadata says
-        the documented tier stops before paid overage. Other quota-based tiers are excluded from
-        this filter. `require_tool_calling=true` keeps only routes whose capability metadata
-        positively confirms tool support; unknown support is excluded. Catalog inclusion does not
-        establish that an account currently has quota or can execute successfully.
+        variants and the optional dynamic OpenRouter free router based on a fresh upstream
+        catalog, current Hugging Face provider-pinned routes currently marked free by its router
+        catalog, and exact provider routes whose `free_access.hardStopGuaranteed` metadata says
+        the documented tier stops before paid overage. A current free-promotion classification is
+        not a guarantee against upstream changes after retrieval or account-specific charges.
+        `require_tool_calling=true` keeps only routes whose capability metadata positively confirms
+        tool support; for Hugging Face, this returns exact provider-pinned route IDs when the
+        downstream provider advertises tool support. Unknown support is excluded. Catalog
+        inclusion does not establish that an account currently has quota or can execute
+        successfully.
       security:
         - BearerAuth: []
       parameters:
@@ -2207,10 +2211,13 @@ paths:
             default: false
           description: >-
             Keep exact currently free OpenRouter variants and the dynamic OpenRouter free router
-            only while the upstream catalog is fresh. Also includes exact provider routes whose
-            `free_access.hardStopGuaranteed` is true, so a free quota cannot transition to paid
-            overage. Other provider free tiers are excluded. Account quota and execution
-            eligibility remain unknown unless established separately.
+            only while the upstream catalog is fresh; exact Hugging Face provider-pinned routes
+            whose current router catalog marks them free; and exact provider routes whose
+            `free_access.hardStopGuaranteed` is true. A provider's current free-promotion marker
+            does not guarantee that its offering or account billing state will remain unchanged
+            after catalog retrieval. Account quota and execution eligibility remain unknown unless
+            established separately. The dispatch-time `X-OmniRoute-Require-Free-Route` header
+            rechecks current OpenRouter or Hugging Face route membership.
         - in: query
           name: require_tool_calling
           required: false
@@ -15408,6 +15415,7 @@ components:
                   type: string
                   enum:
                     - openrouter.models_api
+                    - huggingface.router_models_api
                     - synced_capability_catalog
                     - provider_registry
                     - model_spec
@@ -15507,7 +15515,7 @@ components:
                   type: integer
             downstreamHostSelection:
               type: string
-              enum: [aggregator_selected]
+              enum: [aggregator_selected, pinned]
         provider_routes:
           type: array
           description: >-

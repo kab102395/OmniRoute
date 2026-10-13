@@ -21,6 +21,14 @@ function isRecord(value: unknown): value is UnknownRecord {
 export function isFreeOnlyCatalogModel(model: Record<string, unknown>): boolean {
   if (isExplicitOpenRouterFreeCatalogModel(model)) return true;
   if (
+    (model.owned_by === "huggingface" || model.owned_by === "hf") &&
+    typeof model.id === "string" &&
+    model.free === true &&
+    isExactCurrentHuggingFaceFreeRoute(model)
+  ) {
+    return true;
+  }
+  if (
     typeof model.id !== "string" ||
     typeof model.root !== "string" ||
     typeof model.owned_by !== "string" ||
@@ -40,5 +48,30 @@ export function isFreeOnlyCatalogModel(model: Record<string, unknown>): boolean 
     facts.zeroCostOnExhaustion === "provider_hard_stop" &&
     isRecord(source) &&
     source.id === "omniroute.free_model_catalog"
+  );
+}
+
+function isExactCurrentHuggingFaceFreeRoute(model: Record<string, unknown>): boolean {
+  const routeSelection = model.route_selection;
+  const provenance = model.provider_routes_provenance;
+  const routes = model.provider_routes;
+  if (
+    !isRecord(routeSelection) ||
+    routeSelection.kind !== "exact_model" ||
+    routeSelection.exactModelIdentity !== true ||
+    !isRecord(provenance) ||
+    provenance.source !== "huggingface.router_models_api" ||
+    provenance.stale !== false ||
+    !Array.isArray(routes) ||
+    routes.length !== 1
+  ) {
+    return false;
+  }
+  const route = routes[0];
+  return (
+    isRecord(route) &&
+    route.status === "live" &&
+    route.free_catalog_eligible === true &&
+    route.route_model === model.id
   );
 }

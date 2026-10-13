@@ -406,14 +406,16 @@ Catalog query filters:
   connection's model rules. It does not prove current quota, account eligibility, or execution
   health.
 - `free_only=true` keeps exact OpenRouter free variants and the dynamic `openrouter/free` router
-  only when a fresh OpenRouter catalog confirms free routes. It also includes exact provider routes
-  whose `free_access.hardStopGuaranteed` is true, so exhausted quota cannot transition to paid
-  overage. Other provider free tiers remain excluded. Catalog inclusion does not establish current
-  account quota or successful execution.
+  only when a fresh OpenRouter catalog confirms free routes, exact Hugging Face provider-pinned
+  routes while its current router catalog marks them free, and exact provider routes whose
+  `free_access.hardStopGuaranteed` is true. A provider's current free-promotion marker does not
+  guarantee the offer or account billing state remains unchanged after catalog retrieval. Catalog
+  inclusion does not establish current account quota or successful execution.
 - `require_tool_calling=true` keeps only routes whose exact model metadata confirms tool support;
-  unsupported and unknown routes are omitted. Combine it with `free_only=true` and
-  `configuredOnly=true` to obtain configured candidates for free-only tool assignments. This does
-  not prove live quota or account eligibility.
+  unsupported and unknown routes are omitted. For Hugging Face, eligible downstream routes are
+  returned as exact provider-pinned model IDs when that host reports tool support. Combine it with
+  `free_only=true` and `configuredOnly=true` to obtain configured candidates for free tool-capable
+  routes. This does not prove live quota or account eligibility.
 
 ### Model id prefixes (`?prefix=`)
 
@@ -488,6 +490,12 @@ catalog snapshot is within OmniRoute's 15-minute freshness window. It does not p
 eligibility or execution success. `provider_routes_provenance` identifies
 `huggingface.router_models_api`, its retrieval time, price unit, and whether the freshness window
 has elapsed.
+
+When `free_only=true` or `require_tool_calling=true` is requested, a current Hugging Face route
+that meets those requirements is also emitted as a separate exact model row using its `route_model`
+ID. That row carries the pinned host, route-scoped capability, price, and catalog provenance.
+Dispatch with `X-OmniRoute-Require-Free-Route: true` to recheck the current host-specific free
+classification. A current free-promotion label is not an account-level spending guarantee.
 
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.

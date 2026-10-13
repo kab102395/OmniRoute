@@ -22,11 +22,14 @@ GET /api/v1/models?free_only=true&require_tool_calling=true&configuredOnly=true
 ```
 
 `free_only=true` includes exact OpenRouter variants that are in the fresh authoritative
-OpenRouter catalog and documented provider free routes with a guaranteed hard stop before
-paid overage. It excludes unknown or merely promotional free tiers. `require_tool_calling=true`
-keeps only routes whose `capability_status.tool_calling.status` is `supported`; unknown
-capability is not treated as support. `configuredOnly=true` limits results to routes backed
-by an active configured connection and allowed by that connection's model rules.
+OpenRouter catalog, exact Hugging Face provider-pinned routes that the current Hugging Face
+router catalog marks free, and documented provider free routes with a guaranteed hard stop before
+paid overage. The Hugging Face marker may be a temporary promotion and does not establish an
+account-level spending guarantee. `require_tool_calling=true` keeps only routes whose
+`capability_status.tool_calling.status` is `supported`; unknown capability is not treated as
+support. Hugging Face matches are emitted as separate exact provider-pinned model IDs.
+`configuredOnly=true` limits results to routes backed by an active configured connection and
+allowed by that connection's model rules.
 
 The returned route metadata remains authoritative for the facts it names:
 
@@ -38,6 +41,11 @@ The returned route metadata remains authoritative for the facts it names:
   `capability_status`, token limits, modalities, and any `provider_routes` should be retained
   with the model record. Do not flatten them into the legacy `free`, `pricing`, or boolean
   `capabilities` fields.
+- Hugging Face `provider_routes` are scoped to their named serving provider. With a constrained
+  catalog query, eligible routes are also emitted as exact IDs such as
+  `hf/org/model:provider`, with that host's pricing, capabilities, freshness, and current free
+  classification. Dispatch with `X-OmniRoute-Require-Free-Route: true` to recheck this exact
+  route's current classification. A free-promotion flag does not prove a spending ceiling.
 - `configuredOnly` establishes configured route coverage, not live account eligibility,
   remaining quota, or current execution health. OmniRoute reports those as unknown unless
   an existing provider/account observation establishes them. Catalog discovery does not run
