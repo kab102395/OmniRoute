@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { MODEL_SPECS } from "../../src/shared/constants/modelSpecs.ts";
+import { deepseekProvider } from "../../open-sse/config/providers/registry/deepseek/index.ts";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-model-capabilities-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
@@ -217,6 +218,10 @@ test("GPT OSS and DeepSeek Reasoner models support tool calling", () => {
 });
 
 test("native DeepSeek V4 Pro remains a text-only route while V4.1 Flash is multimodal", () => {
+  const registeredPro = deepseekProvider.models?.find((model) => model.id === "deepseek-v4-pro");
+  assert.ok(registeredPro);
+  assert.equal(registeredPro.supportsVision, false);
+
   const pro = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-v4-pro");
   assert.equal(pro.supportsVision, false);
   assert.ok(!pro.modalitiesInput.includes("image"));
