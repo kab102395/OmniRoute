@@ -27,6 +27,11 @@ describe("isFreeModel isFree opt-in", () => {
     assert.equal(isFreeModel("any", { id: "foo:free", isFree: true }), true);
     assert.equal(isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 0 } }), true);
     assert.equal(isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 1 } }), false);
+    assert.equal(
+      isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 0, image: 0.01 } }),
+      false,
+      "a nonzero reported billing dimension prevents all-dimensions zero-cost classification"
+    );
   });
   it("does not treat missing, empty, or malformed prices as numeric zero", () => {
     for (const price of [undefined, "", " ", "0x0", "NaN", null]) {

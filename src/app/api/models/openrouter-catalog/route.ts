@@ -11,10 +11,10 @@ import { isAuthenticated } from "@/shared/utils/apiAuth";
 import {
   getOpenRouterCatalog,
   isOpenRouterFreeRoute,
+  isOpenRouterZeroPriceRoute,
   refreshOpenRouterCatalog,
 } from "@/lib/catalog/openrouterCatalog";
 import { getSettings } from "@/lib/db/settings";
-import { isFreeModel } from "@/shared/utils/freeModels";
 
 export async function GET(req: NextRequest) {
   // Require authentication (dashboard/API key)
@@ -34,14 +34,37 @@ export async function GET(req: NextRequest) {
   } catch {}
   const applyFilter = <T extends { id?: string }>(data: T[], verified: boolean): T[] => {
     if (hidePaid && !verified) return [];
+    const currentFreeRouteIds = new Set(
+      verified
+        ? data
+            .filter(
+              (model) =>
+                typeof model.id === "string" &&
+                (isOpenRouterFreeRoute(model.id) ||
+                  isOpenRouterZeroPriceRoute(
+                    model as {
+                      pricing?: {
+                        prompt?: unknown;
+                        completion?: unknown;
+                        image?: unknown;
+                        request?: unknown;
+                      };
+                    }
+                  ))
+            )
+            .map((model) => model.id as string)
+        : []
+    );
     const classified = verified
       ? data.map((model) => ({
           ...model,
-          ...(typeof model.id === "string" ? { isFree: isOpenRouterFreeRoute(model.id) } : {}),
+          ...(typeof model.id === "string" ? { isFree: currentFreeRouteIds.has(model.id) } : {}),
         }))
       : data;
     return hidePaid
-      ? classified.filter((model) => isFreeModel("openrouter", model as { id: string }))
+      ? classified.filter(
+          (model) => typeof model.id === "string" && currentFreeRouteIds.has(model.id)
+        )
       : classified;
   };
 
