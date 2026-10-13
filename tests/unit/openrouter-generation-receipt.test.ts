@@ -135,6 +135,8 @@ test("accounting aggregates only complete provider-reported generation costs", (
   assert.equal(complete.source, "openrouter.generation_api.total_cost");
   assert.equal(complete.downstreamProvider, "Host B");
   assert.equal(complete.providerReceipts?.length, 2);
+  assert.equal(complete.providerReceiptsComplete, true);
+  assert.equal(complete.providerReceiptIncompleteIds, undefined);
 
   const decimalTotals = applyOpenRouterGenerationReceipts(
     accounting,
@@ -152,6 +154,8 @@ test("accounting aggregates only complete provider-reported generation costs", (
   assert.equal(partial.kind, "estimated_cost");
   assert.equal(partial.amountUsd, 0.25);
   assert.equal(partial.providerReceipts?.length, 1);
+  assert.equal(partial.providerReceiptsComplete, false);
+  assert.deepEqual(partial.providerReceiptIncompleteIds, ["gen-2"]);
 
   const byok = applyOpenRouterGenerationReceipts(
     accounting,
@@ -160,6 +164,16 @@ test("accounting aggregates only complete provider-reported generation costs", (
   );
   assert.equal(byok.kind, "estimated_cost");
   assert.equal(byok.amountUsd, 0.25);
+  assert.equal(byok.providerReceiptsComplete, false);
+  assert.deepEqual(byok.providerReceiptIncompleteIds, ["gen-byok"]);
+
+  const receiptWithoutCost = applyOpenRouterGenerationReceipts(
+    accounting,
+    ["gen-no-cost"],
+    [{ ...receipt("gen-no-cost", 0), totalCostUsd: null }]
+  );
+  assert.equal(receiptWithoutCost.providerReceiptsComplete, false);
+  assert.deepEqual(receiptWithoutCost.providerReceiptIncompleteIds, ["gen-no-cost"]);
 });
 
 test("receipt enrichment waits for call-log persistence and updates existing records", async () => {

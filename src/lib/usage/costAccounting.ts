@@ -31,6 +31,8 @@ export type CostAccountingFacts = {
   providerReceipts?: import("./openrouterGeneration").OpenRouterGenerationReceipt[];
   providerReceiptsComplete?: boolean;
   providerReceiptMissingIds?: string[];
+  providerReceiptIncompleteIds?: string[];
+  providerReceiptsTruncated?: boolean;
   providerRequestId?: string;
 };
 
@@ -94,6 +96,10 @@ export function applyOpenRouterGenerationReceipts(
   const receiptById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
   const requestedReceipts = uniqueRequestedIds.map((id) => receiptById.get(id));
   const missingIds = uniqueRequestedIds.filter((id) => !receiptById.has(id));
+  const incompleteIds = uniqueRequestedIds.filter((id) => {
+    const receipt = receiptById.get(id);
+    return !receipt || receipt.totalCostUsd === null || receipt.isByok !== false;
+  });
   const complete =
     requestedReceipts.length > 0 &&
     requestedReceipts.every(
@@ -105,8 +111,9 @@ export function applyOpenRouterGenerationReceipts(
   const result: CostAccountingFacts = {
     ...accounting,
     providerReceipts,
-    providerReceiptsComplete: missingIds.length === 0,
+    providerReceiptsComplete: incompleteIds.length === 0,
     ...(missingIds.length > 0 ? { providerReceiptMissingIds: missingIds } : {}),
+    ...(incompleteIds.length > 0 ? { providerReceiptIncompleteIds: incompleteIds } : {}),
     ...(latestReceipt?.providerName ? { downstreamProvider: latestReceipt.providerName } : {}),
     ...(latestReceipt?.id ? { providerRequestId: latestReceipt.id } : {}),
   };

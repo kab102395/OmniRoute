@@ -529,9 +529,20 @@ function serializeAccounting(value: unknown): string | null {
     ...(typeof accounting.providerReceiptsComplete === "boolean"
       ? { providerReceiptsComplete: accounting.providerReceiptsComplete }
       : {}),
+    ...(Array.isArray(accounting.providerReceipts) && accounting.providerReceipts.length > 8
+      ? { providerReceiptsTruncated: true }
+      : {}),
     ...(Array.isArray(accounting.providerReceiptMissingIds)
       ? {
           providerReceiptMissingIds: accounting.providerReceiptMissingIds
+            .filter((id): id is string => typeof id === "string")
+            .slice(0, 64)
+            .map((id) => id.slice(0, 256)),
+        }
+      : {}),
+    ...(Array.isArray(accounting.providerReceiptIncompleteIds)
+      ? {
+          providerReceiptIncompleteIds: accounting.providerReceiptIncompleteIds
             .filter((id): id is string => typeof id === "string")
             .slice(0, 64)
             .map((id) => id.slice(0, 256)),
