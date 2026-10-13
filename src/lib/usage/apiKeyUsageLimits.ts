@@ -65,10 +65,6 @@ function normalizeLimitUsd(value: unknown): number | null {
   return numeric > 0 ? numeric : null;
 }
 
-function roundUsd(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
@@ -406,7 +402,7 @@ async function getApiKeyUsdSpendSince(
     }
   }
 
-  return { spentUsd: roundUsd(total), pricingUnknown };
+  return { spentUsd: total, pricingUnknown };
 }
 
 export async function getApiKeyUsageLimitStatus(

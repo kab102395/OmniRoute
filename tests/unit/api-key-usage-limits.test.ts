@@ -241,6 +241,48 @@ test("provider-reported charges on failed requests count toward API-key USD limi
   assert.equal(status.weeklyExceeded, false);
 });
 
+test("API-key USD admission compares unrounded spend against the configured limit", async () => {
+  const created = await apiKeysDb.createApiKey("Precision Limit Key", "machine-limit-precision");
+  await usageHistory.saveRequestUsage({
+    provider: "openrouter",
+    model: "vendor/model",
+    apiKeyId: created.id,
+    tokens: { input: 1, output: 1 },
+    requestId: "sub-micro-dollar-overage",
+    accounting: {
+      kind: "provider_reported_billed_cost",
+      amountUsd: 1.0000004,
+      amountUsdExact: "1.0000004",
+      currency: "USD",
+      source: "openrouter.generation_api.total_cost",
+      pricingProvider: "openrouter",
+      pricingModel: "vendor/model",
+      pricingVersion: null,
+      pricingEffectiveAt: null,
+      pricingRetrievedAt: null,
+      pricingStale: null,
+      usageKind: "provider_reported_usage",
+      providerRequestId: "gen-precision-limit",
+    },
+    success: true,
+    timestamp: "2026-06-19T12:00:00.000Z",
+  });
+
+  const status = await usageLimits.getApiKeyUsageLimitStatus(
+    {
+      id: created.id,
+      usageLimitEnabled: true,
+      dailyUsageLimitUsd: 1.0000001,
+      weeklyUsageLimitUsd: 10,
+    },
+    { now: () => NOW }
+  );
+
+  assert.equal(status.dailySpentUsd, 1.0000004);
+  assert.equal(status.dailyExceeded, true);
+  assert.equal(status.weeklyExceeded, false);
+});
+
 test("getApiKeyUsageLimitStatus aligns weekly USD spend with provider resetAt when available", async () => {
   await localDb.updatePricing({
     claude: {
