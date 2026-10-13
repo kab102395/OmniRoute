@@ -254,6 +254,7 @@ export function getCombosCacheVersion(): number {
 // module): catalogCache.ts compares this version on every access and builder
 // completion, then hard-invalidates snapshots and old-generation work when it moves.
 let modelCatalogCacheVersion = 0;
+let pricingCacheVersion = 0;
 
 /**
  * Current model-catalog-cache version. A change means catalog-backed state was
@@ -261,6 +262,11 @@ let modelCatalogCacheVersion = 0;
  */
 export function getModelCatalogCacheVersion(): number {
   return modelCatalogCacheVersion;
+}
+
+/** Current price-data generation. Tier-based routing caches use this to notice syncs. */
+export function getPricingCacheVersion(): number {
+  return pricingCacheVersion;
 }
 
 /** Invalidate only the unified model catalog response cache. */
@@ -282,7 +288,10 @@ export function invalidateDbCache(
   id?: string
 ): void {
   if (!scope || scope === "settings") settingsCache.invalidate();
-  if (!scope || scope === "pricing") pricingCache.invalidate();
+  if (!scope || scope === "pricing") {
+    pricingCache.invalidate();
+    pricingCacheVersion++;
+  }
   if (!scope || scope === "connections") {
     connectionsCache.invalidate();
     rawConnectionsCache.invalidate();

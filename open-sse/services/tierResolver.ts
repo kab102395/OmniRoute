@@ -3,11 +3,13 @@ import { PROVIDER_TIER } from "./tierTypes";
 import { getModelPricing } from "./providerCostData";
 import { isExplicitlyFree } from "./providerCostData";
 import { mergeTierConfig, DEFAULT_TIER_CONFIG } from "./tierConfig";
+import { getPricingCacheVersion } from "@/lib/db/readCache";
 
 let dbPersistenceChecked = false;
 
 const tierCache = new Map<string, TierAssignment>();
 let currentConfig: TierConfig = DEFAULT_TIER_CONFIG;
+let tierCachePricingVersion = getPricingCacheVersion();
 
 function cacheKey(provider: string, model: string): string {
   return `${provider}::${model}`;
@@ -19,6 +21,11 @@ function matchGlob(pattern: string, text: string): boolean {
 }
 
 export function classifyTier(provider: string, model: string): TierAssignment {
+  const pricingVersion = getPricingCacheVersion();
+  if (pricingVersion !== tierCachePricingVersion) {
+    tierCache.clear();
+    tierCachePricingVersion = pricingVersion;
+  }
   const key = cacheKey(provider, model);
 
   if (tierCache.has(key)) {

@@ -18,6 +18,8 @@ import {
   deriveNoAuthFreeProviders,
 } from "../tierConfig.ts";
 import { NOAUTH_PROVIDERS } from "@/shared/constants/providers.ts";
+import { invalidateDbCache } from "@/lib/db/readCache";
+import { KNOWN_MODEL_PRICING } from "../providerCostData.ts";
 
 describe("TierResolver", () => {
   // Reset cache between tests
@@ -168,6 +170,35 @@ describe("TierResolver", () => {
       const second = classifyTier("openai", "gpt-4o");
       expect(first.tier).toBe(second.tier);
       expect(second.costPer1MInput).toBeGreaterThan(0);
+    });
+
+    it("pricing invalidation refreshes cached route tiers after a pricing sync", () => {
+      const provider = "tier-cache-pricing-sync-test";
+      const model = "test-model";
+      const key = `${provider}/${model}`;
+      const prior = KNOWN_MODEL_PRICING[key];
+      KNOWN_MODEL_PRICING[key] = {
+        inputCostPer1M: 0.1,
+        outputCostPer1M: 0.2,
+        isFree: false,
+      };
+
+      try {
+        expect(classifyTier(provider, model).tier).toBe(PROVIDER_TIER.CHEAP);
+        KNOWN_MODEL_PRICING[key] = {
+          inputCostPer1M: 2,
+          outputCostPer1M: 4,
+          isFree: false,
+        };
+        invalidateDbCache("pricing");
+        const refreshed = classifyTier(provider, model);
+        expect(refreshed.tier).toBe(PROVIDER_TIER.PREMIUM);
+        expect(refreshed.costPer1MInput).toBe(2);
+      } finally {
+        if (prior) KNOWN_MODEL_PRICING[key] = prior;
+        else delete KNOWN_MODEL_PRICING[key];
+        invalidateDbCache("pricing");
+      }
     });
   });
 
