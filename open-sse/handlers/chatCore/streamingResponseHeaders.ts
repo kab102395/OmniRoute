@@ -19,6 +19,8 @@ export function assembleStreamingResponseHeaders(
     pendingRequestId: string;
     servedProvider?: string | null;
     servedModel?: string | null;
+    servedProviderInstanceId?: string | null;
+    connectionId?: string | null;
     /** Number of additional upstream dispatches recorded before this response. */
     fallbackAttempts?: number;
     compressionResponseMeta?: string | null | undefined;
@@ -38,6 +40,8 @@ export function assembleStreamingResponseHeaders(
       strategy: args.comboStrategy ?? "single",
       servedProvider: args.servedProvider,
       servedModel: args.servedModel,
+      servedProviderInstanceId: args.servedProviderInstanceId,
+      connectionId: args.connectionId,
       accounting: { kind: "pending", usageKind: "unknown" },
     }),
     "x-omniroute-request-id": args.pendingRequestId,

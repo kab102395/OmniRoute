@@ -56,14 +56,16 @@ neither is known it is `unknown`.
 
 ## Streaming completions
 
-The initial SSE response cannot know which attempt will ultimately finish successfully. It
-includes `X-OmniRoute-Request-Id` and `X-OmniRoute-Accounting-Kind: pending`; it deliberately
-omits final served identity and final cost. After the stream completes, a management-auth
-client can look up `/api/usage/call-logs/{id}` using that request ID. The returned call-log
-summary includes `servedProvider`, `servedModel`, and `accounting` for a successful attempt.
-This lookup requires OmniRoute management authentication; it is not authorized by an ordinary
-completion API key. If that credential is unavailable to the client, streaming final identity
-is not available through the completion response itself.
+The SSE response is opened after OmniRoute has selected the upstream attempt that will produce
+the stream. When known, its headers include `X-OmniRoute-Served-Provider`,
+`X-OmniRoute-Served-Model`, `X-OmniRoute-Served-Provider-Instance-Id`, and
+`X-OmniRoute-Connection-Id`. These identify the selected attempt, but cannot guarantee that the
+stream will complete successfully. The response includes `X-OmniRoute-Request-Id` and
+`X-OmniRoute-Accounting-Kind: pending`; final usage and cost are not yet known. After the stream
+completes, a management-auth client can look up `/api/usage/call-logs/{id}` using that request
+ID. The returned call-log summary includes `servedProvider`, `servedModel`, and `accounting` for
+a successful attempt. This lookup requires OmniRoute management authentication; it is not
+authorized by an ordinary completion API key.
 
 The call-log lookup is also useful for detailed accounting facts. Token usage is stored in the
 existing call-log token fields; `accounting` carries `kind`, `amountUsd`, `currency`, `source`,

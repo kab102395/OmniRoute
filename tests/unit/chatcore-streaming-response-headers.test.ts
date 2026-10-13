@@ -54,6 +54,38 @@ test("streaming metadata includes the recorded additional upstream attempt count
   assert.equal(calls[0].meta.fallbackAttempts, 1);
 });
 
+test("streaming metadata includes resolved serving identity and selected connection", () => {
+  const { build, calls } = makeBuild();
+  assembleStreamingResponseHeaders(
+    baseArgs({
+      servedProvider: "openrouter",
+      servedModel: "vendor/model:free",
+      servedProviderInstanceId: "provider-node-1",
+      connectionId: "connection-1",
+    }),
+    build
+  );
+  assert.equal(calls[0].meta.servedProvider, "openrouter");
+  assert.equal(calls[0].meta.servedModel, "vendor/model:free");
+  assert.equal(calls[0].meta.servedProviderInstanceId, "provider-node-1");
+  assert.equal(calls[0].meta.connectionId, "connection-1");
+});
+
+test("streaming response exposes route identity through OmniRoute metadata headers", () => {
+  const headers = assembleStreamingResponseHeaders(
+    baseArgs({
+      servedProvider: "openrouter",
+      servedModel: "vendor/model:free",
+      servedProviderInstanceId: "provider-node-1",
+      connectionId: "connection-1",
+    })
+  );
+  assert.equal(headers["X-OmniRoute-Served-Provider"], "openrouter");
+  assert.equal(headers["X-OmniRoute-Served-Model"], "vendor/model:free");
+  assert.equal(headers["X-OmniRoute-Served-Provider-Instance-Id"], "provider-node-1");
+  assert.equal(headers["X-OmniRoute-Connection-Id"], "connection-1");
+});
+
 test("no compression meta → no compression header", () => {
   const { build } = makeBuild();
   const h = assembleStreamingResponseHeaders(

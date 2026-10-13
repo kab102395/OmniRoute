@@ -1607,11 +1607,21 @@ paths:
             X-OmniRoute-Served-Provider:
               schema:
                 type: string
-              description: Final provider that produced a successful non-streaming completion; omitted before success is known.
+              description: >-
+                Selected upstream provider for a completion. Present on streaming and non-streaming
+                responses when known; a streaming response may still fail after headers are sent.
             X-OmniRoute-Served-Model:
               schema:
                 type: string
-              description: Concrete model in the final captured outbound provider request; omitted if unavailable.
+              description: Concrete model in the selected outbound provider request; omitted if unavailable.
+            X-OmniRoute-Served-Provider-Instance-Id:
+              schema:
+                type: string
+              description: Non-secret provider instance identifier, when the configured provider instance is known.
+            X-OmniRoute-Connection-Id:
+              schema:
+                type: string
+              description: Selected configured connection identifier, when known.
             X-OmniRoute-Tokens-In:
               schema:
                 type: string

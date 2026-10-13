@@ -5684,11 +5684,16 @@ export async function handleChatCore({
     await onRequestSuccess();
   }
 
+  const streamServedIdentity = resolveServedIdentity(provider, finalBody);
   const responseHeaders = assembleStreamingResponseHeaders({
     providerHeaders: providerResponse.headers,
     provider,
     model,
     pendingRequestId,
+    servedProvider: streamServedIdentity?.provider || null,
+    servedModel: streamServedIdentity?.model || null,
+    servedProviderInstanceId: streamServedIdentity?.providerInstanceId || null,
+    connectionId: credentials?.connectionId ?? null,
     fallbackAttempts: Math.max(0, executionAttemptTotal - 1),
     compressionResponseMeta,
     comboStrategy,
@@ -5707,7 +5712,6 @@ export async function handleChatCore({
 
   // Create transform stream with logger for streaming response
   let transformStream;
-  const streamServedIdentity = resolveServedIdentity(provider, finalBody);
   const streamModel = streamServedIdentity?.model || currentModel || model;
   const responseToolNameMap = mergeResponseToolNameMap(
     toolNameMap,
