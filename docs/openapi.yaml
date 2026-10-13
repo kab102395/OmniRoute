@@ -2179,9 +2179,11 @@ paths:
         not a guarantee against upstream changes after retrieval or account-specific charges.
         `require_tool_calling=true` keeps only routes whose capability metadata positively confirms
         tool support; for Hugging Face, this returns exact provider-pinned route IDs when the
-        downstream provider advertises tool support. Unknown support is excluded. Catalog
-        inclusion does not establish that an account currently has quota or can execute
-        successfully.
+        downstream provider advertises tool support. Unknown support is excluded. Mutable
+        OpenRouter and Hugging Face capability facts must come from a fresh catalog snapshot;
+        stale facts remain available in the ordinary catalog for display but cannot qualify for
+        this filter. Catalog inclusion does not establish that an account currently has quota or
+        can execute successfully.
       security:
         - BearerAuth: []
       parameters:
@@ -2226,9 +2228,12 @@ paths:
             default: false
           description: >-
             Keep only routes whose `capability_status.tool_calling.status` is `supported`.
-            Unsupported and unknown routes are excluded. Combine with `free_only=true` and
-            `configuredOnly=true` to discover configured, free-only, tool-capable candidates;
-            live account quota and successful execution are still not guaranteed.
+            Unsupported and unknown routes are excluded. Mutable OpenRouter and Hugging Face
+            route facts must come from a fresh catalog snapshot; stale facts remain available in
+            the ordinary catalog for display but cannot qualify here. Combine with
+            `free_only=true` and `configuredOnly=true` to discover configured, free-only,
+            tool-capable candidates; live account quota and successful execution are still not
+            guaranteed.
       responses:
         "200":
           description: Model list

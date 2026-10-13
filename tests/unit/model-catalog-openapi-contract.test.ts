@@ -149,6 +149,7 @@ test("model catalog OpenAPI documents the implemented routing filters", () => {
     assert.ok(queryParameters.has(name), `query parameter ${name} must be documented`);
   }
   assert.match(operation?.description ?? "", /fresh upstream catalog/i);
+  assert.match(operation?.description ?? "", /stale facts remain available.*cannot qualify/i);
   assert.match(operation?.description ?? "", /free_access/);
 });
 

@@ -1139,7 +1139,9 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
       id: "zai-org/GLM-stale",
       name: "GLM stale catalog fixture",
       source: "imported",
-      providerRoutes: [{ provider: "promo-host", status: "live", isFree: true }],
+      providerRoutes: [
+        { provider: "promo-host", status: "live", isFree: true, supportsTools: true },
+      ],
       providerRoutesRetrievedAt: "2020-01-01T00:00:00.000Z",
     },
   ]);
@@ -1260,6 +1262,82 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
     false,
     "a stale provider-route catalog cannot authorize free-only use"
   );
+
+  const toolRoutesResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models?require_tool_calling=true")
+  );
+  const toolRoutesBody = (await toolRoutesResponse.json()) as {
+    data: Array<{ id?: string }>;
+  };
+  assert.equal(
+    toolRoutesBody.data.some((entry) => entry.id === "hf/zai-org/GLM-stale:promo-host"),
+    false,
+    "stale Hugging Face route capabilities cannot qualify for constrained selection"
+  );
+});
+
+test("require_tool_calling does not treat stale OpenRouter capabilities as current", async () => {
+  await seedConnection("openrouter");
+  const openRouterCatalog = await import("../../src/lib/catalog/openrouterCatalog.ts");
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "vendor/stale-tools-model",
+            pricing: { prompt: "0.000001", completion: "0.000002" },
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+            supported_parameters: ["tools"],
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const refreshed = await openRouterCatalog.refreshOpenRouterCatalog();
+    assert.equal(refreshed.ok, true);
+    fs.writeFileSync(
+      path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json"),
+      JSON.stringify({
+        fetchedAt: "2000-01-01T00:00:00.000Z",
+        data: refreshed.data,
+      })
+    );
+    globalThis.fetch = (async () =>
+      new Response("upstream unavailable", { status: 503 })) as typeof fetch;
+
+    const displayResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const displayBody = (await displayResponse.json()) as {
+      data: Array<{
+        id?: string;
+        capability_status?: { tool_calling?: { status?: string } };
+        route_availability?: { source?: { stale?: boolean } };
+      }>;
+    };
+    const staleRoute = displayBody.data.find(
+      (model) => model.id === "openrouter/vendor/stale-tools-model"
+    );
+    assert.ok(staleRoute, "stale route metadata remains available for display");
+    assert.equal(staleRoute.route_availability?.source?.stale, true);
+    assert.equal(staleRoute.capability_status?.tool_calling?.status, "supported");
+
+    const constrainedResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models?require_tool_calling=true")
+    );
+    const constrainedBody = (await constrainedResponse.json()) as {
+      data: Array<{ id?: string }>;
+    };
+    assert.equal(
+      constrainedBody.data.some((model) => model.id === "openrouter/vendor/stale-tools-model"),
+      false,
+      "stale route capabilities cannot qualify for a constrained selection query"
+    );
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
 });
 
 test("Hugging Face model modalities survive discovery sync and reach the unified catalog", async () => {

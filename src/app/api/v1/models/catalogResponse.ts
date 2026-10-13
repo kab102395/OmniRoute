@@ -53,11 +53,29 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function hasVerifiedToolCalling(model: Record<string, unknown>): boolean {
   const capabilityStatus = model.capability_status;
-  return (
-    isRecord(capabilityStatus) &&
-    isRecord(capabilityStatus.tool_calling) &&
-    capabilityStatus.tool_calling.status === "supported"
-  );
+  if (
+    !isRecord(capabilityStatus) ||
+    !isRecord(capabilityStatus.tool_calling) ||
+    capabilityStatus.tool_calling.status !== "supported"
+  ) {
+    return false;
+  }
+
+  // These provider catalogs are mutable and their route capabilities can change.
+  // A stale snapshot is useful for display, but cannot satisfy a constrained
+  // candidate query that promises positively confirmed tool support.
+  const capabilitySource = capabilityStatus.tool_calling.source;
+  if (
+    capabilitySource === "openrouter.models_api" ||
+    capabilitySource === "huggingface.router_models_api"
+  ) {
+    const availability = model.route_availability;
+    const source =
+      isRecord(availability) && isRecord(availability.source) ? availability.source : null;
+    return source?.id === capabilitySource && source.stale === false;
+  }
+
+  return true;
 }
 
 function positiveFiniteNumber(value: unknown): number | undefined {
