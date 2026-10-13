@@ -174,6 +174,16 @@ test("accounting aggregates only complete provider-reported generation costs", (
   );
   assert.equal(receiptWithoutCost.providerReceiptsComplete, false);
   assert.deepEqual(receiptWithoutCost.providerReceiptIncompleteIds, ["gen-no-cost"]);
+
+  const truncatedAttempts = applyOpenRouterGenerationReceipts(
+    { ...accounting, providerReceiptsTruncated: true },
+    ["gen-1"],
+    [receipt("gen-1", 0.0002)]
+  );
+  assert.equal(truncatedAttempts.kind, "estimated_cost");
+  assert.equal(truncatedAttempts.amountUsd, accounting.amountUsd);
+  assert.equal(truncatedAttempts.providerReceiptsComplete, false);
+  assert.equal(truncatedAttempts.providerReceiptsTruncated, true);
 });
 
 test("receipt enrichment waits for call-log persistence and updates existing records", async () => {

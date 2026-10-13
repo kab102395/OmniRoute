@@ -101,6 +101,7 @@ export function applyOpenRouterGenerationReceipts(
     return !receipt || receipt.totalCostUsd === null || receipt.isByok !== false;
   });
   const complete =
+    accounting.providerReceiptsTruncated !== true &&
     requestedReceipts.length > 0 &&
     requestedReceipts.every(
       (receipt) =>
@@ -111,7 +112,8 @@ export function applyOpenRouterGenerationReceipts(
   const result: CostAccountingFacts = {
     ...accounting,
     providerReceipts,
-    providerReceiptsComplete: incompleteIds.length === 0,
+    providerReceiptsComplete:
+      incompleteIds.length === 0 && accounting.providerReceiptsTruncated !== true,
     ...(missingIds.length > 0 ? { providerReceiptMissingIds: missingIds } : {}),
     ...(incompleteIds.length > 0 ? { providerReceiptIncompleteIds: incompleteIds } : {}),
     ...(latestReceipt?.providerName ? { downstreamProvider: latestReceipt.providerName } : {}),

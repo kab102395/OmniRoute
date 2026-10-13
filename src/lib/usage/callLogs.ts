@@ -529,7 +529,8 @@ function serializeAccounting(value: unknown): string | null {
     ...(typeof accounting.providerReceiptsComplete === "boolean"
       ? { providerReceiptsComplete: accounting.providerReceiptsComplete }
       : {}),
-    ...(Array.isArray(accounting.providerReceipts) && accounting.providerReceipts.length > 8
+    ...(accounting.providerReceiptsTruncated === true ||
+    (Array.isArray(accounting.providerReceipts) && accounting.providerReceipts.length > 8)
       ? { providerReceiptsTruncated: true }
       : {}),
     ...(Array.isArray(accounting.providerReceiptMissingIds)

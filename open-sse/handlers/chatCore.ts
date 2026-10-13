@@ -364,7 +364,7 @@ import { scheduleStreamingQuotaShareConsumption } from "./chatCore/streamingQuot
 import { recordStreamingUsageStats } from "./chatCore/streamingUsageStats.ts";
 import { recordStreamingCost } from "./chatCore/streamingCost.ts";
 import { resolveServedIdentity } from "./chatCore/servedIdentity.ts";
-import { classifyCostAccounting } from "@/lib/usage/costAccounting";
+import { classifyCostAccounting, type CostAccountingFacts } from "@/lib/usage/costAccounting";
 import {
   appendNonStreamingSseTerminalSignal,
   type NonStreamingSseTerminalState,
@@ -1156,6 +1156,7 @@ export async function handleChatCore({
       settings.call_log_pipeline_enabled === "true");
   const executionAttemptReceipts: Array<Record<string, unknown>> = [];
   let executionAttemptTotal = 0;
+  let executionAttemptReceiptsTruncated = false;
   let executionAttemptSequence = 0;
   let lastExecutionAttempt: Record<string, unknown> | null = null;
   let executionRouteFallbackUsed = false;
@@ -1184,9 +1185,16 @@ export async function handleChatCore({
       })
     );
     if (executionAttemptReceipts.length > 64) {
+      executionAttemptReceiptsTruncated = true;
       executionAttemptReceipts.splice(0, executionAttemptReceipts.length - 64);
     }
   };
+  const preserveAttemptReceiptCompleteness = (
+    accounting: CostAccountingFacts
+  ): CostAccountingFacts =>
+    resolveProviderId(provider) === "openrouter" && executionAttemptReceiptsTruncated
+      ? { ...accounting, providerReceiptsComplete: false, providerReceiptsTruncated: true }
+      : accounting;
   const recordExecutionAttemptsFromError = (
     error: unknown,
     connectionId?: string | null,
@@ -4100,12 +4108,14 @@ export async function handleChatCore({
             apiKey: openRouterApiKey,
             usageRequestId: usageAccountingRequestId,
             callLogId: pendingRequestId,
-            accounting: classifyCostAccounting({
-              provider,
-              model: currentModel || effectiveModel,
-              usage: null,
-              calculatedCostUsd: null,
-            }),
+            accounting: preserveAttemptReceiptCompleteness(
+              classifyCostAccounting({
+                provider,
+                model: currentModel || effectiveModel,
+                usage: null,
+                calculatedCostUsd: null,
+              })
+            ),
             usageSaved: abortedUsageSaved,
           },
           failedCallLogSaved
@@ -4133,12 +4143,14 @@ export async function handleChatCore({
           apiKey: openRouterApiKey,
           usageRequestId: usageAccountingRequestId,
           callLogId: pendingRequestId,
-          accounting: classifyCostAccounting({
-            provider,
-            model: currentModel || effectiveModel,
-            usage: null,
-            calculatedCostUsd: null,
-          }),
+          accounting: preserveAttemptReceiptCompleteness(
+            classifyCostAccounting({
+              provider,
+              model: currentModel || effectiveModel,
+              usage: null,
+              calculatedCostUsd: null,
+            })
+          ),
           usageSaved: failedUsageSaved,
         },
         failedCallLogSaved
@@ -5501,14 +5513,16 @@ export async function handleChatCore({
         })
       : { costUsd: 0, costKnown: false, pricingEvidence: null };
     const estimatedCost = costAssessment.costUsd;
-    const accounting = classifyCostAccounting({
-      provider,
-      model: pricingModel,
-      usage: usageForAccounting,
-      calculatedCostUsd: estimatedCost,
-      calculatedCostKnown: costAssessment.costKnown,
-      pricingEvidence: costAssessment.pricingEvidence,
-    });
+    const accounting = preserveAttemptReceiptCompleteness(
+      classifyCostAccounting({
+        provider,
+        model: pricingModel,
+        usage: usageForAccounting,
+        calculatedCostUsd: estimatedCost,
+        calculatedCostKnown: costAssessment.costKnown,
+        pricingEvidence: costAssessment.pricingEvidence,
+      })
+    );
     void updateRequestUsageAccounting(usageAccountingRequestId, accounting);
 
     if (postCallGuardrails.blocked) {
@@ -6116,14 +6130,16 @@ export async function handleChatCore({
                 requestCount: Math.max(1, executionAttemptTotal),
               })
             : { costUsd: 0, costKnown: false, pricingEvidence: null };
-          const accounting = classifyCostAccounting({
-            provider,
-            model: pricingModel,
-            usage: usageForAccounting,
-            calculatedCostUsd: costAssessment.costUsd,
-            calculatedCostKnown: costAssessment.costKnown,
-            pricingEvidence: costAssessment.pricingEvidence,
-          });
+          const accounting = preserveAttemptReceiptCompleteness(
+            classifyCostAccounting({
+              provider,
+              model: pricingModel,
+              usage: usageForAccounting,
+              calculatedCostUsd: costAssessment.costUsd,
+              calculatedCostKnown: costAssessment.costKnown,
+              pricingEvidence: costAssessment.pricingEvidence,
+            })
+          );
           void updateRequestUsageAccounting(usageAccountingRequestId, accounting);
           const callLogSaved = persistAttemptLogs({
             ...streamLogArgs,

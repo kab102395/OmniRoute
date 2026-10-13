@@ -364,6 +364,8 @@ test("persists exact provider-reported USD ticks in the public call-log receipt"
         pricingRetrievedAt: null,
         pricingStale: null,
         pricingCondition: null,
+        providerReceiptsComplete: false,
+        providerReceiptsTruncated: true,
         usageKind: "provider_reported_usage",
       },
     },
@@ -383,8 +385,11 @@ test("persists exact provider-reported USD ticks in the public call-log receipt"
   );
   assert.equal(detailResponse.status, 200);
   const detail = (await detailResponse.json()) as {
+    accounting?: { providerReceiptsComplete?: boolean; providerReceiptsTruncated?: boolean };
     pipelinePayloads?: { executionAttempts?: Array<Record<string, unknown>> };
   };
+  assert.equal(detail.accounting?.providerReceiptsComplete, false);
+  assert.equal(detail.accounting?.providerReceiptsTruncated, true);
   const receipt = detail.pipelinePayloads?.executionAttempts?.[0];
   assert.equal((receipt?.accounting as { amountUsdExact?: string })?.amountUsdExact, "0.0037756");
 });
