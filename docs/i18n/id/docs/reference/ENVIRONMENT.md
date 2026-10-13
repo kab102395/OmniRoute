@@ -531,7 +531,7 @@ Sinkronisasi data harga model secara otomatis dari sumber eksternal.
 
 | Variable                                  | Default            | Source File                                | Deskripsi                                                                                              |
 | ----------------------------------------- | ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `OPENROUTER_CATALOG_TTL_MS`               | `86400000` (24h)   | `src/lib/catalog/openrouterCatalog.ts`     | TTL cache katalog model OpenRouter.                                                                    |
+| `OPENROUTER_CATALOG_TTL_MS`               | `900000` (15m)     | `src/lib/catalog/openrouterCatalog.ts`     | TTL cache katalog model OpenRouter.                                                                    |
 | `NANOBANANA_POLL_TIMEOUT_MS`              | `120000`           | `open-sse/handlers/imageGeneration.ts`     | Waktu tunggu maksimum untuk pekerjaan pembuatan gambar NanoBanana.                                     |
 | `NANOBANANA_POLL_INTERVAL_MS`             | `2500`             | `open-sse/handlers/imageGeneration.ts`     | Frekuensi polling pekerjaan NanoBanana.                                                                |
 | `CLOUDFLARE_ACCOUNT_ID`                   | _(unset)_          | `open-sse/executors/cloudflare-ai.ts`      | ID akun untuk Cloudflare Workers AI.                                                                   |

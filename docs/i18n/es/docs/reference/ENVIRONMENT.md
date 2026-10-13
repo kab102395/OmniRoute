@@ -531,7 +531,7 @@ Automatic model pricing data synchronization from external sources.
 
 | Variable                                  | Default            | Source File                                | Description                                                                           |
 | ----------------------------------------- | ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `OPENROUTER_CATALOG_TTL_MS`               | `86400000` (24h)   | `src/lib/catalog/openrouterCatalog.ts`     | OpenRouter model catalog cache TTL.                                                   |
+| `OPENROUTER_CATALOG_TTL_MS`               | `900000` (15m)     | `src/lib/catalog/openrouterCatalog.ts`     | OpenRouter model catalog cache TTL.                                                   |
 | `NANOBANANA_POLL_TIMEOUT_MS`              | `120000`           | `open-sse/handlers/imageGeneration.ts`     | Max wait for NanoBanana image generation jobs.                                        |
 | `NANOBANANA_POLL_INTERVAL_MS`             | `2500`             | `open-sse/handlers/imageGeneration.ts`     | NanoBanana job polling frequency.                                                     |
 | `CLOUDFLARE_ACCOUNT_ID`                   | _(unset)_          | `open-sse/executors/cloudflare-ai.ts`      | Account ID for Cloudflare Workers AI.                                                 |
