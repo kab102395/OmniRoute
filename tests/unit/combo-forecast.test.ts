@@ -181,6 +181,91 @@ test("combo forecast returns no_data confidence for combos without history", asy
   assert.equal(forecast.combos[0].forecast.projectedCostUsd, 0);
 });
 
+test("combo forecast excludes partial pricing from its coverage measure", async () => {
+  await settingsDb.updatePricing({
+    "partial-provider": {
+      "pricing-incomplete-model": { input: 1 },
+    },
+  });
+  const comboInput = {
+    name: "combo-forecast-partial-pricing",
+    strategy: "weighted",
+    models: [
+      {
+        kind: "model",
+        providerId: "partial-provider",
+        model: "partial-provider/pricing-incomplete-model",
+        connectionId: "partial-forecast-connection",
+      },
+    ],
+  };
+  const combo = await combosDb.createCombo(comboInput);
+  const firstStep = normalizeComboStep(comboInput.models[0], {
+    comboName: comboInput.name,
+    index: 0,
+  });
+  const timestamp = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  await callLogs.saveCallLog({
+    id: "combo-forecast-partial-pricing",
+    timestamp,
+    status: 200,
+    model: "partial-provider/pricing-incomplete-model",
+    requestedModel: comboInput.name,
+    provider: "partial-provider",
+    connectionId: "partial-forecast-connection",
+    tokens: { prompt_tokens: 1_000, completion_tokens: 500 },
+    comboName: comboInput.name,
+    comboStepId: firstStep.id,
+    comboExecutionKey: firstStep.id,
+  });
+
+  const forecast = await comboForecast.buildComboForecastResponse({
+    range: "7d",
+    horizon: "7d",
+    comboId: String(combo.id),
+  });
+
+  assert.equal(forecast.combos[0].dataQuality.pricingCoveragePct, 0);
+  assert.match(forecast.combos[0].dataQuality.notes.join(" "), /underreported/);
+});
+
+test("combo forecast multiplies request-level prices by grouped request count", async () => {
+  await settingsDb.updatePricing({
+    openai: {
+      "gpt-4o-mini": { input: 1, output: 2, request: 0.01 },
+    },
+  });
+  const { combo, comboInput, firstStep } = await seedForecastCombo();
+  const timestamp = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  for (const id of ["combo-forecast-request-price-a", "combo-forecast-request-price-b"]) {
+    await callLogs.saveCallLog({
+      id,
+      timestamp,
+      status: 200,
+      model: "openai/gpt-4o-mini",
+      requestedModel: comboInput.name,
+      provider: "openai",
+      connectionId: "forecast-conn-a",
+      tokens: { prompt_tokens: 1_000, completion_tokens: 500 },
+      comboName: comboInput.name,
+      comboStepId: firstStep.id,
+      comboExecutionKey: firstStep.id,
+    });
+  }
+
+  const forecast = await comboForecast.buildComboForecastResponse({
+    range: "7d",
+    horizon: "7d",
+    comboId: String(combo.id),
+  });
+
+  assert.equal(forecast.combos[0].history.requests, 2);
+  assert.ok(Math.abs(forecast.combos[0].history.costUsd - 0.024) < 0.000001);
+  assert.equal(forecast.combos[0].dataQuality.pricingCoveragePct, 100);
+});
+
 test("combo forecast API requires management auth and validates query", async () => {
   await enableManagementAuth();
   const { combo } = await seedForecastCombo();

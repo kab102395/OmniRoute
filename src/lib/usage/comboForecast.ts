@@ -1,8 +1,7 @@
 import { getComboForecastUsageRows, type ComboForecastUsageRow } from "@/lib/db/comboForecast";
 import { getCombos, getComboById } from "@/lib/db/combos";
-import { getPricingForModel } from "@/lib/db/settings";
 import { getQuotaSnapshots } from "@/lib/db/quotaSnapshots";
-import { computeCostFromPricing, normalizeModelName } from "@/lib/usage/costCalculator";
+import { calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import { resolveNestedComboTargets } from "@omniroute/open-sse/services/combo.ts";
 import type {
   ComboRecord,
@@ -15,8 +14,6 @@ import type {
   QuotaSnapshotRow,
   UtilizationTimeRange,
 } from "@/shared/types/utilization";
-
-type JsonRecord = Record<string, unknown>;
 
 type ResolvedComboTargetView = {
   stepId: string;
@@ -52,10 +49,6 @@ const HORIZON_MS: Record<ComboForecastHorizon, number> = {
   "30d": 30 * 24 * 60 * 60 * 1000,
 };
 
-function toRecord(value: unknown): JsonRecord {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
-}
-
 function roundNumber(value: number, digits = 2): number {
   if (!Number.isFinite(value)) return 0;
   return Number(value.toFixed(digits));
@@ -69,37 +62,12 @@ function daysFromMs(ms: number): number {
   return ms / (24 * 60 * 60 * 1000);
 }
 
-function modelWithoutProvider(model: string): string {
-  return normalizeModelName(model || "");
-}
-
-async function resolvePricing(provider: string, model: string): Promise<JsonRecord | null> {
-  const exact = await getPricingForModel(provider, model);
-  if (exact) return toRecord(exact);
-  const normalized = modelWithoutProvider(model);
-  if (normalized && normalized !== model) {
-    const fallback = await getPricingForModel(provider, normalized);
-    if (fallback) return toRecord(fallback);
-  }
-  return null;
-}
-
 async function attachCosts(rows: ComboForecastUsageRow[]): Promise<CostedUsageRow[]> {
-  const pricingCache = new Map<string, JsonRecord | null>();
-
-  const getPricing = async (provider: string, model: string) => {
-    const cacheKey = `${provider}\n${model}`;
-    if (!pricingCache.has(cacheKey)) {
-      pricingCache.set(cacheKey, await resolvePricing(provider, model));
-    }
-    return pricingCache.get(cacheKey) ?? null;
-  };
-
   const costed: CostedUsageRow[] = [];
   for (const row of rows) {
-    const pricing = await getPricing(row.provider, row.model);
-    const costUsd = computeCostFromPricing(
-      pricing,
+    const estimate = await calculateCostWithEvidence(
+      row.provider,
+      row.model,
       {
         input: row.inputTokens,
         output: row.outputTokens,
@@ -107,9 +75,14 @@ async function attachCosts(rows: ComboForecastUsageRow[]): Promise<CostedUsageRo
         cacheCreation: row.cacheCreationTokens,
         reasoning: row.reasoningTokens,
       },
-      { provider: row.provider, model: row.model, serviceTier: "standard" }
+      {
+        provider: row.provider,
+        model: row.model,
+        serviceTier: "standard",
+        requestCount: row.requests,
+      }
     );
-    costed.push({ ...row, costUsd, pricingCovered: Boolean(pricing) });
+    costed.push({ ...row, costUsd: estimate.costUsd, pricingCovered: estimate.costKnown });
   }
   return costed;
 }
