@@ -3231,8 +3231,8 @@ test("chatCore strips upstream compression and length headers from streaming res
   assert.equal(result.response.headers.get("X-OmniRoute-Cache"), "MISS");
   assert.ok(result.response.headers.get("X-OmniRoute-Request-Id"));
   assert.equal(result.response.headers.get("X-OmniRoute-Accounting-Kind"), "pending");
-  assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), null);
-  assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), null);
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Provider"), "openai");
+  assert.equal(result.response.headers.get("X-OmniRoute-Served-Model"), "gpt-4o-mini");
   const requestId = result.response.headers.get("X-OmniRoute-Request-Id");
   await result.response.text();
   await waitForCallLogSaves(5000);
