@@ -5,8 +5,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { hasValidUsage, estimateUsage, isEmptyUsage } from "../../open-sse/utils/usageTracking.ts";
 import { FORMATS } from "../../open-sse/translator/formats.ts";
-import { createSSEStream } from "../../open-sse/utils/stream.ts";
-
 async function readTransformed(chunks: string[], options: Parameters<typeof createSSEStream>[0]) {
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
