@@ -887,7 +887,9 @@ test("executor without tools streams normally (no tool_calls, plain content)", a
 
 /** Like runToolExecute but returns a DIFFERENT sse body per upstream call, so we
  *  can simulate a narration-miss on turn 1 and a clean tool call on turn 2. */
-async function runToolExecuteSeq(bodies: string[]): Promise<Response> {
+async function runToolExecuteSeq(
+  bodies: string[]
+): Promise<{ response: Response; executionAttempts?: Array<{ statusCode: number | null }> }> {
   const realFetch = globalThis.fetch;
   let call = 0;
   globalThis.fetch = (async () => {
@@ -908,7 +910,10 @@ async function runToolExecuteSeq(bodies: string[]): Promise<Response> {
         stream: false,
       },
     } as unknown as Parameters<MaxAiExecutor["execute"]>[0]);
-    return "response" in result ? result.response : (result as Response);
+    return {
+      response: "response" in result ? result.response : (result as Response),
+      executionAttempts: "response" in result ? result.executionAttempts : undefined,
+    };
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -923,8 +928,16 @@ test("executor recovers a tool narration-miss via one nudged retry", async () =>
   // per-tools-reference nonce the executor injected.
   const clean = `<tool>{"name": "get_current_weather", "arguments": {"city": "Ghent"}}</tool>`;
 
-  const response = await runToolExecuteSeq([maxaiSseBody(narration), maxaiSseBody(clean)]);
+  const { response, executionAttempts } = await runToolExecuteSeq([
+    maxaiSseBody(narration),
+    maxaiSseBody(clean),
+  ]);
   assert.equal(response.status, 200);
+  assert.deepEqual(
+    executionAttempts?.map((attempt) => attempt.statusCode),
+    [200, 200],
+    "the initial tool narration and its successful retry must both be recorded"
+  );
   const json = await response.json();
   assert.equal(json.choices[0].finish_reason, "tool_calls");
   assert.equal(json.choices[0].message.tool_calls[0].function.name, "get_current_weather");

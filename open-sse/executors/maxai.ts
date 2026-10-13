@@ -21,7 +21,12 @@
  * therefore minted/refreshed out-of-band by OmniRoute's own browser-mint flow
  * (see maxaiBrowserLogin); this executor only consumes the stored credential.
  */
-import { BaseExecutor, type ExecuteInput, type ExecutorExecuteResult } from "./base.ts";
+import {
+  BaseExecutor,
+  type ExecuteInput,
+  type ExecutorAttemptSummary,
+  type ExecutorExecuteResult,
+} from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 import { resolveMaxaiCredential, type MaxaiCredential } from "./maxai/credentials.ts";
@@ -87,13 +92,24 @@ function errorResponse(status: number, message: string, code: string): Response 
 function wrap(
   response: Response,
   url: string,
-  capture?: { headers?: Record<string, string>; transformedBody?: unknown }
-): { response: Response; url: string; headers: Record<string, string>; transformedBody: unknown } {
+  capture?: {
+    headers?: Record<string, string>;
+    transformedBody?: unknown;
+    executionAttempts?: ExecutorAttemptSummary[];
+  }
+): {
+  response: Response;
+  url: string;
+  headers: Record<string, string>;
+  transformedBody: unknown;
+  executionAttempts?: ExecutorAttemptSummary[];
+} {
   return {
     response,
     url,
     headers: capture?.headers ?? {},
     transformedBody: capture?.transformedBody ?? null,
+    ...(capture?.executionAttempts ? { executionAttempts: capture.executionAttempts } : {}),
   };
 }
 
@@ -155,6 +171,7 @@ export class MaxAiExecutor extends BaseExecutor {
     // The MaxAI chat endpoint URL is the wrapper's `url` for every return path
     // (error and success alike), so define it once up front.
     const url = MAXAI_BASE_URL + MAXAI_CHAT_PATH;
+    const executionAttempts: ExecutorAttemptSummary[] = [];
 
     const cred = resolveMaxaiCredential(
       input.credentials?.providerSpecificData,
@@ -257,6 +274,8 @@ export class MaxAiExecutor extends BaseExecutor {
     };
 
     let upstream: Response;
+    const startedAt = new Date().toISOString();
+    const startedMs = Date.now();
     try {
       upstream = await fetch(url, {
         method: "POST",
@@ -264,14 +283,38 @@ export class MaxAiExecutor extends BaseExecutor {
         body: JSON.stringify(chatBody),
         signal: input.signal ?? undefined,
       });
+      const providerRequestId =
+        upstream.headers.get("x-request-id")?.trim() ||
+        upstream.headers.get("request-id")?.trim() ||
+        undefined;
+      executionAttempts.push({
+        index: executionAttempts.length + 1,
+        startedAt,
+        durationMs: Math.max(0, Date.now() - startedMs),
+        statusCode: upstream.status,
+        ...(providerRequestId ? { providerRequestId } : {}),
+        outcome: "response",
+        costAttribution: "unknown",
+        attemptSource: "executor_reported",
+      });
     } catch (err) {
+      executionAttempts.push({
+        index: executionAttempts.length + 1,
+        startedAt,
+        durationMs: Math.max(0, Date.now() - startedMs),
+        statusCode: null,
+        outcome: "network_error",
+        costAttribution: "unknown",
+        attemptSource: "executor_reported",
+      });
       return wrap(
         errorResponse(
           502,
           `MaxAI request failed: ${sanitizeErrorMessage(err instanceof Error ? err.message : err)}`,
           "maxai_transport_error"
         ),
-        url
+        url,
+        { executionAttempts }
       );
     }
 
@@ -292,7 +335,8 @@ export class MaxAiExecutor extends BaseExecutor {
             `MaxAI request exceeds the context limit: ${sanitizeErrorMessage(detail.slice(0, 200))}`,
             "context_length_exceeded"
           ),
-          url
+          url,
+          { headers, transformedBody: chatBody, executionAttempts }
         );
       }
       const status = upstream.status === 418 ? 401 : upstream.status || 502;
@@ -304,7 +348,8 @@ export class MaxAiExecutor extends BaseExecutor {
             ? "maxai_auth_error"
             : "maxai_upstream_error"
         ),
-        url
+        url,
+        { headers, transformedBody: chatBody, executionAttempts }
       );
     }
 
@@ -326,7 +371,13 @@ export class MaxAiExecutor extends BaseExecutor {
       // nudged retry and keep it only if it actually produces a tool call.
       const firstHasToolCall = !!parseToolCallsFromText(answer, "probe", requestedTools).toolCalls;
       if (!firstHasToolCall && isToolNarrationMiss(reasoning + "\n" + answer, requestedTools)) {
-        const retry = await this.retryToolTurn(cred, accessToken, input, toolNudge(text));
+        const retry = await this.retryToolTurn(
+          cred,
+          accessToken,
+          input,
+          toolNudge(text),
+          executionAttempts
+        );
         if (retry && parseToolCallsFromText(retry.answer, "probe", requestedTools).toolCalls) {
           reasoning = retry.reasoning;
           answer = retry.answer;
@@ -366,7 +417,7 @@ export class MaxAiExecutor extends BaseExecutor {
         model: input.model,
         idSeed: "maxai",
       });
-      return wrap(response, url, { headers, transformedBody: chatBody });
+      return wrap(response, url, { headers, transformedBody: chatBody, executionAttempts });
     }
 
     if (input.stream) {
@@ -374,6 +425,7 @@ export class MaxAiExecutor extends BaseExecutor {
       return wrap(new Response(stream, { status: 200, headers: SSE_HEADERS }), url, {
         headers,
         transformedBody: chatBody,
+        executionAttempts,
       });
     }
 
@@ -406,7 +458,7 @@ export class MaxAiExecutor extends BaseExecutor {
     return wrap(
       new Response(JSON.stringify(response), { status: 200, headers: JSON_HEADERS }),
       url,
-      { headers, transformedBody: chatBody }
+      { headers, transformedBody: chatBody, executionAttempts }
     );
   }
 
@@ -464,37 +516,66 @@ export class MaxAiExecutor extends BaseExecutor {
     cred: MaxaiCredential,
     accessToken: string,
     input: ExecuteInput,
-    nudgedText: string
+    nudgedText: string,
+    executionAttempts: ExecutorAttemptSummary[]
   ): Promise<{ reasoning: string; answer: string } | null> {
+    const constants = await ensureMaxaiConstants({ signal: input.signal });
+    if (!constants) return null;
+    const retryBody = buildMaxaiChatBody({
+      conversationId: newConversationId(),
+      text: nudgedText,
+      modelName: input.model,
+      appVersion: constants.appVersion,
+    });
+    const headers: Record<string, string> = {
+      ...maxaiStaticHeaders(),
+      ...buildMaxaiSignedHeaders(
+        {
+          path: MAXAI_CHAT_PATH,
+          userId: cred.userId,
+          deviceId: cred.deviceId,
+        },
+        constants
+      ),
+      Authorization: `Bearer ${accessToken}`,
+      ...(input.upstreamExtraHeaders ?? {}),
+    };
+    const startedAt = new Date().toISOString();
+    const startedMs = Date.now();
+    let res: Response;
     try {
-      const constants = await ensureMaxaiConstants({ signal: input.signal });
-      if (!constants) return null;
-      const retryBody = buildMaxaiChatBody({
-        conversationId: newConversationId(),
-        text: nudgedText,
-        modelName: input.model,
-        appVersion: constants.appVersion,
-      });
-      const headers: Record<string, string> = {
-        ...maxaiStaticHeaders(),
-        ...buildMaxaiSignedHeaders(
-          {
-            path: MAXAI_CHAT_PATH,
-            userId: cred.userId,
-            deviceId: cred.deviceId,
-          },
-          constants
-        ),
-        Authorization: `Bearer ${accessToken}`,
-        ...(input.upstreamExtraHeaders ?? {}),
-      };
-      const res = await fetch(MAXAI_BASE_URL + MAXAI_CHAT_PATH, {
+      res = await fetch(MAXAI_BASE_URL + MAXAI_CHAT_PATH, {
         method: "POST",
         headers,
         body: JSON.stringify(retryBody),
         signal: input.signal ?? undefined,
       });
-      if (res.status !== 200 || !res.body) return null;
+    } catch {
+      executionAttempts.push({
+        index: executionAttempts.length + 1,
+        startedAt,
+        durationMs: Math.max(0, Date.now() - startedMs),
+        statusCode: null,
+        outcome: "network_error",
+        costAttribution: "unknown",
+        attemptSource: "executor_reported",
+      });
+      return null;
+    }
+    const providerRequestId =
+      res.headers.get("x-request-id")?.trim() || res.headers.get("request-id")?.trim() || undefined;
+    executionAttempts.push({
+      index: executionAttempts.length + 1,
+      startedAt,
+      durationMs: Math.max(0, Date.now() - startedMs),
+      statusCode: res.status,
+      ...(providerRequestId ? { providerRequestId } : {}),
+      outcome: "response",
+      costAttribution: "unknown",
+      attemptSource: "executor_reported",
+    });
+    if (res.status !== 200 || !res.body) return null;
+    try {
       return collectNonStream(await res.text());
     } catch {
       return null;
