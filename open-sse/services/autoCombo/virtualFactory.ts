@@ -1181,6 +1181,7 @@ export async function createVirtualAutoComboFromPrepared(
     ...(candidate.resolvedSupportsTools === undefined
       ? {}
       : { resolvedSupportsTools: candidate.resolvedSupportsTools }),
+    isFree: candidate.isFree,
     weight: snapshotScores.get(candidate.modelStr) ?? 1,
     label: candidate.provider,
     ...(candidate.freeAccessExclusion === undefined

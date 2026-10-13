@@ -22,6 +22,7 @@ type LogicalCandidate = {
   model: string;
   connectionId: string | null;
   allowedConnectionIds?: string[];
+  isFree?: boolean;
 };
 
 async function resetStorage() {
@@ -208,5 +209,16 @@ test("hidePaidModels narrows a dynamic free route to accounts whose fresh catalo
   );
 
   assert.ok(candidate, "a route currently classified free should enter the automatic pool");
+  assert.equal(candidate.isFree, true, "the materialized route should retain its free verdict");
   assert.deepEqual(candidate.allowedConnectionIds, [freeAccount.id]);
+
+  const diagnostics = await candidateHandler.getAutoComboCandidates("auto", null);
+  const routeRows = diagnostics.candidates.filter(
+    (entry) => entry.model === "groq/vendor/currently-free-coder"
+  );
+  assert.deepEqual(
+    routeRows.map((entry) => [entry.connectionId, entry.free]),
+    [[freeAccount.id, true]],
+    "account diagnostics should preserve both the exact account and its current free verdict"
+  );
 });

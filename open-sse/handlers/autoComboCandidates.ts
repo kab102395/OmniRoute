@@ -53,6 +53,8 @@ export interface AutoComboCandidateQuota {
  */
 export interface AutoComboCandidateView {
   provider: string;
+  /** Concrete account represented by this account-oriented diagnostic row. */
+  connectionId: string;
   model: string;
   modelStr: string;
   free: boolean;
@@ -110,12 +112,14 @@ export function buildCandidateView(input: {
   connectionCooldown: boolean;
   modelLocked: boolean;
   freeAccessExclusion: StrictZeroCostExclusionReason | null;
+  isFree?: boolean;
   cache: ProviderLimitsCacheEntry | null | undefined;
 }): AutoComboCandidateView {
   const catalogModel = parseModel(input.modelStr).model ?? input.model;
   const free = input.isFree ?? isFreeModel(input.provider, { id: catalogModel });
   return {
     provider: input.provider,
+    connectionId: input.connectionId,
     model: input.model,
     modelStr: input.modelStr,
     free,
@@ -145,6 +149,7 @@ async function decorateCandidate(candidate: {
   connectionId: string;
   model: string;
   modelStr: string;
+  isFree?: boolean;
   freeAccessExclusion?: StrictZeroCostExclusionReason | null;
 }): Promise<AutoComboCandidateView> {
   const breaker = getCircuitBreaker(candidate.provider);
@@ -239,6 +244,7 @@ export async function getAutoComboCandidates(
     connectionId: string | null;
     allowedConnectionIds?: string[];
     model: string;
+    isFree?: boolean;
     freeAccessExclusion?: StrictZeroCostExclusionReason | null;
   }> = Array.isArray(virtualCombo?.models) ? virtualCombo.models : [];
   // Routing keeps one logical provider/model candidate, but the management API
@@ -258,6 +264,7 @@ export async function getAutoComboCandidates(
         connectionId: candidate.connectionId,
         model: candidate.model,
         modelStr: candidate.model,
+        isFree: candidate.isFree,
         freeAccessExclusion: candidate.freeAccessExclusion,
       });
       return { ...decorated, excluded: excludedConnectionIds.has(candidate.connectionId) };

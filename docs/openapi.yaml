@@ -12754,7 +12754,50 @@ paths:
       summary: "GET auto combo › <channel> › candidates"
       responses:
         "200":
-          description: OK
+          description: >-
+            Account-oriented Auto-Combo candidate diagnostics. Each candidate includes its
+            concrete connectionId, even though runtime routing stores candidates as one logical
+            provider/model with an allowed connection set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [channel, candidates]
+                properties:
+                  channel:
+                    type: string
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                      required: [provider, connectionId, model, reachable, free, excluded]
+                      properties:
+                        provider:
+                          type: string
+                        connectionId:
+                          type: string
+                        model:
+                          type: string
+                        modelStr:
+                          type: string
+                        free:
+                          type: boolean
+                        excluded:
+                          type: boolean
+                        reachable:
+                          type: boolean
+                        breakerState:
+                          type: string
+                        connectionCooldown:
+                          type: boolean
+                        modelLocked:
+                          type: boolean
+                        freeAccessExclusion:
+                          type: string
+                          nullable: true
+                        quota:
+                          type: object
+                          nullable: true
   /api/v1/batches:
     get:
       tags:
