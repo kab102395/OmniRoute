@@ -590,6 +590,12 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
             pricing: { prompt: "0.000001", completion: "0.000002" },
             supported_parameters: [],
           },
+          {
+            id: "vendor/explicit-zero",
+            name: "Vendor Explicit Zero",
+            pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+            supported_parameters: ["tools"],
+          },
         ],
       }),
       { status: 200, headers: { "content-type": "application/json" } }
@@ -618,6 +624,9 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     };
     const freeRoute = body.data.find((model) => model.id === "openrouter/vendor/coder:free");
     const paidRoute = body.data.find((model) => model.id === "openrouter/vendor/coder");
+    const explicitZeroRoute = body.data.find(
+      (model) => model.id === "openrouter/vendor/explicit-zero"
+    );
 
     assert.ok(freeRoute, "the exact :free route must be individually selectable");
     assert.equal(freeRoute.free, true);
@@ -630,6 +639,12 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     assert.equal(freeRoute.route_availability.source?.modelId, "vendor/coder:free");
     assert.equal(freeRoute.route_availability.source?.stale, false);
     assert.equal(freeRoute.route_availability.downstreamHostSelection, "aggregator_selected");
+    assert.equal(explicitZeroRoute?.free, true);
+    assert.equal(
+      explicitZeroRoute?.pricing_provenance?.zeroCostEligibility,
+      "verified_free_variant"
+    );
+    assert.equal(explicitZeroRoute?.capabilities?.tool_calling, true);
     assert.ok(paidRoute, "the paid sibling remains a separate selectable route");
     assert.equal(paidRoute.free, false);
     assert.equal(paidRoute.pricing.input, 1);
