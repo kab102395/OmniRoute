@@ -31,6 +31,7 @@ import { buildFamilyCandidateFilter, type ModelFamily } from "./modelFamily";
 import { getHiddenModelsByProvider } from "@/models";
 import { getSyncedAvailableModelsByConnection, getCustomModels } from "@/lib/db/models";
 import { filterPaidOnlyCandidates } from "./paidModelFilter";
+import { getOpenRouterCatalog, isOpenRouterFreeRoute } from "@/lib/catalog/openrouterCatalog";
 import { filterModelExposureCandidates } from "./modelExposureFilter";
 import {
   filterSubscriptionOnlyCandidates,
@@ -731,6 +732,27 @@ export async function prepareVirtualAutoComboInputs(
   ]);
 
   const connectedProviders = new Set(validConnections.map((conn) => conn.provider));
+  // OpenRouter's free route set rotates independently of the static free-model
+  // budget catalog. Resolve it once per preparation from the shared TTL cache;
+  // stale-if-error snapshots remain useful for display, but cannot authorize a
+  // hide-paid candidate.
+  let currentOpenRouterFreeRoutes: Set<string> | undefined;
+  if (settings.hidePaidModels === true && connectedProviders.has("openrouter")) {
+    const catalog = await getOpenRouterCatalog();
+    if (!catalog.stale) {
+      currentOpenRouterFreeRoutes = new Set(
+        catalog.data
+          .filter((entry) => {
+            if (isOpenRouterFreeRoute(entry.id)) return true;
+            const isNumericZero = (value: unknown) =>
+              (typeof value === "number" && value === 0) ||
+              (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
+            return isNumericZero(entry.pricing?.prompt) && isNumericZero(entry.pricing?.completion);
+          })
+          .map((entry) => entry.id)
+      );
+    }
+  }
   const buildPreparedPool = (bypassNoAuthAllowlist: boolean) => {
     let pool = [
       ...candidatePool,
@@ -749,7 +771,11 @@ export async function prepareVirtualAutoComboInputs(
 
     // #6512 (follow-up to #6328/#6495): when the operator opts into `hidePaidModels`,
     // exclude paid-only backends from EVERY `auto/*` candidate pool.
-    const paidFilteredPool = filterPaidOnlyCandidates(pool, settings.hidePaidModels === true);
+    const paidFilteredPool = filterPaidOnlyCandidates(
+      pool,
+      settings.hidePaidModels === true,
+      currentOpenRouterFreeRoutes
+    );
     if (paidFilteredPool !== pool) pool = paidFilteredPool;
 
     // #11481: mandatory mirror of the /v1/models exposure allow/deny list —

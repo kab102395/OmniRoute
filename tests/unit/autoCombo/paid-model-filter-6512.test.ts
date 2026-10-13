@@ -5,7 +5,7 @@
  * Tests the pure `filterPaidOnlyCandidates` helper wired into
  * `open-sse/services/autoCombo/virtualFactory.ts::createVirtualAutoCombo`.
  */
-import { test } from "vitest";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { filterPaidOnlyCandidates } from "../../../open-sse/services/autoCombo/paidModelFilter.ts";
@@ -45,4 +45,19 @@ test("hidePaidModels ON preserves extra candidate fields on kept entries", () =>
   };
   const result = filterPaidOnlyCandidates([enriched, PAID], true);
   assert.deepEqual(result, [enriched], "generic <T> filter must not strip candidate fields");
+});
+
+test("OpenRouter free eligibility requires the exact route in the current catalog", () => {
+  const freeRoute = { provider: "openrouter", model: "vendor/model:free" };
+  const paidSibling = { provider: "openrouter", model: "vendor/model" };
+  assert.deepEqual(
+    filterPaidOnlyCandidates([freeRoute, paidSibling], true, new Set(["vendor/model:free"])),
+    [freeRoute],
+    "the selected free route is eligible without granting eligibility to its paid sibling"
+  );
+  assert.deepEqual(
+    filterPaidOnlyCandidates([freeRoute], true, new Set()),
+    [],
+    "a :free suffix in an old or unverified route list cannot authorize routing"
+  );
 });

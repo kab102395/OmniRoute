@@ -21,7 +21,13 @@ interface PaidFilterCandidate {
 /** A candidate is kept only when its provider has documented free models AND the
  * selected model itself qualifies as free — mirrors `shouldHidePaid` in
  * `src/app/api/v1/models/catalog.ts`. */
-function isFreeCandidate(candidate: PaidFilterCandidate): boolean {
+function isFreeCandidate(
+  candidate: PaidFilterCandidate,
+  currentOpenRouterFreeRoutes?: ReadonlySet<string>
+): boolean {
+  if (candidate.provider === "openrouter") {
+    return currentOpenRouterFreeRoutes?.has(candidate.model) === true;
+  }
   return (
     providerHasFreeModels(candidate.provider) &&
     isFreeModel(candidate.provider, { id: candidate.model })
@@ -37,8 +43,9 @@ function isFreeCandidate(candidate: PaidFilterCandidate): boolean {
  */
 export function filterPaidOnlyCandidates<T extends PaidFilterCandidate>(
   pool: T[],
-  hidePaidModels: boolean
+  hidePaidModels: boolean,
+  currentOpenRouterFreeRoutes?: ReadonlySet<string>
 ): T[] {
   if (!hidePaidModels) return pool;
-  return pool.filter(isFreeCandidate);
+  return pool.filter((candidate) => isFreeCandidate(candidate, currentOpenRouterFreeRoutes));
 }
