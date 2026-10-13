@@ -37,6 +37,16 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
               oneOf: Array<{ type: string } | { type: string; items: { type: string } }>;
             };
           };
+          capability_status: {
+            properties: {
+              structured_output: {
+                properties: {
+                  status: { enum: string[] };
+                  source: { enum: string[] };
+                };
+              };
+            };
+          };
           supported_endpoints: {
             type: string;
             description: string;
@@ -130,6 +140,31 @@ test("model catalog OpenAPI types emitted effort tiers and supported endpoints",
 test("typed model catalog entries expose supported endpoints", () => {
   const model: ModelCatalogEntry = { id: "provider/model", supported_endpoints: ["chat"] };
   assert.deepEqual(model.supported_endpoints, ["chat"]);
+});
+
+test("typed model catalog entries expose source-backed structured-output status", () => {
+  const model: ModelCatalogEntry = {
+    id: "hf/org/model:host",
+    capability_status: {
+      structured_output: {
+        status: "unknown",
+        source: "huggingface.router_models_api",
+      },
+    },
+  };
+  const structuredOutput =
+    spec.components.schemas.Model.properties.capability_status.properties.structured_output;
+  assert.deepEqual(structuredOutput.properties.status.enum, [
+    "supported",
+    "unsupported",
+    "unknown",
+  ]);
+  assert.equal(
+    structuredOutput.properties.source.enum.includes(
+      model.capability_status?.structured_output?.source ?? ""
+    ),
+    true
+  );
 });
 
 test("model catalog OpenAPI includes every emitted OpenRouter modality price dimension", () => {

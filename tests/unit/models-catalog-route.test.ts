@@ -1121,6 +1121,7 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
       id: "fixture-org/route-metadata-model",
       name: "Route metadata fixture model",
       source: "imported",
+      supportsStructuredOutput: true,
       providerRoutes: [
         {
           provider: "together",
@@ -1214,7 +1215,10 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
       context_length?: number;
       max_output_tokens?: number;
       capabilities?: Record<string, boolean>;
-      capability_status?: { tool_calling?: { status?: string; source?: string } };
+      capability_status?: {
+        tool_calling?: { status?: string; source?: string };
+        structured_output?: { status?: string; source?: string };
+      };
       route_selection?: { kind?: string; exactModelIdentity?: boolean };
       route_availability?: {
         accountEligibility?: string;
@@ -1239,8 +1243,17 @@ test("v1 models preserves Hugging Face provider-level capability and pricing fac
     "a pinned host without an output limit must not inherit the aggregate limit"
   );
   assert.equal(freeToolRoute.capabilities?.tool_calling, true);
+  assert.equal(
+    freeToolRoute.capabilities?.structured_output,
+    undefined,
+    "a pinned host with unknown structured-output support must not inherit aggregate support"
+  );
   assert.deepEqual(freeToolRoute.capability_status?.tool_calling, {
     status: "supported",
+    source: "huggingface.router_models_api",
+  });
+  assert.deepEqual(freeToolRoute.capability_status?.structured_output, {
+    status: "unknown",
     source: "huggingface.router_models_api",
   });
   assert.deepEqual(freeToolRoute.route_selection, {

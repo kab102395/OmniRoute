@@ -49,6 +49,8 @@ export function expandHuggingFaceProviderRoutes(
       }
       if (typeof rawRoute.supports_structured_output === "boolean") {
         capabilities.structured_output = rawRoute.supports_structured_output;
+      } else {
+        delete capabilities.structured_output;
       }
 
       const isCurrentFree = !stale && rawRoute.free_catalog_eligible === true;
@@ -97,6 +99,15 @@ export function expandHuggingFaceProviderRoutes(
               rawRoute.supports_tools === true
                 ? "supported"
                 : rawRoute.supports_tools === false
+                  ? "unsupported"
+                  : "unknown",
+            source: "huggingface.router_models_api",
+          },
+          structured_output: {
+            status:
+              rawRoute.supports_structured_output === true
+                ? "supported"
+                : rawRoute.supports_structured_output === false
                   ? "unsupported"
                   : "unknown",
             source: "huggingface.router_models_api",

@@ -110,6 +110,8 @@ function preservePinnedHuggingFaceRouteFacts(
   }
   if (typeof route.supports_structured_output === "boolean") {
     capabilities.structured_output = route.supports_structured_output;
+  } else {
+    delete capabilities.structured_output;
   }
 
   return {
@@ -126,6 +128,15 @@ function preservePinnedHuggingFaceRouteFacts(
           route.supports_tools === true
             ? "supported"
             : route.supports_tools === false
+              ? "unsupported"
+              : "unknown",
+        source: "huggingface.router_models_api",
+      },
+      structured_output: {
+        status:
+          route.supports_structured_output === true
+            ? "supported"
+            : route.supports_structured_output === false
               ? "unsupported"
               : "unknown",
         source: "huggingface.router_models_api",

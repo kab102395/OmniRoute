@@ -15511,6 +15511,22 @@ components:
                     - model_spec
                     - provider_parameter_constraint
                     - unknown
+            structured_output:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [supported, unsupported, unknown]
+                source:
+                  type: string
+                  enum:
+                    - openrouter.models_api
+                    - huggingface.router_models_api
+                    - synced_capability_catalog
+                    - provider_registry
+                    - model_spec
+                    - provider_parameter_constraint
+                    - unknown
         free_access:
           type: object
           description: >-
