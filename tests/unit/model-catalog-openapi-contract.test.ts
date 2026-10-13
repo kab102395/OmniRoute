@@ -100,6 +100,7 @@ test("OmniRoute keeps catalog and execution facts needed by external routers", (
   const headers = spec.paths["/api/v1/chat/completions"]?.post?.responses?.["200"]?.headers;
   for (const header of [
     "X-OmniRoute-Request-Id",
+    "X-OmniRoute-Provider-Request-Id",
     "X-OmniRoute-Served-Provider",
     "X-OmniRoute-Served-Model",
     "X-OmniRoute-Served-Model-Source",

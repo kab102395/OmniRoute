@@ -24,6 +24,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
     provider: "openai",
     model: "gpt-x",
     pendingRequestId: "preq-1",
+    providerRequestId: "provider-req-1",
     compressionResponseMeta: undefined,
     ...overrides,
   } as Parameters<typeof assembleStreamingResponseHeaders>[0];
@@ -46,6 +47,7 @@ test("buildStreamingResponseHeaders receives zeroed latency/usage/cost and cache
   assert.equal(calls[0].meta.costUsd, 0);
   assert.equal(calls[0].meta.provider, "openai");
   assert.equal(calls[0].meta.model, "gpt-x");
+  assert.equal(calls[0].meta.providerRequestId, "provider-req-1");
 });
 
 test("streaming metadata includes the recorded additional upstream attempt count", () => {

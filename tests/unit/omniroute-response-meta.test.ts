@@ -100,6 +100,15 @@ test("response metadata exposes additional upstream attempts", () => {
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.fallbackAttempts], "2");
 });
 
+test("response metadata exposes the final provider request id when available", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({ providerRequestId: "gen-123" });
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.providerRequestId], "gen-123");
+  assert.equal(
+    buildOmniRouteResponseMetaHeaders({})[OMNIROUTE_RESPONSE_HEADERS.providerRequestId],
+    undefined
+  );
+});
+
 test("buildOmniRouteResponseMetaHeaders keeps ASCII model header values unchanged", () => {
   const headers = buildOmniRouteResponseMetaHeaders({
     provider: "openai",

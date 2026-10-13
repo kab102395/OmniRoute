@@ -32,6 +32,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
     responseUsage: { prompt_tokens: 5 },
     estimatedCost: 0.0012,
     requestId: "req-1",
+    providerRequestId: "provider-req-1",
     compressionResponseMeta: undefined,
     ...overrides,
   } as Parameters<typeof buildNonStreamingResponseHeaders>[0];
@@ -68,6 +69,7 @@ test("meta receives provider/model/cacheHit false/latency/usage/cost/requestId",
   assert.deepEqual(meta.usage, { prompt_tokens: 5 });
   assert.equal(meta.costUsd, 0.0012);
   assert.equal(meta.requestId, "req-1");
+  assert.equal(meta.providerRequestId, "provider-req-1");
 });
 
 test("meta receives the recorded additional upstream attempt count", () => {

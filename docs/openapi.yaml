@@ -1669,6 +1669,10 @@ paths:
               schema:
                 type: string
               description: Successful attempt's call-log ID on non-streaming responses; initial stream correlation ID on streaming responses.
+            X-OmniRoute-Provider-Request-Id:
+              schema:
+                type: string
+              description: Provider-supplied request identifier for the final upstream dispatch, when available.
             X-OmniRoute-Version:
               schema:
                 type: string

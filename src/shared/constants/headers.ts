@@ -15,6 +15,7 @@ export const OMNIROUTE_RESPONSE_HEADERS = {
   progress: "X-OmniRoute-Progress",
   pricingRetrievedAt: "X-OmniRoute-Pricing-Retrieved-At",
   pricingStale: "X-OmniRoute-Pricing-Stale",
+  providerRequestId: "X-OmniRoute-Provider-Request-Id",
   provider: "X-OmniRoute-Provider",
   requestId: "X-OmniRoute-Request-Id",
   responseCost: "X-OmniRoute-Response-Cost",

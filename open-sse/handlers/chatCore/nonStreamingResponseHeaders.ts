@@ -19,6 +19,7 @@ export function buildNonStreamingResponseHeaders(
     responseUsage: Record<string, unknown> | null | undefined;
     estimatedCost: number;
     requestId: string | null | undefined;
+    providerRequestId?: string | null;
     servedProvider?: string | null;
     servedModel?: string | null;
     servedModelSource?: "provider_response" | "outbound_request" | null;
@@ -52,6 +53,7 @@ export function buildNonStreamingResponseHeaders(
     usage: args.responseUsage,
     costUsd: args.estimatedCost,
     requestId: args.requestId,
+    providerRequestId: args.providerRequestId,
     servedProvider: args.servedProvider,
     servedModel: args.servedModel,
     servedModelSource: args.servedModelSource,

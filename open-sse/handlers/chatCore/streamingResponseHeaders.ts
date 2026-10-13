@@ -17,6 +17,7 @@ export function assembleStreamingResponseHeaders(
     provider: string | null | undefined;
     model: string | null | undefined;
     pendingRequestId: string;
+    providerRequestId?: string | null;
     servedProvider?: string | null;
     servedModel?: string | null;
     servedModelSource?: "provider_response" | "outbound_request" | null;
@@ -37,6 +38,7 @@ export function assembleStreamingResponseHeaders(
       latencyMs: 0,
       usage: null,
       costUsd: 0,
+      providerRequestId: args.providerRequestId,
       fallbackAttempts: args.fallbackAttempts,
       strategy: args.comboStrategy ?? "single",
       servedProvider: args.servedProvider,

@@ -130,6 +130,7 @@ export function buildOmniRouteResponseMetaHeaders({
   latencyMs = 0,
   model = null,
   provider = null,
+  providerRequestId = null,
   requestId = null,
   strategy = null,
   servedProvider = null,
@@ -155,6 +156,8 @@ export function buildOmniRouteResponseMetaHeaders({
   latencyMs?: unknown;
   model?: string | null;
   provider?: string | null;
+  /** Provider-supplied identifier for the final upstream dispatch, when reported. */
+  providerRequestId?: string | null;
   requestId?: string | null;
   /** Final concrete target that produced this completion; omitted before success is known. */
   servedProvider?: string | null;
@@ -213,6 +216,9 @@ export function buildOmniRouteResponseMetaHeaders({
 
   if (typeof provider === "string" && provider.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.provider] = toHeaderValue(getProviderAlias(provider));
+  }
+  if (typeof providerRequestId === "string" && providerRequestId.trim().length > 0) {
+    headers[OMNIROUTE_RESPONSE_HEADERS.providerRequestId] = toHeaderValue(providerRequestId);
   }
 
   if (typeof servedProvider === "string" && servedProvider.trim().length > 0) {

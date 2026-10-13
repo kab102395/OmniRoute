@@ -1096,6 +1096,10 @@ export async function handleChatCore({
       recordExecutionAttempts(attempts as Array<Record<string, unknown>>, connectionId, routeModel);
     }
   };
+  const getFinalProviderRequestId = (): string | null => {
+    const requestId = executionAttemptReceipts.at(-1)?.providerRequestId;
+    return typeof requestId === "string" && requestId.trim() ? requestId : null;
+  };
   const capturePipelineStreamChunks =
     detailedLoggingEnabled && getCallLogPipelineCaptureStreamChunks();
   const skillRequestId = generateRequestId();
@@ -5542,6 +5546,7 @@ export async function handleChatCore({
       responseUsage,
       estimatedCost,
       requestId: pendingRequestId,
+      providerRequestId: getFinalProviderRequestId(),
       servedProvider: servedIdentity?.provider || null,
       servedModel: servedIdentity?.model || null,
       servedModelSource: servedIdentity?.modelSource || null,
@@ -5700,6 +5705,7 @@ export async function handleChatCore({
     provider,
     model,
     pendingRequestId,
+    providerRequestId: getFinalProviderRequestId(),
     servedProvider: streamServedIdentity?.provider || null,
     servedModel: streamServedIdentity?.model || null,
     servedModelSource: streamServedIdentity?.modelSource || null,
