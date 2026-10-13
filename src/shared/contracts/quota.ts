@@ -1,4 +1,15 @@
 export type QuotaTokenStatus = "valid" | "expiring" | "expired" | "refreshing";
+export type QuotaConnectionStatus =
+  | "available"
+  | "rate_limited"
+  | "unavailable"
+  | "expired"
+  | "banned"
+  | "credits_exhausted"
+  | "refreshing"
+  | "disabled"
+  | "error"
+  | "unknown";
 export type QuotaSource =
   "learned_limit" | "observed_rate_limit" | "observed_queue_pressure" | "unknown";
 
@@ -14,6 +25,8 @@ export interface QuotaProviderEntry {
   quotaRetrievedAt: string | null;
   resetAt: string | null;
   tokenStatus: QuotaTokenStatus;
+  /** Operational state of this configured account, distinct from token expiry and quota. */
+  connectionStatus: QuotaConnectionStatus;
 }
 
 export interface QuotaResponseMeta {
@@ -31,6 +44,18 @@ export interface QuotaResponse {
 }
 
 const TOKEN_STATUS_VALUES: QuotaTokenStatus[] = ["valid", "expiring", "expired", "refreshing"];
+const CONNECTION_STATUS_VALUES: QuotaConnectionStatus[] = [
+  "available",
+  "rate_limited",
+  "unavailable",
+  "expired",
+  "banned",
+  "credits_exhausted",
+  "refreshing",
+  "disabled",
+  "error",
+  "unknown",
+];
 const QUOTA_SOURCES: QuotaSource[] = [
   "learned_limit",
   "observed_rate_limit",
@@ -56,6 +81,16 @@ function normalizeTokenStatus(value: unknown): QuotaTokenStatus {
     return value as QuotaTokenStatus;
   }
   return "valid";
+}
+
+function normalizeConnectionStatus(value: unknown): QuotaConnectionStatus {
+  if (
+    typeof value === "string" &&
+    CONNECTION_STATUS_VALUES.includes(value as QuotaConnectionStatus)
+  ) {
+    return value as QuotaConnectionStatus;
+  }
+  return "unknown";
 }
 
 export function sanitizeQuotaProvider(input: unknown): QuotaProviderEntry {
@@ -109,6 +144,7 @@ export function sanitizeQuotaProvider(input: unknown): QuotaProviderEntry {
     quotaRetrievedAt,
     resetAt,
     tokenStatus: normalizeTokenStatus(source.tokenStatus),
+    connectionStatus: normalizeConnectionStatus(source.connectionStatus),
   };
 }
 

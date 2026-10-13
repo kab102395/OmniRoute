@@ -50,14 +50,21 @@ export async function executeQuotaManagement(task: A2ATask): Promise<QuotaManage
       : [];
   const providers = quota.providers;
 
-  const availableQuota = (provider: { quotaTotal: number | null; quotaUsed: number }) => {
-    if (provider.quotaTotal === null) return Number.POSITIVE_INFINITY;
-    return provider.quotaTotal - provider.quotaUsed;
+  const availableQuota = (provider: (typeof providers)[number]): number | null => {
+    if (provider.quotaSource !== "learned_limit" || provider.quotaTotal === null) return null;
+    return Math.max(0, provider.quotaTotal - provider.quotaUsed);
   };
 
   // Query classification
   if (query.includes("ranking") || query.includes("most quota") || query.includes("best")) {
-    const sorted = [...providers].sort((a, b) => availableQuota(b) - availableQuota(a));
+    const sorted = [...providers].sort((a, b) => {
+      const aRemaining = availableQuota(a);
+      const bRemaining = availableQuota(b);
+      if (aRemaining === null && bRemaining === null) return 0;
+      if (aRemaining === null) return 1;
+      if (bRemaining === null) return -1;
+      return bRemaining - aRemaining;
+    });
     return {
       artifacts: [
         {
@@ -65,10 +72,11 @@ export async function executeQuotaManagement(task: A2ATask): Promise<QuotaManage
           content: `**Quota Ranking (most available first):**\n${sorted
             .map((p, i) => {
               const remaining = availableQuota(p);
-              const remainingLabel =
-                remaining === Number.POSITIVE_INFINITY ? "unlimited" : remaining.toLocaleString();
+              const remainingLabel = remaining === null ? "unknown" : remaining.toLocaleString();
               const percentLabel =
-                p.quotaTotal === null ? "n/a" : `${Math.round(p.percentRemaining)}%`;
+                p.quotaSource !== "learned_limit" || p.quotaTotal === null
+                  ? "n/a"
+                  : `${Math.round(p.percentRemaining)}%`;
               return `${i + 1}. **${p.provider}** — ${remainingLabel} remaining (${percentLabel})`;
             })
             .join("\n")}`,
@@ -98,22 +106,36 @@ export async function executeQuotaManagement(task: A2ATask): Promise<QuotaManage
   }
 
   // Default: general quota summary
-  const totalUsed = providers.reduce((sum, p) => sum + (p.quotaUsed || 0), 0);
-  const totalAvailable = providers.reduce((sum, p) => sum + (p.quotaTotal || 0), 0);
-  const warnings = providers.filter((p) => p.percentRemaining <= 10);
+  const measuredProviders = providers.filter((p) => p.quotaSource === "learned_limit");
+  const totalUsed = measuredProviders.reduce((sum, p) => sum + p.quotaUsed, 0);
+  const totalAvailable = measuredProviders.reduce((sum, p) => sum + (p.quotaTotal || 0), 0);
+  const unknownCapacityCount = providers.length - measuredProviders.length;
+  const warnings = providers.filter(
+    (p) =>
+      p.connectionStatus === "rate_limited" ||
+      p.connectionStatus === "unavailable" ||
+      (p.quotaSource === "learned_limit" && p.percentRemaining <= 10)
+  );
 
   return {
     artifacts: [
       {
         type: "text",
-        content: `**Quota Summary (${providers.length} providers):**\n- Total used: ${totalUsed.toLocaleString()} / ${totalAvailable.toLocaleString()}\n${providers
-          .map(
-            (p) =>
-              `- **${p.provider}:** ${p.quotaUsed.toLocaleString()} / ${p.quotaTotal?.toLocaleString() || "∞"} (${p.tokenStatus})`
-          )
+        content: `**Quota Summary (${providers.length} providers):**\n- Total used: ${totalUsed.toLocaleString()} / ${totalAvailable.toLocaleString()}${unknownCapacityCount > 0 ? ` known (${unknownCapacityCount} with unknown capacity)` : ""}\n${providers
+          .map((p) => {
+            const quotaLabel =
+              p.quotaSource === "learned_limit" && p.quotaTotal !== null
+                ? `${p.quotaUsed.toLocaleString()} / ${p.quotaTotal.toLocaleString()} (${Math.round(p.percentRemaining)}% remaining)`
+                : p.quotaSource === "observed_rate_limit"
+                  ? `rate limited${p.resetAt ? ` until ${p.resetAt}` : ""}`
+                  : p.quotaSource === "observed_queue_pressure"
+                    ? `quota unknown (queue pressure observed)`
+                    : "quota unknown";
+            return `- **${p.provider}:** ${quotaLabel} [${p.connectionStatus}]`;
+          })
           .join(
             "\n"
-          )}${warnings.length > 0 ? `\n\n⚠️ **Warning:** ${warnings.map((w) => w.provider).join(", ")} at or below 10% remaining` : ""}`,
+          )}${warnings.length > 0 ? `\n\n⚠️ **Warning:** ${warnings.map((w) => w.provider).join(", ")} are rate limited, unavailable, or at/below 10% of measured quota` : ""}`,
       },
     ],
     metadata: { queryType: "summary", providerCount: providers.length, warnings: warnings.length },

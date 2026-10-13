@@ -12556,6 +12556,23 @@ paths:
                           type: string
                           format: date-time
                           nullable: true
+                        connectionStatus:
+                          type: string
+                          description: >-
+                            Current connection health/availability state. This is separate from
+                            tokenStatus and quota capacity; an unknown or queue-derived quota does
+                            not imply this connection is ready for a model route.
+                          enum:
+                            - available
+                            - rate_limited
+                            - unavailable
+                            - expired
+                            - banned
+                            - credits_exhausted
+                            - refreshing
+                            - disabled
+                            - error
+                            - unknown
   /api/usage/requests-by-provider-date:
     get:
       tags:

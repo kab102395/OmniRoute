@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/db/providers";
+import { getEffectiveProviderConnectionStatus } from "@/shared/utils/providerConnectionStatus";
 import {
   getLearnedLimits,
   getRateLimitStatus,
@@ -38,6 +39,35 @@ function deriveTokenStatus(connection: ProviderConnectionRecord): QuotaTokenStat
   if (lastErrorType.includes("refresh")) return "expiring";
 
   return "valid";
+}
+
+export function deriveConnectionStatus(
+  connection: ProviderConnectionRecord,
+  now = Date.now()
+): QuotaProviderEntry["connectionStatus"] {
+  if (connection.isActive === false) return "disabled";
+
+  const status = getEffectiveProviderConnectionStatus(
+    {
+      isActive: connection.isActive !== false,
+      testStatus: typeof connection.testStatus === "string" ? connection.testStatus : null,
+      rateLimitedUntil:
+        typeof connection.rateLimitedUntil === "string" ? connection.rateLimitedUntil : null,
+    },
+    now
+  );
+  if (status === "active" || status === "success") return "available";
+  if (status === "unavailable") return "rate_limited";
+  if (
+    status === "expired" ||
+    status === "banned" ||
+    status === "credits_exhausted" ||
+    status === "refreshing" ||
+    status === "error"
+  ) {
+    return status;
+  }
+  return "unknown";
 }
 
 export function buildQuotaEntry(
@@ -102,7 +132,8 @@ export function buildQuotaEntry(
       quotaUsed = 100;
       percentRemaining = 0;
       quotaSource = "observed_rate_limit";
-      quotaRetrievedAt = new Date().toISOString();
+      quotaRetrievedAt =
+        toDateMs(connection.lastErrorAt) === null ? null : String(connection.lastErrorAt);
     } else {
       // Fallback synthetic signal from queue pressure when limit headers are unavailable.
       const queued = typeof rateStatus.queued === "number" ? rateStatus.queued : 0;
@@ -131,6 +162,7 @@ export function buildQuotaEntry(
     quotaRetrievedAt,
     resetAt,
     tokenStatus: deriveTokenStatus(connection),
+    connectionStatus: deriveConnectionStatus(connection),
   });
 }
 

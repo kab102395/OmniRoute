@@ -15,7 +15,7 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
   >;
 };
 
-test("quota OpenAPI exposes source and retrieval time for remaining-capacity values", () => {
+test("quota OpenAPI exposes source, freshness, and connection health", () => {
   const response = spec.paths["/api/usage/quota"]?.get?.responses?.["200"];
   assert.ok(response?.content?.["application/json"]);
   const body = response.content["application/json"] as {
@@ -37,6 +37,18 @@ test("quota OpenAPI exposes source and retrieval time for remaining-capacity val
     "unknown",
   ]);
   assert.equal(properties.quotaRetrievedAt.nullable, true);
+  assert.deepEqual(properties.connectionStatus.enum, [
+    "available",
+    "rate_limited",
+    "unavailable",
+    "expired",
+    "banned",
+    "credits_exhausted",
+    "refreshing",
+    "disabled",
+    "error",
+    "unknown",
+  ]);
 });
 
 test("quota response identifies missing account capacity as unknown", () => {
@@ -45,6 +57,7 @@ test("quota response identifies missing account capacity as unknown", () => {
   assert.equal(entry.percentRemaining, 100, "the legacy numeric field remains backward compatible");
   assert.equal(entry.quotaSource, "unknown");
   assert.equal(entry.quotaRetrievedAt, null);
+  assert.equal(entry.connectionStatus, "unknown");
 
   const normalized = normalizeQuotaResponse({ providers: [entry] }).providers[0];
   assert.equal(normalized?.quotaSource, "unknown");
@@ -76,12 +89,22 @@ test("learned quota, rate-limit, and queue observations keep separate provenance
   assert.equal(learned.quotaRetrievedAt, "2026-10-13T00:00:00.000Z");
 
   const rateLimited = buildQuotaEntry(
-    { ...connection, rateLimitedUntil: new Date(Date.now() + 60_000).toISOString() },
+    {
+      ...connection,
+      testStatus: "unavailable",
+      lastErrorAt: "2026-10-13T00:00:00.000Z",
+      rateLimitedUntil: new Date(Date.now() + 60_000).toISOString(),
+    },
     null,
     {}
   );
   assert.equal(rateLimited.quotaSource, "observed_rate_limit");
   assert.equal(rateLimited.percentRemaining, 0);
+  assert.equal(rateLimited.connectionStatus, "rate_limited");
+  assert.equal(rateLimited.quotaRetrievedAt, "2026-10-13T00:00:00.000Z");
+
+  const disabled = buildQuotaEntry({ ...connection, isActive: false }, null, {});
+  assert.equal(disabled.connectionStatus, "disabled");
 
   const queuePressure = buildQuotaEntry(connection, null, { queued: 2, running: 1, executing: 0 });
   assert.equal(queuePressure.quotaSource, "observed_queue_pressure");
