@@ -584,6 +584,10 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     typeof existingCapabilities.structured_output === "boolean"
       ? existingCapabilities.structured_output
       : undefined;
+  const existingStructuredOutputStatus =
+    entry.capability_status && typeof entry.capability_status === "object"
+      ? (entry.capability_status as JsonRecord).structured_output
+      : undefined;
   const declaredEffortTiers = Array.isArray(existingCapabilities.effort_tiers)
     ? existingCapabilities.effort_tiers.filter(
         (effort): effort is string => typeof effort === "string" && effort.length > 0
@@ -724,6 +728,20 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     : publicProvider === "openrouter"
       ? null
       : (syncedToolCalling ?? metadata.capabilities.supportsTools);
+  const structuredOutputSupport = openRouterParametersKnown
+    ? entry.supported_parameters.includes("structured_outputs") ||
+      entry.supported_parameters.includes("response_format")
+    : (syncedStructuredOutput ?? metadata.capabilities.structuredOutput);
+  const hasExistingStructuredOutputStatus =
+    existingStructuredOutputStatus !== null &&
+    typeof existingStructuredOutputStatus === "object" &&
+    !Array.isArray(existingStructuredOutputStatus);
+  const existingStructuredOutputSource = hasExistingStructuredOutputStatus
+    ? (existingStructuredOutputStatus as JsonRecord).source
+    : null;
+  const preserveProviderRouteStructuredOutputStatus =
+    (publicProvider === "huggingface" || publicProvider === "hf") &&
+    existingStructuredOutputSource === "huggingface.router_models_api";
   nextEntry.capability_status = {
     ...(entry.capability_status && typeof entry.capability_status === "object"
       ? (entry.capability_status as JsonRecord)
@@ -743,6 +761,25 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
             ? "synced_capability_catalog"
             : metadata.capabilities.supportsToolsSource,
     },
+    structured_output: preserveProviderRouteStructuredOutputStatus
+      ? existingStructuredOutputStatus
+      : {
+          status:
+            structuredOutputSupport === true
+              ? "supported"
+              : structuredOutputSupport === false
+                ? "unsupported"
+                : "unknown",
+          source: openRouterParametersKnown
+            ? "openrouter.models_api"
+            : publicProvider === "openrouter"
+              ? "unknown"
+              : syncedStructuredOutput !== undefined || metadata.metadata.source.syncedCapability
+                ? "synced_capability_catalog"
+                : metadata.metadata.source.staticSpec
+                  ? "model_spec"
+                  : "unknown",
+        },
   };
 
   if (

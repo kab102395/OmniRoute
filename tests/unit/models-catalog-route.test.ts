@@ -594,7 +594,7 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
             context_length: 64000,
             top_provider: { max_completion_tokens: 4096 },
             architecture: { input_modalities: ["text"], output_modalities: ["text"] },
-            supported_parameters: ["tools"],
+            supported_parameters: ["tools", "structured_outputs"],
           },
           {
             id: "vendor/coder",
@@ -636,6 +636,7 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
         supported_parameters?: string[];
         capability_status?: {
           tool_calling?: { status?: string; source?: string };
+          structured_output?: { status?: string; source?: string };
         };
         context_length?: number;
         max_output_tokens?: number;
@@ -678,7 +679,11 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     );
     assert.equal(freeRouter.capabilities?.tool_calling, undefined);
     assert.equal(freeRoute.capabilities.tool_calling, true);
-    assert.deepEqual(freeRoute.supported_parameters, ["tools"]);
+    assert.deepEqual(freeRoute.capability_status?.structured_output, {
+      status: "supported",
+      source: "openrouter.models_api",
+    });
+    assert.deepEqual(freeRoute.supported_parameters, ["tools", "structured_outputs"]);
     assert.equal(freeRoute.context_length, 64000);
     assert.equal(freeRoute.max_output_tokens, 4096);
     assert.equal(freeRoute.pricing_provenance.zeroCostEligibility, "verified_free_variant");
@@ -701,7 +706,15 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       status: "unsupported",
       source: "openrouter.models_api",
     });
+    assert.deepEqual(noToolsRoute?.capability_status?.structured_output, {
+      status: "unsupported",
+      source: "openrouter.models_api",
+    });
     assert.deepEqual(unknownToolsRoute?.capability_status?.tool_calling, {
+      status: "unknown",
+      source: "unknown",
+    });
+    assert.deepEqual(unknownToolsRoute?.capability_status?.structured_output, {
       status: "unknown",
       source: "unknown",
     });
