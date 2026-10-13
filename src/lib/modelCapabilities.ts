@@ -485,6 +485,9 @@ const KNOWN_TEXT_ONLY_DESPITE_SYNC: readonly RegExp[] = [
   /(?:^|\/)mimo-v2\.5-pro$/i,
   /(?:^|\/)mimo-v2-pro$/i,
   /^(?:cmd|command-code)\/gpt-5\.3-codex(?:-|$)/i,
+  // DeepSeek's native V4-Pro route is text-only. Keep this provider-scoped:
+  // gateways may expose the same model id with different capabilities.
+  /^deepseek\/deepseek-v4-pro$/i,
 ];
 
 function isKnownTextOnlyDespiteSync(modelId: string | null | undefined): boolean {

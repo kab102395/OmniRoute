@@ -109,20 +109,20 @@ describe("catalog pricing surface (#8018)", () => {
     );
     assert.equal(
       (pro.pricing_provenance as { resolvedModelId?: string }).resolvedModelId,
-      "deepseek-flash"
+      "deepseek-v4-pro"
     );
-    assert.equal((pro.pricing as CatalogPricing).input, 0.3);
-    assert.equal((pro.pricing as CatalogPricing).output, 1.2);
-    assert.equal((pro.pricing as CatalogPricing).cached, 0.006);
+    assert.equal((pro.pricing as CatalogPricing).input, 1.32);
+    assert.equal((pro.pricing as CatalogPricing).output, 3.96);
+    assert.equal((pro.pricing as CatalogPricing).cached, 0.044);
     assert.equal(
       (pro.capabilities as Record<string, unknown>).vision,
-      true,
-      "the current V4.1-Flash route supports vision"
+      false,
+      "DeepSeek's current pricing page lists V4-Pro as text-only"
     );
     assert.equal((pro.capabilities as Record<string, unknown>).tool_calling, true);
     assert.match(
       (pro.pricing_provenance as { pricingCondition?: string }).pricingCondition || "",
-      /until V4\.1-Pro launches/
+      /peak\/off-peak schedule/
     );
   });
 });
