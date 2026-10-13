@@ -16,6 +16,8 @@ export type PricingEntry = {
   cached?: number;
   cache_creation?: number;
   reasoning?: number;
+  input_audio?: number;
+  output_audio?: number;
 };
 
 export type PricingModels = Record<string, PricingEntry>;
@@ -221,14 +223,17 @@ export function transformModelsDevToPricing(raw: ModelsDevData): PricingByProvid
         output,
       };
 
-      if (model.cost.cache_read != null) {
-        entry.cached = model.cost.cache_read;
-      }
-      if (model.cost.cache_write != null) {
-        entry.cache_creation = model.cost.cache_write;
-      }
-      if (model.cost.reasoning != null) {
-        entry.reasoning = model.cost.reasoning;
+      const optionalDimensions = {
+        cached: model.cost.cache_read,
+        cache_creation: model.cost.cache_write,
+        reasoning: model.cost.reasoning,
+        input_audio: model.cost.input_audio,
+        output_audio: model.cost.output_audio,
+      } as const;
+      for (const [key, value] of Object.entries(optionalDimensions)) {
+        if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+          entry[key as keyof typeof optionalDimensions] = value;
+        }
       }
 
       // Write to ALL mapped OmniRoute providers

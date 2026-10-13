@@ -44,7 +44,15 @@ describe("modelsDevSync/transform split-guard", () => {
           "gpt-x": {
             id: "gpt-x",
             name: "GPT-X",
-            cost: { input: 1, output: 2, cache_read: 0.5, cache_write: 3, reasoning: 4 },
+            cost: {
+              input: 1,
+              output: 2,
+              cache_read: 0.5,
+              cache_write: 3,
+              reasoning: 4,
+              input_audio: 5,
+              output_audio: 6,
+            },
           },
         },
       },
@@ -56,9 +64,34 @@ describe("modelsDevSync/transform split-guard", () => {
       cached: 0.5,
       cache_creation: 3,
       reasoning: 4,
+      input_audio: 5,
+      output_audio: 6,
     });
     // openai maps to ["openai", "cx"] — both must receive the entry.
     assert.deepEqual(pricing.cx["gpt-x"], pricing.openai["gpt-x"]);
+  });
+
+  it("drops malformed optional billing dimensions instead of persisting unsafe values", () => {
+    const raw = {
+      openai: {
+        id: "openai",
+        models: {
+          "gpt-x": {
+            id: "gpt-x",
+            name: "GPT-X",
+            cost: {
+              input: 1,
+              output: 2,
+              input_audio: Number.NaN,
+              output_audio: -1,
+              cache_read: "0",
+            },
+          },
+        },
+      },
+    };
+    const pricing = transformModelsDevToPricing(raw as never);
+    assert.deepEqual(pricing.openai["gpt-x"], { input: 1, output: 2 });
   });
 
   it("skips models with no cost or missing input pricing", () => {
