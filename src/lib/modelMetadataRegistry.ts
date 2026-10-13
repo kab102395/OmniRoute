@@ -505,7 +505,7 @@ function buildSyncedPricingProvenance(
     rateUnit: "Source-native USD units; token rates use USD / 1M tokens",
     authority: `${providerName} catalog metadata; not provider-authenticated billing evidence`,
     ...(tokenPricingIncomplete
-      ? { reason: "The source reports only one of the input and output token rates" }
+      ? { reason: "The source does not report both input and output token rates" }
       : {}),
   };
 }
