@@ -1439,6 +1439,18 @@ async function buildUnifiedModelsResponseCore(
             name: getOpenRouterDisplayName(openRouterModel),
             type: modelType,
             free: isFree,
+            route_availability: {
+              catalogListed: true,
+              accountEligibility: "unknown",
+              source: {
+                id: "openrouter.models_api",
+                modelId: openRouterModel.id,
+                retrievedAt: openRouterCatalog.cachedAt,
+                stale: openRouterCatalog.stale,
+                cacheTtlMs: openRouterCatalog.cacheTtlMs,
+              },
+              downstreamHostSelection: "aggregator_selected",
+            },
             pricing_provenance: pricingEvidence,
             ...(legacyPricing ? { pricing: legacyPricing } : {}),
             ...(typeof openRouterModel.context_length === "number"

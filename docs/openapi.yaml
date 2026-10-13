@@ -14536,6 +14536,37 @@ components:
           example: model
         owned_by:
           type: string
+        route_availability:
+          type: object
+          description: >-
+            Provider route availability facts. For OpenRouter, catalogListed describes the
+            public catalog only; accountEligibility remains unknown until the configured
+            account successfully executes the route. The downstream host is selected by
+            OpenRouter and cannot be pinned by this catalog response.
+          properties:
+            catalogListed:
+              type: boolean
+            accountEligibility:
+              type: string
+              enum: [unknown]
+            source:
+              type: object
+              properties:
+                id:
+                  type: string
+                modelId:
+                  type: string
+                retrievedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                stale:
+                  type: boolean
+                cacheTtlMs:
+                  type: integer
+            downstreamHostSelection:
+              type: string
+              enum: [aggregator_selected]
 
     ProxySubscription:
       type: object

@@ -608,6 +608,12 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
         max_output_tokens?: number;
         pricing_provenance?: { zeroCostEligibility?: string };
         pricing?: { input?: number };
+        route_availability?: {
+          catalogListed?: boolean;
+          accountEligibility?: string;
+          source?: { id?: string; modelId?: string; stale?: boolean; cacheTtlMs?: number };
+          downstreamHostSelection?: string;
+        };
       }>;
     };
     const freeRoute = body.data.find((model) => model.id === "openrouter/vendor/coder:free");
@@ -619,6 +625,11 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     assert.equal(freeRoute.context_length, 64000);
     assert.equal(freeRoute.max_output_tokens, 4096);
     assert.equal(freeRoute.pricing_provenance.zeroCostEligibility, "verified_free_variant");
+    assert.equal(freeRoute.route_availability.catalogListed, true);
+    assert.equal(freeRoute.route_availability.accountEligibility, "unknown");
+    assert.equal(freeRoute.route_availability.source?.modelId, "vendor/coder:free");
+    assert.equal(freeRoute.route_availability.source?.stale, false);
+    assert.equal(freeRoute.route_availability.downstreamHostSelection, "aggregator_selected");
     assert.ok(paidRoute, "the paid sibling remains a separate selectable route");
     assert.equal(paidRoute.free, false);
     assert.equal(paidRoute.pricing.input, 1);
