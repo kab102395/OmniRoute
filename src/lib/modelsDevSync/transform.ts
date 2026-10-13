@@ -121,7 +121,7 @@ export const MODELS_DEV_PROVIDER_MAP: Record<string, string[]> = {
   "google-vertex": ["vertex"],
   "google-vertex-anthropic": ["vertex"],
   vertex_ai: ["vertex"],
-  deepseek: ["deepseek", "if"], // if = Qoder (routes through DeepSeek)
+  deepseek: ["deepseek", "if"], // if = Qoder; metadata mirror, pricing is scoped separately below
   groq: ["groq"],
   xai: ["xai"],
   mistral: ["mistral"],
@@ -192,6 +192,16 @@ export function mapProviderId(modelsDevProviderId: string): string[] {
   return MODELS_DEV_PROVIDER_MAP[modelsDevProviderId] || [modelsDevProviderId];
 }
 
+/**
+ * Provider aliases may share model capabilities without sharing a billing route.
+ * In particular, Qoder (`if`) may expose DeepSeek models under its own credit plan;
+ * DeepSeek's direct API rates are not Qoder route prices.
+ */
+function mapPricingProviderId(modelsDevProviderId: string): string[] {
+  if (modelsDevProviderId === "deepseek") return ["deepseek"];
+  return mapProviderId(modelsDevProviderId);
+}
+
 // ─── Transform: Pricing ──────────────────────────────────
 
 /**
@@ -204,7 +214,7 @@ export function transformModelsDevToPricing(raw: ModelsDevData): PricingByProvid
   const result: PricingByProvider = {};
 
   for (const [providerId, providerData] of Object.entries(raw)) {
-    const omniRouteProviders = mapProviderId(providerId);
+    const omniRouteProviders = mapPricingProviderId(providerId);
 
     for (const [modelId, model] of Object.entries(providerData.models || {})) {
       if (!model.cost) continue;

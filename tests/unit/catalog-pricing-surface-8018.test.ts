@@ -65,6 +65,27 @@ describe("catalog pricing surface (#8018)", () => {
     assert.equal((entry.pricing as CatalogPricing).input, 0.006);
   });
 
+  it("does not present direct DeepSeek API rates as Qoder route prices", () => {
+    saveModelsDevPricing({
+      deepseek: {
+        "deepseek-v4-flash": { input: 0.3, output: 1.2, cached: 0.006 },
+      },
+    });
+
+    const qoder = enrichCatalogModelEntry({
+      id: "if/deepseek-v4-flash",
+      owned_by: "if",
+      root: "deepseek-v4-flash",
+    });
+
+    assert.equal(qoder.pricing, undefined);
+    assert.equal(
+      (qoder.pricing_provenance as { state?: string }).state,
+      "unavailable",
+      "the direct DeepSeek price source does not establish Qoder's account billing"
+    );
+  });
+
   it("keeps numeric pricing absent and marks pricing explicitly unavailable when unknown", () => {
     const entry = enrichCatalogModelEntry({
       id: "unknown/provider-model-xyz",

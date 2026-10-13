@@ -217,16 +217,21 @@ describe("modelsDevSync — transformModelsDevToPricing", () => {
     assert.equal(pricing.openai["o3-mini"].cache_creation, undefined);
   });
 
-  it("maps deepseek to both deepseek and if (Qoder) providers", () => {
+  it("keeps DeepSeek prices scoped to its own provider billing route", () => {
     const pricing = transformModelsDevToPricing(MOCK_MODELS_DEV_DATA);
 
     assert.ok(pricing.deepseek, "deepseek provider should exist");
-    assert.ok(pricing.if, "if (Qoder) provider should exist");
     assert.equal(pricing.deepseek["deepseek-chat"].input, 0.27);
     assert.equal(pricing.deepseek["deepseek-chat"].output, 1.1);
     assert.equal(pricing.deepseek["deepseek-chat"].cached, 0.07);
-    // Should be same in if provider
-    assert.equal(pricing.if["deepseek-chat"].input, 0.27);
+    assert.equal(pricing.if, undefined, "DeepSeek's price list does not establish Qoder billing");
+  });
+
+  it("continues mirroring DeepSeek capabilities to Qoder model routes", () => {
+    const capabilities = transformModelsDevToCapabilities(MOCK_MODELS_DEV_DATA);
+
+    assert.equal(capabilities.deepseek["deepseek-chat"].tool_call, true);
+    assert.equal(capabilities.if["deepseek-chat"].tool_call, true);
   });
 
   it("handles unknown providers by using the models.dev ID as-is", () => {
@@ -270,9 +275,9 @@ describe("modelsDevSync — transformModelsDevToPricing", () => {
     );
     // openai: 2 models × 2 providers (openai, cx) = 4
     // anthropic: 1 model × 2 providers (anthropic, cc) = 2
-    // deepseek: 1 model × 2 providers (deepseek, if) = 2
+    // deepseek: 1 model × 1 billing provider (deepseek) = 1
     // unknown-provider: 1 model × 1 provider = 1
-    assert.equal(totalModels, 9);
+    assert.equal(totalModels, 8);
   });
 });
 
