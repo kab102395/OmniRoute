@@ -59,12 +59,51 @@ test("GET /api/openapi/spec documents its conditional management auth contract",
   );
 });
 
+test("provider connection inventory documents its management auth and Praxis read contract", () => {
+  const operation = paths["/api/providers"]?.get;
+  assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }, { BearerAuth: [] }]);
+  assert.match(operation?.description ?? "", /when `requireLogin` is enabled/i);
+  assert.match(operation?.description ?? "", /tokens are never returned/i);
+  assert.deepEqual(
+    operation?.parameters?.map((parameter: { name?: string }) => parameter.name),
+    ["provider", "limit", "offset"]
+  );
+  assert.equal(
+    operation?.responses?.["200"]?.content?.["application/json"]?.schema?.$ref,
+    "#/components/schemas/ProviderConnectionsResponse"
+  );
+  assert.equal(
+    operation?.responses?.["401"]?.$ref,
+    "#/components/responses/ManagementAuthenticationRequired"
+  );
+  assert.equal(
+    operation?.responses?.["403"]?.$ref,
+    "#/components/responses/ManagementInvalidToken"
+  );
+
+  const response = raw.components?.schemas?.ProviderConnectionsResponse;
+  const connection = raw.components?.schemas?.ProviderConnection;
+  assert.deepEqual(response?.required, ["connections", "total"]);
+  assert.equal(response?.properties?.total?.type, "integer");
+  for (const field of [
+    "id",
+    "provider",
+    "authType",
+    "isActive",
+    "testStatus",
+    "rateLimitedUntil",
+  ]) {
+    assert.ok(connection?.properties?.[field], `provider connection must document ${field}`);
+  }
+  assert.match(connection?.properties?.apiKey?.description ?? "", /masked by default/i);
+});
+
 test("provider-limits documents cached quota provenance and management auth", () => {
   const getOperation = paths["/api/usage/provider-limits"]?.get;
   const postOperation = paths["/api/usage/provider-limits"]?.post;
 
   for (const operation of [getOperation, postOperation]) {
-    assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }]);
+    assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }, { BearerAuth: [] }]);
     assert.match(operation?.description ?? "", /when `requireLogin` is enabled/i);
     assert.equal(
       operation?.responses?.["401"]?.$ref,
@@ -90,7 +129,7 @@ test("provider-limits documents cached quota provenance and management auth", ()
 
 test("provider health matrix documents account and model routing health", () => {
   const operation = paths["/api/providers/health-matrix"]?.get;
-  assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }]);
+  assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }, { BearerAuth: [] }]);
   assert.match(operation?.description ?? "", /not a guarantee that a future request will succeed/i);
   assert.deepEqual(
     operation?.parameters?.find((parameter: { name?: string }) => parameter.name === "range")

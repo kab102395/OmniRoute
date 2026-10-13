@@ -2278,18 +2278,49 @@ paths:
     get:
       tags: [Providers]
       summary: List provider connections
+      description: >-
+        Returns sanitized provider connection metadata for management and service integrations.
+        When `requireLogin` is enabled, this endpoint requires management authentication through a
+        dashboard session or a management-authorized bearer credential. Provider-specific fields
+        are sanitized; access, refresh, and ID tokens are never returned. API-key
+        response masking follows the configured key-exposure setting. `total` is the number of
+        connections matching the optional provider filter before pagination.
+      security:
+        - ManagementSessionAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Restrict results to a provider id.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Maximum number of connections to return.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of matching connections to skip.
       responses:
         "200":
-          description: Provider connection list
+          description: Sanitized provider connection list and total matching count.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  connections:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/ProviderConnection"
+                $ref: "#/components/schemas/ProviderConnectionsResponse"
+        "401":
+          $ref: "#/components/responses/ManagementAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/ManagementInvalidToken"
     post:
       tags: [Providers]
       summary: Create provider connection
@@ -10627,9 +10658,11 @@ paths:
         Returns provider-level breaker health, account cooldown and terminal states, model
         lockouts, and request outcomes for the selected observation window. This is an
         operational snapshot, not a guarantee that a future request will succeed. Requires
-        management authentication when `requireLogin` is enabled.
+        management authentication when `requireLogin` is enabled. Management sessions and
+        management-authorized bearer credentials are accepted.
       security:
         - ManagementSessionAuth: []
+        - BearerAuth: []
       parameters:
         - name: provider
           in: query
@@ -12336,9 +12369,11 @@ paths:
         Returns cached provider quota and billing observations without querying upstream providers.
         Provider-specific `quotas`, `plan`, and `billing` values are preserved as reported; use
         `fetchedAt` and `source` to judge freshness and provenance. Requires management
-        authentication when `requireLogin` is enabled.
+        authentication when `requireLogin` is enabled. Management sessions and management-authorized
+        bearer credentials are accepted.
       security:
         - ManagementSessionAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Cached provider limits
@@ -12357,9 +12392,11 @@ paths:
       description: >-
         Refreshes provider quota and billing observations using configured provider connections.
         This may issue provider metadata/usage requests but does not execute model inference.
-        Requires management authentication when `requireLogin` is enabled.
+        Requires management authentication when `requireLogin` is enabled. Management sessions and
+        management-authorized bearer credentials are accepted.
       security:
         - ManagementSessionAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Refresh results and provider limits cache
@@ -15364,6 +15401,18 @@ components:
           type: string
         name:
           type: string
+        displayName:
+          type: string
+        email:
+          type: string
+        authType:
+          type: string
+        testStatus:
+          type: string
+        rateLimitedUntil:
+          type: string
+          format: date-time
+          nullable: true
         url:
           type: string
         isActive:
@@ -15374,12 +15423,32 @@ components:
           minimum: 0
         priority:
           type: integer
-        testStatus:
-          type: string
-          enum: [active, error, untested]
         createdAt:
           type: string
           format: date-time
+        apiKey:
+          type: string
+          description: >-
+            Stored API key, omitted when absent and masked by default. It may be revealed only when
+            the operator enables API-key exposure; callers should not depend on its presence.
+        providerSpecificData:
+          type: object
+          description: Provider-specific metadata sanitized for API responses.
+          additionalProperties: true
+      additionalProperties: true
+
+    ProviderConnectionsResponse:
+      type: object
+      required: [connections, total]
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderConnection"
+        total:
+          type: integer
+          minimum: 0
+          description: Number of records matching the filter before pagination.
 
     ProviderConnectionCreate:
       type: object
