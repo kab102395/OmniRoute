@@ -191,6 +191,56 @@ test("complete explicit zero rates remain known and do not trip finite USD limit
   assert.equal(status.weeklyExceeded, false);
 });
 
+test("provider-reported charges on failed requests count toward API-key USD limits", async () => {
+  const created = await apiKeysDb.createApiKey("Failed Receipt Key", "machine-limit-failed");
+  await apiKeysDb.updateApiKeyPermissions(created.id, {
+    usageLimitEnabled: true,
+    dailyUsageLimitUsd: 4,
+    weeklyUsageLimitUsd: 10,
+  });
+  await usageHistory.saveRequestUsage({
+    provider: "openrouter",
+    model: "vendor/model:free",
+    apiKeyId: created.id,
+    tokens: { input: 1000, output: 100 },
+    requestId: "failed-request-with-provider-charge",
+    accounting: {
+      kind: "provider_reported_billed_cost",
+      amountUsd: 5,
+      amountUsdExact: "5",
+      currency: "USD",
+      source: "openrouter.generation_api.total_cost",
+      pricingProvider: "openrouter",
+      pricingModel: "vendor/model:free",
+      pricingVersion: null,
+      pricingEffectiveAt: null,
+      pricingRetrievedAt: null,
+      pricingStale: null,
+      usageKind: "provider_reported_usage",
+      providerRequestId: "gen-failed-billed",
+    },
+    success: false,
+    timestamp: "2026-06-19T12:00:00.000Z",
+  });
+
+  const status = await usageLimits.getApiKeyUsageLimitStatus(
+    {
+      id: created.id,
+      usageLimitEnabled: true,
+      dailyUsageLimitUsd: 4,
+      weeklyUsageLimitUsd: 10,
+    },
+    { now: () => NOW }
+  );
+
+  assert.equal(status.dailySpentUsd, 5);
+  assert.equal(status.weeklySpentUsd, 5);
+  assert.equal(status.dailyPricingUnknown, false);
+  assert.equal(status.weeklyPricingUnknown, false);
+  assert.equal(status.dailyExceeded, true);
+  assert.equal(status.weeklyExceeded, false);
+});
+
 test("getApiKeyUsageLimitStatus aligns weekly USD spend with provider resetAt when available", async () => {
   await localDb.updatePricing({
     claude: {

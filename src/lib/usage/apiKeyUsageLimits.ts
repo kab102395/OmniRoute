@@ -364,14 +364,13 @@ async function getApiKeyUsdSpendSince(
   const rows = db
     .prepare(
       `
-      SELECT accounting_json as accountingJson
+      SELECT accounting_json as accountingJson, success
       FROM usage_history
       WHERE api_key_id = @apiKeyId
         AND timestamp >= @sinceIso
-        AND success = 1
     `
     )
-    .all({ apiKeyId, sinceIso }) as Array<{ accountingJson: string | null }>;
+    .all({ apiKeyId, sinceIso }) as Array<{ accountingJson: string | null; success: number }>;
 
   let total = 0;
   let pricingUnknown = false;
@@ -385,6 +384,10 @@ async function getApiKeyUsdSpendSince(
       accounting = null;
     }
     const kind = accounting?.kind;
+    // A failed gateway request can still incur a provider charge. Count it when
+    // a provider receipt confirms that charge; failures without a billable
+    // receipt are not treated as either spend or unknown priced usage.
+    if (row.success !== 1 && kind !== "provider_reported_billed_cost") continue;
     const amount = accounting?.amountUsd;
     if (
       (kind === "estimated_cost" ||
