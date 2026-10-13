@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   getHeaderValueCaseInsensitive,
   isFreeRouteOnlyRequested,
+  isZeroCostOnlyRequested,
   isToolCallingRequiredRequested,
   isSseMetadataRequested,
   resolveCompressionHeader,
@@ -51,6 +52,16 @@ test("isFreeRouteOnlyRequested recognizes only the explicit true header", () => 
   assert.equal(isFreeRouteOnlyRequested({ "x-omniroute-require-free-route": " TRUE " }), true);
   assert.equal(isFreeRouteOnlyRequested({ "x-omniroute-require-free-route": "yes" }), false);
   assert.equal(isFreeRouteOnlyRequested({}), false);
+});
+
+test("isZeroCostOnlyRequested recognizes only the explicit true header", () => {
+  assert.equal(
+    isZeroCostOnlyRequested(new Headers({ "X-OmniRoute-Require-Zero-Cost": "true" })),
+    true
+  );
+  assert.equal(isZeroCostOnlyRequested({ "x-omniroute-require-zero-cost": " TRUE " }), true);
+  assert.equal(isZeroCostOnlyRequested({ "x-omniroute-require-zero-cost": "yes" }), false);
+  assert.equal(isZeroCostOnlyRequested({}), false);
 });
 
 test("isToolCallingRequiredRequested recognizes only the explicit true header", () => {

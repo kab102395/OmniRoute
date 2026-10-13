@@ -78,6 +78,7 @@ function routingFinishReason(body: unknown): string | null {
 import {
   getHeaderValueCaseInsensitive,
   isFreeRouteOnlyRequested,
+  isZeroCostOnlyRequested,
   isStrictModelIdentityRequested,
   isToolCallingRequiredRequested,
   isSseMetadataRequested,
@@ -88,6 +89,7 @@ import {
 import {
   checkFreeRouteAdmission,
   checkToolCallingRouteAdmission,
+  checkZeroCostRouteAdmission,
 } from "./chatCore/freeRouteAdmission.ts";
 import { providerSupportsEmulatedToolCalling } from "../services/combo/comboStructure.ts";
 import { markCodexScopeRateLimited } from "./chatCore/codexFailover.ts";
@@ -584,6 +586,7 @@ export async function handleChatCore({
 }) {
   let { provider, model, extendedContext } = modelInfo;
   const freeRouteOnly = isFreeRouteOnlyRequested(clientRawRequest?.headers);
+  const zeroCostOnly = isZeroCostOnlyRequested(clientRawRequest?.headers);
   const strictModelRequested = isStrictModelIdentityRequested(clientRawRequest?.headers);
   const toolCallingRequired = isToolCallingRequiredRequested(clientRawRequest?.headers);
   const includeSseMetadata = isSseMetadataRequested(clientRawRequest?.headers);
@@ -601,7 +604,28 @@ export async function handleChatCore({
       { status: 400 }
     );
   }
-  if (freeRouteOnly) {
+  if (zeroCostOnly) {
+    const quotaRefreshSeconds = Number(
+      (cachedSettings as Record<string, unknown> | null)?.autoRefreshProviderQuotaInterval
+    );
+    const admission = await checkZeroCostRouteAdmission(
+      provider,
+      model,
+      credentials?.connectionId ?? connectionId,
+      (Number.isFinite(quotaRefreshSeconds) && quotaRefreshSeconds > 0
+        ? quotaRefreshSeconds
+        : 180) * 1000
+    );
+    if (admission.kind !== "eligible") {
+      const message =
+        admission.reason === "catalog_unverified" || admission.reason === "quota_unverified"
+          ? "The selected route's zero-cost eligibility cannot be verified."
+          : admission.reason === "quota_exhausted"
+            ? "The selected route's verified free quota is exhausted."
+            : "The selected route is not eligible for zero-cost execution.";
+      return Response.json(buildErrorBody(403, message), { status: 403 });
+    }
+  } else if (freeRouteOnly) {
     const admission = await checkFreeRouteAdmission(
       provider,
       model,
@@ -675,7 +699,11 @@ export async function handleChatCore({
   const odysseusStrictRoute =
     odysseusDecision.result === "allowed" && odysseusDecision.metadata?.freeOnly === true;
   const strictModelIdentity =
-    odysseusStrictRoute || freeRouteOnly || strictModelRequested || toolCallingRequired;
+    odysseusStrictRoute ||
+    freeRouteOnly ||
+    zeroCostOnly ||
+    strictModelRequested ||
+    toolCallingRequired;
   // Emit request.started event for real-time dashboard
   setImmediate(() => {
     emit("request.started", {

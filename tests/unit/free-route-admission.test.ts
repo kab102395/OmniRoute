@@ -8,7 +8,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-free-route-admi
 process.env.DATA_DIR = dataDir;
 process.env.OPENROUTER_CATALOG_TTL_MS = "60000";
 
-const { checkFreeRouteAdmission, checkToolCallingRouteAdmission } =
+const { checkFreeRouteAdmission, checkToolCallingRouteAdmission, checkZeroCostRouteAdmission } =
   await import("../../open-sse/handlers/chatCore/freeRouteAdmission.ts");
 const { getCurrentOpenRouterFreeRouteIds } =
   await import("../../src/lib/catalog/openrouterCatalog.ts");
@@ -164,6 +164,81 @@ test("free admission uses a fresh exact free verdict from the selected provider 
       reason: "not_free",
     }
   );
+});
+
+test("zero-cost admission reuses hard-stop metadata and fresh per-account quota facts", async () => {
+  const model = FREE_MODEL_BUDGETS.find(
+    (entry) => entry.provider === "groq" && entry.modelId === "openai/gpt-oss-120b"
+  );
+  assert.ok(model?.hardStopGuaranteed);
+  const connectionId = "groq-safe-account";
+  const checkFreeRoute = async () => ({
+    kind: "eligible" as const,
+    source: "provider_model_catalog" as const,
+  });
+  const now = new Date().toISOString();
+
+  const available = await checkZeroCostRouteAdmission(
+    "groq",
+    model.modelId,
+    connectionId,
+    180_000,
+    {
+      checkFreeRoute,
+      resolveQuota: async () => ({
+        status: "SAFE",
+        remainingFreeAllowance: 24,
+        resetAt: null,
+        checkedAt: now,
+      }),
+    }
+  );
+  const exhausted = await checkZeroCostRouteAdmission(
+    "groq",
+    model.modelId,
+    connectionId,
+    180_000,
+    {
+      checkFreeRoute,
+      resolveQuota: async () => ({
+        status: "EXHAUSTED",
+        remainingFreeAllowance: 0,
+        resetAt: null,
+        checkedAt: now,
+      }),
+    }
+  );
+  const unknown = await checkZeroCostRouteAdmission("groq", model.modelId, connectionId, 180_000, {
+    checkFreeRoute,
+    resolveQuota: async () => undefined,
+  });
+
+  assert.deepEqual(available, {
+    kind: "eligible",
+    source: "provider_model_catalog_and_quota",
+  });
+  assert.deepEqual(exhausted, { kind: "ineligible", reason: "quota_exhausted" });
+  assert.deepEqual(unknown, { kind: "ineligible", reason: "quota_unverified" });
+});
+
+test("zero-cost admission rejects curated free routes without a documented hard stop", async () => {
+  const model = FREE_MODEL_BUDGETS.find(
+    (entry) => entry.provider === "deepseek" && entry.modelId === "deepseek-v4-pro"
+  );
+  assert.ok(model);
+  assert.notEqual(model.hardStopGuaranteed, true);
+
+  const result = await checkZeroCostRouteAdmission("deepseek", model.modelId, "account", 180_000, {
+    checkFreeRoute: async () => ({
+      kind: "eligible",
+      source: "omniroute.free_model_catalog",
+    }),
+    resolveQuota: async () => {
+      throw new Error("quota must not be queried without a hard stop");
+    },
+  });
+
+  assert.deepEqual(result, { kind: "ineligible", reason: "no_hard_stop" });
 });
 
 test("free admission does not use stale provider catalog free verdicts", async () => {

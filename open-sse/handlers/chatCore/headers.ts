@@ -41,6 +41,17 @@ export function isFreeRouteOnlyRequested(
   );
 }
 
+/** Require zero-cost admission evidence for the selected route. */
+export function isZeroCostOnlyRequested(
+  headers: Record<string, unknown> | Headers | null | undefined
+): boolean {
+  return (
+    (getHeaderValueCaseInsensitive(headers, "x-omniroute-require-zero-cost") || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 /** Require dispatch to positively verify tool calling for the selected route. */
 export function isToolCallingRequiredRequested(
   headers: Record<string, unknown> | Headers | null | undefined

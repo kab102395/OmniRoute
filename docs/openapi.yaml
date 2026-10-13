@@ -1595,6 +1595,20 @@ paths:
             This does not establish account quota or guarantee provider hard-stop billing behavior.
             Cross-model fallback is disabled.
         - in: header
+          name: X-OmniRoute-Require-Zero-Cost
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: >-
+            When true, require zero-cost evidence at dispatch. OpenRouter requires fresh exact
+            free-route catalog membership; Hugging Face requires a fresh exact provider-pinned
+            free route. Other providers require a free route with a documented hard stop and a
+            fresh, non-exhausted account quota from OmniRoute's existing quota cache. Unknown or
+            stale evidence fails closed. Cross-model fallback is disabled. This does not override
+            organizational Authority or guarantee downstream billing behavior beyond the
+            provider facts OmniRoute can verify.
+        - in: header
           name: X-OmniRoute-Require-Tool-Calling
           required: false
           schema:

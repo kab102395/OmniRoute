@@ -500,7 +500,10 @@ When `free_only=true` or `require_tool_calling=true` is requested, a current Hug
 that meets those requirements is also emitted as a separate exact model row using its `route_model`
 ID. That row carries the pinned host, route-scoped capability, price, and catalog provenance.
 Dispatch with `X-OmniRoute-Require-Free-Route: true` to recheck the current host-specific free
-classification. A current free-promotion label is not an account-level spending guarantee.
+classification. That header does not prove a spending ceiling. For a free-only Work that must not
+incur charges, also send `X-OmniRoute-Require-Zero-Cost: true`; OmniRoute requires a fresh route
+classification and applies its existing hard-stop and account-quota checks where the provider's
+free route can transition to paid usage.
 
 For tool-using Work, dispatch with `X-OmniRoute-Require-Tool-Calling: true`. OmniRoute rechecks
 positive tool-support metadata for the exact selected route before sending the request. Unknown or

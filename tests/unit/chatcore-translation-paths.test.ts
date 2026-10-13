@@ -2549,7 +2549,7 @@ test("chatCore dispatches the exact current OpenRouter free variant and rejects 
       provider: { allow_fallbacks: false },
     },
     requestHeaders: {
-      "X-OmniRoute-Require-Free-Route": "true",
+      "X-OmniRoute-Require-Zero-Cost": "true",
       "X-OmniRoute-Strict-Model": "true",
     },
   });

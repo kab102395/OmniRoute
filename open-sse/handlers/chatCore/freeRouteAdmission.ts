@@ -11,6 +11,14 @@ import { getSyncStatus as getModelsDevSyncStatus } from "@/lib/modelsDevSync";
 import { resolveProviderId } from "@/shared/constants/providers";
 import { isFreeModel } from "@/shared/utils/freeModels";
 import { isFreshCatalogTimestamp } from "@/lib/catalog/metadataFreshness";
+import { FREE_MODEL_BUDGETS } from "@omniroute/open-sse/config/freeModelCatalog.ts";
+import {
+  classifyStrictZeroCostCandidate,
+  findBudgetEntry,
+} from "@omniroute/open-sse/services/autoCombo/strictZeroCostFilter";
+import { refreshAndResolveFreeAccessState } from "@omniroute/open-sse/services/autoCombo/freeAccessQuota";
+import { SYNTHETIC_NOAUTH_CONNECTION_ID } from "@omniroute/open-sse/services/autoCombo/resilienceCandidateFilter";
+import type { FreeAccessState } from "@omniroute/open-sse/services/autoCombo/strictZeroCostFilter";
 
 export type FreeRouteAdmission =
   | {
@@ -28,6 +36,19 @@ export type ToolCallingRouteAdmission =
   | {
       readonly kind: "ineligible";
       readonly reason: "catalog_unverified" | "unsupported" | "unknown";
+    };
+
+export type ZeroCostRouteAdmission =
+  | { readonly kind: "eligible"; readonly source: string }
+  | {
+      readonly kind: "ineligible";
+      readonly reason:
+        | "catalog_unverified"
+        | "not_free"
+        | "no_hard_stop"
+        | "quota_unverified"
+        | "quota_exhausted"
+        | "no_connection";
     };
 
 const PROVIDER_ROUTE_FRESHNESS_MS = 15 * 60 * 1000;
@@ -222,4 +243,79 @@ export async function checkFreeRouteAdmission(
   return isFreeModel(provider, { id: model })
     ? { kind: "eligible", source: "omniroute.free_model_catalog" }
     : { kind: "ineligible", reason: "not_free" };
+}
+
+/**
+ * Require stronger no-charge evidence than the free catalog classification.
+ * Current exact OpenRouter and Hugging Face free-route catalogs are authoritative
+ * for their pinned/free routes. Other providers reuse the existing curated
+ * hard-stop facts and quota cache used by STRICT_ZERO_COST.
+ */
+export async function checkZeroCostRouteAdmission(
+  provider: string,
+  model: string,
+  connectionId?: string | null,
+  maxStateAgeMs = 180_000,
+  dependencies: {
+    checkFreeRoute?: typeof checkFreeRouteAdmission;
+    resolveQuota?: (provider: string, connectionId: string) => Promise<FreeAccessState | undefined>;
+  } = {}
+): Promise<ZeroCostRouteAdmission> {
+  const canonicalProvider = resolveProviderId(provider);
+  const freeAdmission = await (dependencies.checkFreeRoute ?? checkFreeRouteAdmission)(
+    provider,
+    model,
+    connectionId
+  );
+  if (freeAdmission.kind !== "eligible") {
+    return { kind: "ineligible", reason: freeAdmission.reason };
+  }
+
+  if (canonicalProvider === "openrouter" || canonicalProvider === "huggingface") {
+    return { kind: "eligible", source: freeAdmission.source };
+  }
+
+  const providerPrefix = [`${provider}/`, `${canonicalProvider}/`].find((prefix) =>
+    model.startsWith(prefix)
+  );
+  const relativeModelId = providerPrefix ? model.slice(providerPrefix.length) : model;
+  let connectionKey = connectionId || undefined;
+  const candidate = {
+    provider: canonicalProvider,
+    model: relativeModelId,
+    connectionId: connectionKey ?? null,
+  };
+  const budget = findBudgetEntry(candidate, FREE_MODEL_BUDGETS);
+  if (!budget?.hardStopGuaranteed) {
+    return { kind: "ineligible", reason: "no_hard_stop" };
+  }
+  connectionKey =
+    connectionKey || (budget.freeType === "keyless" ? SYNTHETIC_NOAUTH_CONNECTION_ID : undefined);
+  if (!connectionKey) return { kind: "ineligible", reason: "no_connection" };
+  candidate.connectionId = connectionKey;
+
+  const state =
+    connectionKey === SYNTHETIC_NOAUTH_CONNECTION_ID
+      ? undefined
+      : await (dependencies.resolveQuota ?? refreshAndResolveFreeAccessState)(
+          provider,
+          connectionKey
+        );
+  const verdict = classifyStrictZeroCostCandidate(candidate, budget, () => state, {
+    minRemainingAllowance: 1,
+    maxStateAgeMs,
+  });
+  if (verdict.outcome === "safe") {
+    return { kind: "eligible", source: "provider_model_catalog_and_quota" };
+  }
+  if (verdict.outcome === "no-hard-stop") {
+    return { kind: "ineligible", reason: "no_hard_stop" };
+  }
+  if (verdict.outcome === "no-connection") {
+    return { kind: "ineligible", reason: "no_connection" };
+  }
+  if (verdict.outcome === "exhausted") {
+    return { kind: "ineligible", reason: "quota_exhausted" };
+  }
+  return { kind: "ineligible", reason: "quota_unverified" };
 }

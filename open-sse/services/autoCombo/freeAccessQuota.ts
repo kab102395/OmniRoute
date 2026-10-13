@@ -58,7 +58,7 @@ interface CacheEntry {
 // cache. Cleared per-entry by `invalidateFreeAccessState`, on a failed
 // refresh, or by the periodic sweep below; never wholesale.
 const cache = new Map<string, CacheEntry>();
-const inFlight = new Set<string>();
+const inFlight = new Map<string, Promise<void>>();
 let resolveCallCount = 0;
 
 function cacheKey(provider: string, connectionId: string): string {
@@ -126,52 +126,67 @@ function extractRemainingAllowance(usage: unknown): number | null {
   return worstPercent; // percentage points; the filter's threshold is compared against this unit
 }
 
-async function refresh(provider: string, connectionId: string): Promise<void> {
+function refresh(provider: string, connectionId: string): Promise<void> {
   const key = cacheKey(provider, connectionId);
-  if (inFlight.has(key)) return;
-  if (inFlight.size >= MAX_CONCURRENT_REFRESHES) return; // thundering-herd guard — see const doc above
-  inFlight.add(key);
-  try {
-    const connections = await getCachedProviderConnections();
-    const connection = connections.find(
-      (c): c is Record<string, unknown> =>
-        !!c &&
-        typeof c === "object" &&
-        (c as Record<string, unknown>).id === connectionId &&
-        (c as Record<string, unknown>).provider === provider
-    );
-    if (!connection) {
+  const active = inFlight.get(key);
+  if (active) return active;
+  if (inFlight.size >= MAX_CONCURRENT_REFRESHES) return Promise.resolve(); // bounded refresh fan-out
+  let pending: Promise<void>;
+  pending = Promise.resolve().then(async () => {
+    try {
+      const connections = await getCachedProviderConnections();
+      const connection = connections.find(
+        (c): c is Record<string, unknown> =>
+          !!c &&
+          typeof c === "object" &&
+          (c as Record<string, unknown>).id === connectionId &&
+          (c as Record<string, unknown>).provider === provider
+      );
+      if (!connection) {
+        cache.delete(key);
+        return;
+      }
+      const usage = await getUsageForProvider(
+        connection as unknown as Parameters<typeof getUsageForProvider>[0],
+        { forceRefresh: false }
+      );
+      const remaining = extractRemainingAllowance(usage);
+      const state: FreeAccessState = {
+        status: remaining === null ? "UNKNOWN" : remaining > 0 ? "SAFE" : "EXHAUSTED",
+        remainingFreeAllowance: remaining,
+        resetAt:
+          usage &&
+          typeof usage === "object" &&
+          typeof (usage as Record<string, unknown>).resetAt === "string"
+            ? ((usage as Record<string, unknown>).resetAt as string)
+            : null,
+        checkedAt: new Date().toISOString(),
+      };
+      cache.set(key, { state, fetchedAtMs: Date.now() });
+    } catch (err) {
+      // A failed lookup must never leave a stale SAFE entry behind — drop it so
+      // the next read is a clean cache miss (UNKNOWN), not a lucky reuse.
       cache.delete(key);
-      return;
+      log.warn("AUTO", "STRICT_ZERO_COST: usage refresh failed, treating as UNKNOWN", {
+        provider,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      if (inFlight.get(key) === pending) inFlight.delete(key);
     }
-    const usage = await getUsageForProvider(
-      connection as unknown as Parameters<typeof getUsageForProvider>[0],
-      { forceRefresh: false }
-    );
-    const remaining = extractRemainingAllowance(usage);
-    const state: FreeAccessState = {
-      status: remaining === null ? "UNKNOWN" : remaining > 0 ? "SAFE" : "EXHAUSTED",
-      remainingFreeAllowance: remaining,
-      resetAt:
-        usage &&
-        typeof usage === "object" &&
-        typeof (usage as Record<string, unknown>).resetAt === "string"
-          ? ((usage as Record<string, unknown>).resetAt as string)
-          : null,
-      checkedAt: new Date().toISOString(),
-    };
-    cache.set(key, { state, fetchedAtMs: Date.now() });
-  } catch (err) {
-    // A failed lookup must never leave a stale SAFE entry behind — drop it so
-    // the next read is a clean cache miss (UNKNOWN), not a lucky reuse.
-    cache.delete(key);
-    log.warn("AUTO", "STRICT_ZERO_COST: usage refresh failed, treating as UNKNOWN", {
-      provider,
-      err: err instanceof Error ? err.message : String(err),
-    });
-  } finally {
-    inFlight.delete(key);
-  }
+  });
+  inFlight.set(key, pending);
+  return pending;
+}
+
+/** Await the existing bounded quota refresh when exact-route dispatch requires proof. */
+export async function refreshAndResolveFreeAccessState(
+  provider: string,
+  connectionId: string
+): Promise<FreeAccessState | undefined> {
+  if (!USAGE_FETCHER_PROVIDER_SET.has(provider as UsageFetcherProvider)) return undefined;
+  await refresh(provider, connectionId);
+  return resolveFreeAccessState(provider, connectionId);
 }
 
 /**

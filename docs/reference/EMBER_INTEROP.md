@@ -55,12 +55,14 @@ The returned route metadata remains authoritative for the facts it names:
 
 For strict identity, select an exact route and send that exact model id with
 `X-OmniRoute-Strict-Model: true`. A dynamic router or a route whose aggregator may choose a
-downstream host cannot satisfy a requirement that pins that downstream identity. For free-only
-dispatch, also send `X-OmniRoute-Require-Free-Route: true`; this rechecks current free-route
-eligibility at dispatch and rejects stale/unverified OpenRouter catalog data. These dispatch
-constraints do not establish account quota or a provider hard-stop guarantee beyond the route's
-catalog facts. Strict identity also bypasses configured cross-provider upstream proxy routing and
-its fallback leg, because those paths are outside the selected route's verified identity.
+downstream host cannot satisfy a requirement that pins that downstream identity. For current
+free-route classification, send `X-OmniRoute-Require-Free-Route: true`; it rejects stale or
+unverified OpenRouter catalog data. For a free-only Work that must not incur charges, also send
+`X-OmniRoute-Require-Zero-Cost: true`. OpenRouter and exact Hugging Face provider routes use their
+fresh authoritative free-route catalogs. Other providers require a documented hard stop and a
+fresh, non-exhausted quota for the selected account; unknown evidence fails closed. Strict identity
+also bypasses configured cross-provider upstream proxy routing and its fallback leg, because those
+paths are outside the selected route's verified identity.
 
 When Work requires tool calling, send `X-OmniRoute-Require-Tool-Calling: true`. Dispatch then
 rechecks positive tool-support evidence for the exact OpenRouter or Hugging Face provider route,

@@ -345,6 +345,7 @@ describe("cors/origins.STATIC_CORS_HEADERS", () => {
     assert.match(allowHeaders[0], /X-OmniRoute-Lease-Generation/i);
     for (const allowedHeaders of allowHeaders) {
       assert.match(allowedHeaders, /X-OmniRoute-Require-Free-Route/i);
+      assert.match(allowedHeaders, /X-OmniRoute-Require-Zero-Cost/i);
       assert.match(allowedHeaders, /X-OmniRoute-Include-SSE-Metadata/i);
       assert.match(allowedHeaders, /X-OmniRoute-Require-Tool-Calling/i);
       assert.match(allowedHeaders, /X-OmniRoute-Strict-Model/i);

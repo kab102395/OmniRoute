@@ -120,6 +120,12 @@ test("call-log detail contract exposes persisted execution attempt accounting", 
   const detail = raw.components?.schemas?.CallLogDetail;
   const attempts = raw.components?.schemas?.CallLogExecutionAttempt;
   const accounting = raw.components?.schemas?.CallLogAccounting;
+  const zeroCostParameter = completionOperation?.parameters?.find(
+    (parameter) => parameter.name === "X-OmniRoute-Require-Zero-Cost"
+  );
+  assert.equal(zeroCostParameter?.in, "header");
+  assert.match(zeroCostParameter?.description ?? "", /documented hard stop/i);
+  assert.match(zeroCostParameter?.description ?? "", /quota/i);
   assert.equal(
     detail?.properties?.pipelinePayloads?.properties?.executionAttempts?.items?.$ref,
     "#/components/schemas/CallLogExecutionAttempt"
