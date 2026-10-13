@@ -743,7 +743,13 @@ export async function prepareVirtualAutoComboInputs(
           }
           // Registry models are provider-wide. A non-registry default (for a custom
           // or passthrough model) is scoped only to connections that selected it.
-          return registryModelIdSet.has(modelId) || conn.defaultModel?.trim() === modelId;
+          const isCurrentOpenRouterFreeRoute =
+            providerId === "openrouter" && currentOpenRouterFreeRoutes?.has(modelId) === true;
+          return (
+            registryModelIdSet.has(modelId) ||
+            conn.defaultModel?.trim() === modelId ||
+            isCurrentOpenRouterFreeRoute
+          );
         })
         .map((conn) => conn.id);
       if (allowedConnectionIds.length === 0) continue;

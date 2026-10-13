@@ -12,6 +12,9 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const virtualFactory = await import("../../open-sse/services/autoCombo/virtualFactory.ts");
+const openRouterCatalog = await import("../../src/lib/catalog/openrouterCatalog.ts");
+const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_OPENROUTER_TTL = process.env.OPENROUTER_CATALOG_TTL_MS;
 
 type VirtualComboResult = Awaited<ReturnType<typeof virtualFactory.createVirtualAutoCombo>>;
 
@@ -56,6 +59,78 @@ test("createVirtualAutoCombo returns an executable auto combo for API-key connec
   assert.equal(openaiModel.kind, "model");
   assert.equal(combo.autoConfig.routerStrategy, "lkgp");
   assert.ok(combo.autoConfig.candidatePool.includes("openai"));
+});
+
+test("auto candidate discovery follows rotating exact OpenRouter free routes", async () => {
+  const connection = await providersDb.createProviderConnection({
+    provider: "openrouter",
+    authType: "apikey",
+    name: "OpenRouter catalog test",
+    apiKey: "sk-or-test",
+    defaultModel: "operator/default-model",
+  });
+  process.env.OPENROUTER_CATALOG_TTL_MS = "60000";
+  let catalogRows = [
+    { id: "vendor/current-a:free", supported_parameters: ["tools"] },
+    { id: "vendor/paid-a", pricing: { prompt: "0.000001", completion: "0.000002" } },
+  ];
+  let catalogFetches = 0;
+  globalThis.fetch = async (input) => {
+    assert.equal(String(input), "https://openrouter.ai/api/v1/models");
+    catalogFetches++;
+    return new Response(JSON.stringify({ data: catalogRows }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const currentRoutes = await openRouterCatalog.getCurrentOpenRouterFreeRouteMetadata();
+    assert.deepEqual(
+      [...(currentRoutes?.keys() ?? [])],
+      ["vendor/current-a:free"],
+      "the upstream fixture must produce one verified exact free route"
+    );
+    const prepared = await virtualFactory.prepareVirtualAutoComboInputs();
+    const first = await virtualFactory.createVirtualAutoComboFromPrepared(prepared, undefined);
+    const firstRoute = first.models.find(
+      (candidate) => candidate.model === "openrouter/vendor/current-a:free"
+    );
+    assert.ok(
+      firstRoute,
+      `current free route should enter auto candidates without waiting for sync; ` +
+        `models=${JSON.stringify(first.models.map((candidate) => candidate.model))} ` +
+        `catalogFetches=${catalogFetches}`
+    );
+    assert.deepEqual(firstRoute.allowedConnectionIds, [connection.id]);
+    assert.equal(firstRoute.resolvedSupportsTools, true);
+    assert.equal(catalogFetches, 1);
+
+    catalogRows = [
+      { id: "vendor/current-b:free", supported_parameters: ["tools"] },
+      { id: "vendor/paid-a", pricing: { prompt: "0.000001", completion: "0.000002" } },
+    ];
+    const refreshed = await openRouterCatalog.refreshOpenRouterCatalog();
+    assert.equal(refreshed.ok, true);
+
+    const second = await virtualFactory.createVirtualAutoCombo(undefined);
+    assert.equal(
+      second.models.some((candidate) => candidate.model === "openrouter/vendor/current-a:free"),
+      false,
+      "removed free route must leave the refreshed candidate set"
+    );
+    const secondRoute = second.models.find(
+      (candidate) => candidate.model === "openrouter/vendor/current-b:free"
+    );
+    assert.ok(secondRoute, "replacement free route should enter the candidate set");
+    assert.deepEqual(secondRoute.allowedConnectionIds, [connection.id]);
+    assert.equal(secondRoute.resolvedSupportsTools, true);
+    assert.equal(catalogFetches, 2, "the replacement candidate uses the refreshed shared catalog");
+  } finally {
+    globalThis.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_OPENROUTER_TTL === undefined) delete process.env.OPENROUTER_CATALOG_TTL_MS;
+    else process.env.OPENROUTER_CATALOG_TTL_MS = ORIGINAL_OPENROUTER_TTL;
+  }
 });
 
 test("createVirtualAutoCombo includes OAuth accessToken connections with real expiry fields", async () => {
