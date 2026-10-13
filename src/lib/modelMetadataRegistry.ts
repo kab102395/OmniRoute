@@ -473,7 +473,9 @@ function buildSyncedPricingProvenance(
 ): Record<string, unknown> {
   const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
   const validRetrievedAt = Number.isFinite(retrievedAtMs);
-  const ageMs = validRetrievedAt ? Math.max(0, Date.now() - retrievedAtMs) : null;
+  const now = Date.now();
+  const futureDated = validRetrievedAt && retrievedAtMs > now;
+  const ageMs = validRetrievedAt && !futureDated ? now - retrievedAtMs : null;
   return {
     state: "third_party_reported_pricing",
     source: {
@@ -481,7 +483,7 @@ function buildSyncedPricingProvenance(
       retrievedAt: validRetrievedAt ? retrievedAt : null,
       cacheTtlMs: ttlMs,
       ageMs,
-      stale: validRetrievedAt ? ageMs! > ttlMs : null,
+      stale: validRetrievedAt ? futureDated || ageMs! > ttlMs : null,
     },
     routeModelId: modelId,
     currency: "USD",

@@ -176,6 +176,32 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
     assert.equal(provenance.source.stale, true);
   });
 
+  it("does not treat future-dated synchronized pricing as fresh", () => {
+    const futureSnapshot: CatalogEnrichmentSnapshot = {
+      modelsDevPricing: {},
+      pricingSourceStatus: {
+        modelsDevRetrievedAt: "2999-01-01T00:00:00.000Z",
+        modelsDevTtlMs: 86_400_000,
+        liteLlmRetrievedAt: "2999-01-01T00:00:00.000Z",
+        liteLlmTtlMs: 86_400_000,
+      },
+    };
+    const entry = enrichCatalogModelEntry(
+      {
+        id: "openai/babbage-002",
+        owned_by: "openai",
+        root: "babbage-002",
+      },
+      undefined,
+      futureSnapshot
+    );
+    const provenance = entry.pricing_provenance as {
+      source: { ageMs: number | null; stale: boolean };
+    };
+    assert.equal(provenance.source.ageMs, null);
+    assert.equal(provenance.source.stale, true);
+  });
+
   it("does not imply source or freshness for a pre-populated catalog price", () => {
     const entry = enrichCatalogModelEntry({
       id: "openai/gpt-4o",

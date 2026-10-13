@@ -22,7 +22,8 @@ function source(now: number, url = DEEPSEEK_PRICING_URL) {
     url,
     retrievedAt: SOURCE_RETRIEVED_AT,
     cacheTtlMs: SOURCE_TTL_MS,
-    stale: !Number.isFinite(retrievedAtMs) || now - retrievedAtMs > SOURCE_TTL_MS,
+    stale:
+      !Number.isFinite(retrievedAtMs) || retrievedAtMs > now || now - retrievedAtMs > SOURCE_TTL_MS,
   };
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, before, after } from "node:test";
 import { enrichCatalogModelEntry } from "../../src/lib/modelMetadataRegistry.ts";
+import { getDeepseekPricingEvidence } from "../../src/lib/catalog/deepseekPricing.ts";
 import {
   saveModelsDevPricing,
   clearModelsDevPricing,
@@ -31,6 +32,14 @@ describe("catalog pricing surface (#8018)", () => {
     } catch {
       // ignore
     }
+  });
+
+  it("treats future-dated DeepSeek pricing evidence as stale", () => {
+    const evidence = getDeepseekPricingEvidence(
+      "deepseek-v4-pro",
+      Date.parse("2026-10-13T00:00:00Z")
+    );
+    assert.equal(evidence?.source.stale, true);
   });
 
   it("attaches models.dev pricing onto catalog entries", () => {
