@@ -43,6 +43,16 @@ export interface AutoComboCandidateQuota {
   observedAt: string;
 }
 
+export interface AutoComboCandidateQuotaWindow {
+  key: string;
+  remaining: number;
+  limit: number;
+  resetAt: string | null;
+  observedAt: string;
+  source: string | null;
+  displayName?: string;
+}
+
 export function getCandidateReachabilityStatus(input: {
   connectionLookupKnown: boolean;
   breakerReachable: boolean;
@@ -78,6 +88,8 @@ export interface AutoComboCandidateView {
   connectionCooldown: boolean;
   modelLocked: boolean;
   quota: AutoComboCandidateQuota | null;
+  /** All normalized free-window quota facts available in the account cache. */
+  quotaWindows: AutoComboCandidateQuotaWindow[];
   /**
    * Why STRICT_ZERO_COST would exclude this candidate from dispatch, or null
    * when it would not — and null as well when the policy is off, which is the
@@ -115,6 +127,33 @@ export function buildCandidateQuota(
   };
 }
 
+export function buildCandidateQuotaWindows(
+  free: boolean,
+  cache: ProviderLimitsCacheEntry | null | undefined
+): AutoComboCandidateQuotaWindow[] {
+  if (!free || !cache?.fetchedAt || !cache.quotas) return [];
+  return Object.entries(cache.quotas).flatMap(([key, value]) => {
+    if (!key.startsWith("free_") || !value || typeof value !== "object" || Array.isArray(value)) {
+      return [];
+    }
+    const quota = value as Record<string, unknown>;
+    const remaining = finiteNonNegative(quota.remaining);
+    const limit = finiteNonNegative(quota.total);
+    if (remaining === null || limit === null) return [];
+    return [
+      {
+        key,
+        remaining: Math.min(remaining, limit),
+        limit,
+        resetAt: typeof quota.resetAt === "string" ? quota.resetAt : null,
+        observedAt: cache.fetchedAt,
+        source: cache.source ?? null,
+        ...(typeof quota.displayName === "string" ? { displayName: quota.displayName } : {}),
+      },
+    ];
+  });
+}
+
 export function buildCandidateView(input: {
   provider: string;
   connectionId: string;
@@ -146,6 +185,7 @@ export function buildCandidateView(input: {
     connectionCooldown: input.connectionCooldown,
     modelLocked: input.modelLocked,
     quota: buildCandidateQuota(free, input.cache),
+    quotaWindows: buildCandidateQuotaWindows(free, input.cache),
     freeAccessExclusion: input.freeAccessExclusion,
   };
 }

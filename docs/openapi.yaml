@@ -12854,6 +12854,34 @@ paths:
                         quota:
                           type: object
                           nullable: true
+                          description: Legacy daily free quota projection; retained for compatibility.
+                        quotaWindows:
+                          type: array
+                          description: >-
+                            Every cached free quota window for this provider account, such as
+                            OpenRouter's daily and rolling per-minute windows. observedAt is the
+                            cache retrieval timestamp; consumers must consider its age.
+                          items:
+                            type: object
+                            required: [key, remaining, limit, resetAt, observedAt, source]
+                            properties:
+                              key:
+                                type: string
+                              remaining:
+                                type: number
+                              limit:
+                                type: number
+                              resetAt:
+                                type: string
+                                nullable: true
+                              observedAt:
+                                type: string
+                                format: date-time
+                              source:
+                                type: string
+                                nullable: true
+                              displayName:
+                                type: string
   /api/v1/batches:
     get:
       tags:

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildCandidateQuota,
+  buildCandidateQuotaWindows,
   buildCandidateView,
   getCandidateReachabilityStatus,
 } from "../../open-sse/handlers/autoComboCandidates.ts";
@@ -73,6 +74,52 @@ test("exhausted free quota is reported as zero remaining, not unknown", () => {
   });
   assert.equal(view.quota?.remaining, 0);
   assert.equal(view.quota?.limit, 1000);
+});
+
+test("candidate diagnostics preserve each cached free quota window", () => {
+  const quotaCache = {
+    ...cache({ remaining: 7, total: 50, resetAt: "2026-09-09T00:00:00.000Z" }),
+    quotas: {
+      free_daily: {
+        remaining: 7,
+        total: 50,
+        resetAt: "2026-09-09T00:00:00.000Z",
+        displayName: "Free-tier requests (daily)",
+      },
+      free_rpm: {
+        remaining: 18,
+        total: 20,
+        resetAt: null,
+        displayName: "Free-tier requests (per minute)",
+      },
+      credits: { remaining: 5, total: 10 },
+    },
+  };
+  const withRpm = buildCandidateQuotaWindows(true, quotaCache);
+  assert.deepEqual(
+    withRpm.map(({ key, remaining, limit, resetAt, source }) => ({
+      key,
+      remaining,
+      limit,
+      resetAt,
+      source,
+    })),
+    [
+      {
+        key: "free_daily",
+        remaining: 7,
+        limit: 50,
+        resetAt: "2026-09-09T00:00:00.000Z",
+        source: null,
+      },
+      { key: "free_rpm", remaining: 18, limit: 20, resetAt: null, source: null },
+    ]
+  );
+  assert.deepEqual(
+    candidate({ cache: quotaCache }).quotaWindows.map(({ key }) => key),
+    ["free_daily", "free_rpm"],
+    "the account candidate response must include all free quota windows"
+  );
 });
 
 test("breaker and cooldown state are preserved without affecting routing", () => {
