@@ -79,10 +79,10 @@ test("#8032 leaf fallback: cline-pass/kimi-k3 resolves MODEL_SPECS kimi-k3 visio
   assert.equal(caps.supportsVision, true);
 });
 
-test("DeepSeek legacy v4-pro route resolves to V4.1-Flash multimodal capabilities", () => {
+test("DeepSeek V4-Pro route remains text-only while V4.1 Flash is multimodal", () => {
   const caps = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-v4-pro");
-  assert.equal(caps.supportsVision, true);
-  assert.ok(caps.modalitiesInput.includes("image"));
+  assert.equal(caps.supportsVision, false);
+  assert.equal(caps.modalitiesInput.includes("image"), false);
   assert.equal(caps.toolCalling, true);
 });
 

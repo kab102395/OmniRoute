@@ -427,7 +427,7 @@ test("Codex Fast service tier applies GPT-5.5 and GPT-5.6 credit multipliers", a
 
 test("DeepSeek estimates carry provider pricing provenance and freshness", async () => {
   const originalNow = Date.now;
-  Date.now = () => Date.parse("2026-10-13T12:00:00.000Z");
+  Date.now = () => Date.parse("2026-10-13T21:00:00.000Z");
   try {
     modelsDevSync.saveModelsDevPricing({
       deepseek: { "deepseek-v4-pro": { input: 9, output: 99, cached: 8 } },
@@ -437,11 +437,11 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
       output: 1000,
     });
 
-    assert.ok(Math.abs(estimate.costUsd - 0.0015) < 1e-12);
+    assert.ok(Math.abs(estimate.costUsd - 0.00528) < 1e-12);
     assert.equal(estimate.costKnown, true);
     assert.equal(estimate.pricingEvidence.source, "deepseek");
     assert.equal(estimate.pricingEvidence.modelId, "deepseek-v4-pro");
-    assert.equal(estimate.pricingEvidence.retrievedAt, "2026-10-13T06:56:49.000Z");
+    assert.equal(estimate.pricingEvidence.retrievedAt, "2026-10-13T20:08:48.000Z");
     assert.equal(estimate.pricingEvidence.ttlMs, 7 * 24 * 60 * 60 * 1000);
     assert.equal(estimate.pricingEvidence.stale, false);
 
@@ -454,13 +454,13 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
       pricingEvidence: estimate.pricingEvidence,
     });
     assert.equal(accounting.source, "deepseek.api_pricing");
-    assert.equal(accounting.pricingRetrievedAt, "2026-10-13T06:56:49.000Z");
+    assert.equal(accounting.pricingRetrievedAt, "2026-10-13T20:08:48.000Z");
     assert.equal(accounting.pricingStale, false);
     assert.match(
       accounting.pricingCondition ?? "",
       /peak rates as the conservative schedule bound/
     );
-    assert.match(accounting.pricingCondition ?? "", /V4.1-Flash at Flash rates/);
+    assert.doesNotMatch(accounting.pricingCondition ?? "", /V4.1-Flash at Flash rates/);
 
     modelsDevSync.clearModelsDevPricing();
 
@@ -469,7 +469,7 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
       input: 1000,
       output: 1000,
     });
-    assert.ok(Math.abs(staleEstimate.costUsd - 0.0015) < 1e-12);
+    assert.ok(Math.abs(staleEstimate.costUsd - 0.00528) < 1e-12);
     assert.equal(staleEstimate.costKnown, false);
     assert.equal(staleEstimate.pricingEvidence.stale, true);
   } finally {

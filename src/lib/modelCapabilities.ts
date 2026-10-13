@@ -490,11 +490,14 @@ export function modelIdLikelyVision(modelId: string | null | undefined): boolean
  * the command-code alias/id so only the Command-Code-gateway Codex variants
  * are overridden; genuine multimodal `gpt-5.x` chat models (e.g. `gpt-5.5`,
  * `gpt-5.4-mini`, real OpenAI `openai/gpt-5.3-codex`) keep their vision verdict.
+ * DeepSeek V4-Pro-0813: the official API catalog is text-only even if an older
+ * alias snapshot or third-party model feed reports image input.
  */
 const KNOWN_TEXT_ONLY_DESPITE_SYNC: readonly RegExp[] = [
   /(?:^|\/)mimo-v2\.5-pro$/i,
   /(?:^|\/)mimo-v2-pro$/i,
   /^(?:cmd|command-code)\/gpt-5\.3-codex(?:-|$)/i,
+  /(?:^|\/)deepseek-v4-pro$/i,
 ];
 
 function isKnownTextOnlyDespiteSync(modelId: string | null | undefined): boolean {
@@ -897,11 +900,16 @@ export function getResolvedModelCapabilities(
 
   const nativeDeepseekV41FlashRoute =
     resolved.provider === "deepseek" &&
+    ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(
+      resolved.model || ""
+    );
+  const nativeDeepseekJsonOutputRoute =
+    resolved.provider === "deepseek" &&
     [
       "deepseek-flash",
+      "deepseek-v4-pro",
       "deepseek-v4-flash",
       "deepseek-v4-flash-vision-exp",
-      "deepseek-v4-pro",
     ].includes(resolved.model || "");
   const supportsVision =
     nativeDeepseekV41FlashRoute && customVisionOverride === null
@@ -948,7 +956,7 @@ export function getResolvedModelCapabilities(
     supportsVideo,
     supportsMaxTokens: heuristicMaxTokens(lookupKey),
     attachment,
-    structuredOutput: nativeDeepseekV41FlashRoute ? true : (synced?.structured_output ?? null),
+    structuredOutput: nativeDeepseekJsonOutputRoute ? true : (synced?.structured_output ?? null),
     temperature: synced?.temperature ?? null,
     contextWindow,
     maxInputTokens: (() => {

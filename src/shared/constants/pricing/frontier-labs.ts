@@ -328,12 +328,12 @@ export const DEFAULT_PRICING_FRONTIER = {
       cache_creation: 0.3,
     },
     "deepseek-v4-pro": {
-      // Legacy model ID routes to V4.1-Flash and is billed at Flash rates until V4.1-Pro launches.
-      input: 0.3,
-      output: 1.2,
-      cached: 0.006,
-      reasoning: 1.2,
-      cache_creation: 0.3,
+      // DeepSeek-V4-Pro-0813 peak rates; cache-miss rate is also cache creation.
+      input: 1.32,
+      output: 3.96,
+      cached: 0.044,
+      reasoning: 3.96,
+      cache_creation: 1.32,
     },
     "deepseek-v4-flash": {
       input: 0.3,
