@@ -71,6 +71,33 @@ describe("modelsDevSync/transform split-guard", () => {
     assert.deepEqual(pricing.cx["gpt-x"], pricing.openai["gpt-x"]);
   });
 
+  it("keeps Together direct-route metadata out of OpenRouter route records", () => {
+    const raw = {
+      togetherai: {
+        id: "togetherai",
+        models: {
+          "meta-llama/Llama-4-Maverick": {
+            id: "meta-llama/Llama-4-Maverick",
+            name: "Llama 4 Maverick",
+            cost: { input: 0.2, output: 0.6 },
+            tool_call: true,
+            limit: { context: 1_000_000 },
+          },
+        },
+      },
+    };
+    const pricing = transformModelsDevToPricing(raw as never);
+    const capabilities = transformModelsDevToCapabilities(raw as never);
+
+    assert.deepEqual(pricing.together["meta-llama/Llama-4-Maverick"], {
+      input: 0.2,
+      output: 0.6,
+    });
+    assert.equal(pricing.openrouter, undefined);
+    assert.equal(capabilities.together["meta-llama/Llama-4-Maverick"].tool_call, true);
+    assert.equal(capabilities.openrouter, undefined);
+  });
+
   it("drops malformed optional billing dimensions instead of persisting unsafe values", () => {
     const raw = {
       openai: {

@@ -423,7 +423,8 @@ describe("modelsDevSync — mapProviderId", () => {
       "kmca",
     ]);
     assert.deepEqual(mapProviderId("fireworks-ai"), ["fireworks"]);
-    assert.deepEqual(mapProviderId("togetherai"), ["together", "openrouter"]);
+    assert.deepEqual(mapProviderId("togetherai"), ["together"]);
+    assert.deepEqual(mapProviderId("together_ai"), ["together"]);
   });
 });
 

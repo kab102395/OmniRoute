@@ -123,8 +123,11 @@ export const MODELS_DEV_PROVIDER_MAP: Record<string, string[]> = {
   groq: ["groq"],
   xai: ["xai"],
   mistral: ["mistral"],
-  togetherai: ["together", "openrouter"],
-  together_ai: ["together", "openrouter"],
+  // Together's direct-host rates and capability facts do not describe the
+  // same model IDs served through OpenRouter. OpenRouter routes must use its
+  // own catalog metadata (or remain unknown when that metadata is absent).
+  togetherai: ["together"],
+  together_ai: ["together"],
   "fireworks-ai": ["fireworks"],
   fireworks: ["fireworks"],
   cerebras: ["cerebras"],
