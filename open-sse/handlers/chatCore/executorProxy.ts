@@ -99,11 +99,21 @@ async function resolveCliproxyapiExecutor(
 export async function resolveExecutorWithProxy(
   prov: string,
   log?: LoggerLike,
-  providerSpecificData?: Record<string, unknown> | null
+  providerSpecificData?: Record<string, unknown> | null,
+  options: { strictModelIdentity?: boolean } = {}
 ) {
   assertMicrosoftDesignerWebProviderAvailable(prov);
   assertRuntimeProviderAvailable(prov);
   assertCommonChatGptWebProviderAvailable(prov);
+
+  // A strict route request is admitted against the selected provider/model. A
+  // configured proxy (including its retry backend) would move execution onto
+  // a different routing path whose free status and provider restrictions were
+  // not checked by that admission. Keep the selected provider's own executor
+  // for these requests; its internal retries still target the same route.
+  if (options.strictModelIdentity === true) {
+    return getExecutor(prov);
+  }
 
   // Per-connection routing override (#6339): the resolved connection can opt itself
   // into the CLIProxyAPI passthrough executor via providerSpecificData.cliproxyapiMode

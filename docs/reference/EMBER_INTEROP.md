@@ -57,7 +57,8 @@ downstream host cannot satisfy a requirement that pins that downstream identity.
 dispatch, also send `X-OmniRoute-Require-Free-Route: true`; this rechecks current free-route
 eligibility at dispatch and rejects stale/unverified OpenRouter catalog data. These dispatch
 constraints do not establish account quota or a provider hard-stop guarantee beyond the route's
-catalog facts.
+catalog facts. Strict identity also bypasses configured cross-provider upstream proxy routing and
+its fallback leg, because those paths are outside the selected route's verified identity.
 
 ## Non-streaming completions
 

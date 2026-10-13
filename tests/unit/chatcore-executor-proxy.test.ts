@@ -77,6 +77,21 @@ test("mode 'fallback' returns a distinct wrapper owning its own execute()", asyn
   assert.equal(typeof exec.execute, "function");
 });
 
+test("strict model identity bypasses configured cross-provider proxy fallback", async () => {
+  await upstreamProxyDb.upsertUpstreamProxyConfig({
+    providerId: "openai",
+    mode: "fallback",
+    enabled: true,
+  });
+  clearUpstreamProxyConfigCache("openai");
+
+  const exec = await resolveExecutorWithProxy("openai", undefined, null, {
+    strictModelIdentity: true,
+  });
+
+  assert.equal(exec, await getExecutor("openai"));
+});
+
 test("proxy fallback returns both native and fallback attempt receipts", async () => {
   await upstreamProxyDb.upsertUpstreamProxyConfig({
     providerId: "openai",

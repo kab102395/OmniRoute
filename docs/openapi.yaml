@@ -1554,9 +1554,9 @@ paths:
             enum: ["true", "false"]
           description: >-
             When true, preserve the requested model identity and disable cross-model family,
-            context-overflow, global, and emergency fallback. Retries may still use another
-            configured account for the same provider/model. This does not pin an aggregator's
-            downstream serving provider or host.
+            context-overflow, global, emergency, and configured cross-provider proxy fallback.
+            Retries may still use another configured account for the same provider/model. This
+            does not pin an aggregator's downstream serving provider or host.
         - in: header
           name: X-OmniRoute-Require-Free-Route
           required: false

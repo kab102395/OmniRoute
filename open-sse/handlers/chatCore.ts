@@ -3008,7 +3008,8 @@ export async function handleChatCore({
     resolveExecutorWithProxyFor(
       prov,
       log,
-      (credentials?.providerSpecificData as Record<string, unknown> | null | undefined) ?? null
+      (credentials?.providerSpecificData as Record<string, unknown> | null | undefined) ?? null,
+      { strictModelIdentity }
     );
 
   // === Quota Share enforcement PRE-hook (B/F7) ===
