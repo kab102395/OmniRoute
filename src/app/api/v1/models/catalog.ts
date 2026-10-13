@@ -1091,6 +1091,11 @@ async function buildUnifiedModelsResponseCore(
         if (isModelHiddenBulk(alias, model.id, canonicalProviderId)) continue;
         if (isExcludedByProviderConnections(canonicalProviderId, model.id)) continue;
         const isOpenRouterFreeRouter = canonicalProviderId === "openrouter" && model.id === "free";
+        // `openrouter/free` is a dynamic selector, not an exact route. It is
+        // emitted below only after the current OpenRouter catalog proves that
+        // at least one free route exists; do not classify it from the static
+        // provider registry here.
+        if (isOpenRouterFreeRouter) continue;
         if (
           shouldHidePaid(
             canonicalProviderId,
@@ -1444,6 +1449,37 @@ async function buildUnifiedModelsResponseCore(
           hidePaid,
         });
         models.splice(0, models.length, ...reconciledModels);
+        // This optional multi-model router is eligible only while the
+        // authoritative catalog is fresh and contains at least one free
+        // variant. Keeping it separate from the exact variant rows lets
+        // callers choose a specific model when assignment identity matters.
+        if (!openRouterCatalog.stale && currentFreeRouteIds.size > 0) {
+          const freeRouterId = qualifyOpenRouterModelId("free");
+          if (!models.some((model) => model.id === freeRouterId)) {
+            models.push({
+              id: freeRouterId,
+              object: "model",
+              created: timestamp,
+              owned_by: "openrouter",
+              permission: [],
+              root: "free",
+              parent: null,
+              free: true,
+              route_selection: { kind: "dynamic_free_model", exactModelIdentity: false },
+              route_availability: {
+                catalogListed: true,
+                accountEligibility: "unknown",
+                source: {
+                  id: "openrouter.models_api",
+                  retrievedAt: openRouterCatalog.cachedAt,
+                  stale: false,
+                  cacheTtlMs: openRouterCatalog.cacheTtlMs,
+                },
+                downstreamHostSelection: "aggregator_selected",
+              },
+            });
+          }
+        }
         for (const openRouterModel of openRouterCatalog.data || []) {
           if (!openRouterModel?.id || typeof openRouterModel.id !== "string") continue;
           const isFreeVariant = isOpenRouterFreeModel(openRouterModel);

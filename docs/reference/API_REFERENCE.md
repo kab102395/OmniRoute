@@ -436,7 +436,11 @@ paid sibling routes retain their own pricing. OpenRouter catalog model rows expo
 `route_selection: { kind: "exact_model", exactModelIdentity: true }`. `openrouter/free` is a
 separate dynamic multi-model router and exposes
 `route_selection: { kind: "dynamic_free_model", exactModelIdentity: false }`; it does not guarantee
-an exact model identity for a request.
+an exact model identity for a request. OmniRoute exposes this selector as currently free only
+when a fresh OpenRouter catalog contains at least one free variant; it is omitted from free-only
+catalog results when the catalog is stale, unavailable, or contains no free variants. The dynamic
+selector does not establish tool support or configured-account eligibility for the model OpenRouter
+will choose.
 
 Other catalog routes expose `pricing_provenance` from the matched models.dev, LiteLLM, static, or
 provider-specific pricing source. If no configured source has a matching price, `pricing` remains

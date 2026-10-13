@@ -15123,7 +15123,9 @@ components:
           description: >-
             Describes whether the model id pins an exact route. OpenRouter catalog model variants
             use exact_model; the openrouter/free router uses dynamic_free_model and does not pin
-            the model selected by OpenRouter.
+            the model selected by OpenRouter. The dynamic router is listed as currently free only
+            when a fresh OpenRouter catalog contains at least one free variant; it does not establish
+            tool support or configured-account eligibility for the selected model.
           properties:
             kind:
               type: string

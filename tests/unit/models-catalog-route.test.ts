@@ -698,6 +698,60 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
   }
 });
 
+test("OpenRouter's dynamic free router requires a fresh non-empty catalog and survives hide-paid", async () => {
+  await seedConnection("openrouter");
+  await settingsDb.updateSettings({ hidePaidModels: true });
+  const openRouterCatalog = await import("../../src/lib/catalog/openrouterCatalog.ts");
+  const modelsWithFreeRoute = [{ id: "vendor/current:free", supported_parameters: ["tools"] }];
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ data: modelsWithFreeRoute }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+
+  try {
+    assert.equal((await openRouterCatalog.refreshOpenRouterCatalog()).ok, true);
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        free?: boolean;
+        route_selection?: { kind?: string; exactModelIdentity?: boolean };
+        route_availability?: { source?: { stale?: boolean } };
+      }>;
+    };
+    const freeRouter = body.data.find((model) => model.id === "openrouter/free");
+
+    assert.ok(freeRouter, "fresh free routes keep the optional selector visible");
+    assert.equal(freeRouter.free, true);
+    assert.deepEqual(freeRouter.route_selection, {
+      kind: "dynamic_free_model",
+      exactModelIdentity: false,
+    });
+    assert.equal(freeRouter.route_availability?.source?.stale, false);
+
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    assert.equal((await openRouterCatalog.refreshOpenRouterCatalog()).ok, true);
+    const emptyResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const emptyBody = (await emptyResponse.json()) as { data: Array<{ id: string }> };
+    assert.equal(
+      emptyBody.data.some((model) => model.id === "openrouter/free"),
+      false,
+      "an empty current free catalog cannot authorize the dynamic selector"
+    );
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
 test("v1 models exposes other providers' curated free-tier facts without claiming account eligibility", async () => {
   await seedConnection("groq");
 
