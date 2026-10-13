@@ -73,14 +73,16 @@ function nextUtcMidnightIso(now: number): string {
 }
 
 /**
- * Whether a model id is an OpenRouter `:free`-variant (e.g.
- * `x-ai/grok-4-fast:free`). Shared by the dispatch-time record/correct hooks
- * (`open-sse/executors/base.ts`) and the quota-preflight enforcement hook
- * (`open-sse/services/openrouterQuotaFetcher.ts`) so both sides agree on the
- * same definition of "free variant."
+ * Whether a model id selects OpenRouter's free offering: either an exact
+ * `:free` variant (e.g. `x-ai/grok-4-fast:free`) or its dynamic `free` router.
+ * Shared by dispatch-time accounting and quota preflight so both paths enforce
+ * the same free-request window.
  */
 export function isFreeVariantModel(model: string | null | undefined): boolean {
-  return typeof model === "string" && model.endsWith(":free");
+  return (
+    typeof model === "string" &&
+    (model.endsWith(":free") || model === "free" || model === "openrouter/free")
+  );
 }
 
 /**
