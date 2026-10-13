@@ -17,21 +17,33 @@ import type { RecordConsumptionInput } from "../../src/lib/quota/types.ts";
 
 test("buildConsumptionCost — flows estimatedCost into usd (not hardcoded 0)", async () => {
   const { buildConsumptionCost } = await import("../../src/lib/quota/spendRecorder.ts");
-  const cost = buildConsumptionCost({ prompt_tokens: 1000, completion_tokens: 500 }, 0.0234);
+  const cost = buildConsumptionCost(
+    { prompt_tokens: 1000, completion_tokens: 500 },
+    {
+      costUsd: 0.0234,
+      costKnown: true,
+    }
+  );
   assert.equal(cost.tokens, 1500);
   assert.equal(cost.usd, 0.0234);
   assert.equal(cost.requests, 1);
 });
 
-test("buildConsumptionCost — null usage → tokens 0, usd 0, requests 1", async () => {
+test("buildConsumptionCost — null usage stays unknown while request count is retained", async () => {
   const { buildConsumptionCost } = await import("../../src/lib/quota/spendRecorder.ts");
-  const cost = buildConsumptionCost(null, 0);
-  assert.deepEqual(cost, { tokens: 0, usd: 0, requests: 1 });
+  const cost = buildConsumptionCost(null, { costUsd: 0, costKnown: false });
+  assert.deepEqual(cost, { tokens: 0, requests: 1, usdKnown: false });
 });
 
 test("buildConsumptionCost — coerces string tokens, clamps negative cost to 0", async () => {
   const { buildConsumptionCost } = await import("../../src/lib/quota/spendRecorder.ts");
-  const cost = buildConsumptionCost({ prompt_tokens: "10", completion_tokens: "5" }, -1);
+  const cost = buildConsumptionCost(
+    { prompt_tokens: "10", completion_tokens: "5" },
+    {
+      costUsd: -1,
+      costKnown: true,
+    }
+  );
   assert.equal(cost.tokens, 15);
   assert.equal(cost.usd, 0);
 });
@@ -52,7 +64,7 @@ test("recordStreamingConsumption — records REAL usd for a 200 stream (regressi
     {
       calculateCost: async (p: string, m: string) => {
         calcArgs = { p, m };
-        return 0.042;
+        return { costUsd: 0.042, costKnown: true };
       },
       schedule: (input) => scheduled.push(input),
     }
@@ -85,7 +97,7 @@ test("recordStreamingConsumption — skips non-200 streams entirely", async () =
     {
       calculateCost: async () => {
         calcCalled = true;
-        return 1;
+        return { costUsd: 1, costKnown: true };
       },
       schedule: (input) => scheduled.push(input),
     }
@@ -94,7 +106,7 @@ test("recordStreamingConsumption — skips non-200 streams entirely", async () =
   assert.equal(calcCalled, false);
 });
 
-test("recordStreamingConsumption — null usage still records requests:1 (usd 0), no cost call", async () => {
+test("recordStreamingConsumption — null usage records request and unknown USD without cost lookup", async () => {
   const { recordStreamingConsumption } = await import("../../src/lib/quota/spendRecorder.ts");
   const scheduled: RecordConsumptionInput[] = [];
   let calcCalled = false;
@@ -110,13 +122,14 @@ test("recordStreamingConsumption — null usage still records requests:1 (usd 0)
     {
       calculateCost: async () => {
         calcCalled = true;
-        return 1;
+        return { costUsd: 1, costKnown: true };
       },
       schedule: (input) => scheduled.push(input),
     }
   );
   assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0].cost.usd, 0);
+  assert.equal(scheduled[0].cost.usd, undefined);
+  assert.equal(scheduled[0].cost.usdKnown, false);
   assert.equal(scheduled[0].cost.requests, 1);
   assert.equal(calcCalled, false, "no usage → no cost computation");
 });
@@ -133,7 +146,10 @@ test("recordStreamingConsumption — missing apiKeyId/connectionId → no-op", a
       streamUsage: { prompt_tokens: 1 },
       streamStatus: 200,
     },
-    { calculateCost: async () => 1, schedule: (input) => scheduled.push(input) }
+    {
+      calculateCost: async () => ({ costUsd: 1, costKnown: true }),
+      schedule: (input) => scheduled.push(input),
+    }
   );
   await recordStreamingConsumption(
     {
@@ -144,7 +160,10 @@ test("recordStreamingConsumption — missing apiKeyId/connectionId → no-op", a
       streamUsage: { prompt_tokens: 1 },
       streamStatus: 200,
     },
-    { calculateCost: async () => 1, schedule: (input) => scheduled.push(input) }
+    {
+      calculateCost: async () => ({ costUsd: 1, costKnown: true }),
+      schedule: (input) => scheduled.push(input),
+    }
   );
   assert.equal(scheduled.length, 0);
 });
@@ -169,6 +188,30 @@ test("recordStreamingConsumption — calculateCost throwing → records usd 0, n
     }
   );
   assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0].cost.usd, 0);
+  assert.equal(scheduled[0].cost.usd, undefined);
+  assert.equal(scheduled[0].cost.usdKnown, false);
   assert.equal(scheduled[0].cost.tokens, 100);
+});
+
+test("recordStreamingConsumption — unknown price remains explicit instead of recording USD zero", async () => {
+  const { recordStreamingConsumption } = await import("../../src/lib/quota/spendRecorder.ts");
+  const scheduled: RecordConsumptionInput[] = [];
+  await recordStreamingConsumption(
+    {
+      apiKeyId: "k",
+      connectionId: "c",
+      provider: "openai",
+      model: "unpriced-model",
+      streamUsage: { prompt_tokens: 100 },
+      streamStatus: 200,
+    },
+    {
+      calculateCost: async () => ({ costUsd: 0, costKnown: false }),
+      schedule: (input) => scheduled.push(input),
+    }
+  );
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].cost.usd, undefined);
+  assert.equal(scheduled[0].cost.usdKnown, false);
+  assert.equal(scheduled[0].cost.requests, 1);
 });

@@ -207,6 +207,46 @@ export class RedisQuotaStore implements QuotaStore {
     return slidingWindowEffective(currTotal, prevTotal, nowMs, windowMs);
   }
 
+  async markUnknownUsd(apiKeyId: string, dim: DimensionKey): Promise<void> {
+    const nowMs = Date.now();
+    const dimKey = `${dimensionKeyToString(dim)}:unknown-usd`;
+    const windowMs = WINDOW_MS[dim.window];
+    const currentBucket = Math.floor(nowMs / windowMs);
+    const client = await this.client();
+    const key = bucketKey(apiKeyId, dimKey, currentBucket);
+    await client.incrbyfloat(key, 1);
+    await client.expire(key, ttlSeconds(windowMs));
+  }
+
+  async hasUnknownUsd(apiKeyId: string, dim: DimensionKey): Promise<boolean> {
+    const nowMs = Date.now();
+    const dimKey = `${dimensionKeyToString(dim)}:unknown-usd`;
+    const windowMs = WINDOW_MS[dim.window];
+    const currentBucket = Math.floor(nowMs / windowMs);
+    const client = await this.client();
+    const [currRaw, prevRaw] = await client.mget(
+      bucketKey(apiKeyId, dimKey, currentBucket),
+      bucketKey(apiKeyId, dimKey, currentBucket - 1)
+    );
+    return (
+      slidingWindowEffective(
+        parseFloat(currRaw ?? "0") || 0,
+        parseFloat(prevRaw ?? "0") || 0,
+        nowMs,
+        windowMs
+      ) > 0
+    );
+  }
+
+  async poolHasUnknownUsd(poolId: string, dim: DimensionKey): Promise<boolean> {
+    const pool = getPool(poolId);
+    if (!pool || pool.allocations.length === 0) return false;
+    for (const allocation of pool.allocations) {
+      if (await this.hasUnknownUsd(allocation.apiKeyId, { ...dim, poolId })) return true;
+    }
+    return false;
+  }
+
   /**
    * Aggregate pool usage. Pool and allocation metadata come from SQLite (F2);
    * rolling counters come from Redis.
@@ -290,6 +330,15 @@ export class RedisQuotaStore implements QuotaStore {
         window: planDim.window as PoolUsageSnapshot["dimensions"][number]["window"],
         limit: planDim.limit,
         consumedTotal,
+        ...(planDim.unit === "usd"
+          ? {
+              unknownUsdUsage: await this.poolHasUnknownUsd(poolId, {
+                poolId,
+                unit: "usd",
+                window: planDim.window as DimensionKey["window"],
+              }),
+            }
+          : {}),
         perKey,
       });
     }
@@ -326,8 +375,11 @@ export class RedisQuotaStore implements QuotaStore {
     const client = await this.client();
     const currKey = bucketKey(apiKeyId, dimKey, currentBucket);
     const prevKey = bucketKey(apiKeyId, dimKey, currentBucket - 1);
+    const unknownDimKey = `${dimKey}:unknown-usd`;
+    const unknownCurrKey = bucketKey(apiKeyId, unknownDimKey, currentBucket);
+    const unknownPrevKey = bucketKey(apiKeyId, unknownDimKey, currentBucket - 1);
 
-    await client.del(currKey, prevKey);
+    await client.del(currKey, prevKey, unknownCurrKey, unknownPrevKey);
   }
 }
 

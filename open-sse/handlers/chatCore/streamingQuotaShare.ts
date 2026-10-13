@@ -15,7 +15,7 @@ type CostResolver = (
   model: string,
   usage: Record<string, number | undefined> | null | undefined,
   options: { serviceTier?: string; requestCount?: number }
-) => Promise<number>;
+) => Promise<{ costUsd: number; costKnown: boolean }>;
 
 export function scheduleStreamingQuotaShareConsumption(args: {
   apiKeyId: string | null | undefined;
@@ -26,7 +26,7 @@ export function scheduleStreamingQuotaShareConsumption(args: {
   streamStatus: number;
   serviceTier?: string;
   requestCount?: number;
-  calculateCost: CostResolver;
+  calculateCostWithEvidence: CostResolver;
   log?: LoggerLike;
 }): void {
   if (!args.apiKeyId || !args.connectionId || args.streamStatus !== 200) return;
@@ -47,7 +47,7 @@ export function scheduleStreamingQuotaShareConsumption(args: {
           serviceTier: args.serviceTier,
           requestCount: args.requestCount,
         },
-        { calculateCost: args.calculateCost, log: args.log }
+        { calculateCost: args.calculateCostWithEvidence, log: args.log }
       )
     )
     .catch(() => {

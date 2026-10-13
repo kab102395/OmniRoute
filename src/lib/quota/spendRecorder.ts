@@ -49,15 +49,16 @@ export function scheduleRecordConsumption(
  */
 export function buildConsumptionCost(
   usage: unknown,
-  estimatedCost: number
-): { tokens: number; usd: number; requests: number } {
+  estimate: { costUsd: number; costKnown: boolean }
+): { tokens: number; usd?: number; usdKnown: boolean; requests: number } {
   const u = usage && typeof usage === "object" ? (usage as Record<string, unknown>) : null;
   const tokens = u
     ? (Number(u.prompt_tokens ?? 0) || 0) + (Number(u.completion_tokens ?? 0) || 0)
     : 0;
   return {
     tokens,
-    usd: estimatedCost > 0 ? estimatedCost : 0,
+    ...(estimate.costKnown ? { usd: estimate.costUsd > 0 ? estimate.costUsd : 0 } : {}),
+    usdKnown: estimate.costKnown,
     requests: 1,
   };
 }
@@ -68,7 +69,7 @@ type CostResolver = (
   model: string,
   usage: Record<string, number | undefined> | null | undefined,
   options: { serviceTier?: string; requestCount?: number }
-) => Promise<number>;
+) => Promise<{ costUsd: number; costKnown: boolean }>;
 
 /**
  * Record shared-quota consumption for a completed STREAMING response.
@@ -112,17 +113,17 @@ export async function recordStreamingConsumption(
   const schedule = deps.schedule ?? scheduleRecordConsumption;
   const resolvedProvider = provider ?? "unknown";
 
-  let estimatedCost = 0;
+  let estimate = { costUsd: 0, costKnown: false };
   if (streamUsage && typeof streamUsage === "object") {
     try {
-      estimatedCost = await deps.calculateCost(
+      estimate = await deps.calculateCost(
         resolvedProvider,
         model,
         streamUsage as Record<string, number | undefined>,
         { serviceTier, requestCount }
       );
     } catch {
-      estimatedCost = 0;
+      estimate = { costUsd: 0, costKnown: false };
     }
   }
 
@@ -133,7 +134,7 @@ export async function recordStreamingConsumption(
       provider: resolvedProvider,
       // Per-(key,model) cap accounting on streaming traffic — same resolved model id.
       model: model || undefined,
-      cost: buildConsumptionCost(streamUsage, estimatedCost),
+      cost: buildConsumptionCost(streamUsage, estimate),
     },
     deps.log
   );

@@ -35,7 +35,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const { createPool, upsertAllocations } = await import("../../src/lib/db/quotaPools.ts");
 const { setModelCap } = await import("../../src/lib/db/quotaModelCaps.ts");
-const { enforceQuotaShare } = await import("../../src/lib/quota/enforce.ts");
+const { enforceQuotaShare, recordConsumption } = await import("../../src/lib/quota/enforce.ts");
 const { resetQuotaStoreSingleton } = await import("../../src/lib/quota/storeFactory.ts");
 const { scheduleQuotaShareConsumption } =
   await import("../../open-sse/handlers/chatCore/quotaShareConsumption.ts");
@@ -209,4 +209,40 @@ test("hot-path: enforce WITHOUT model never triggers model-cap block (fail-safe)
     estimatedCost: {},
   });
   assert.equal(noModel.kind, "allow", "enforce without model → no model-cap block");
+});
+
+test("unknown USD usage blocks a USD model cap without charging a fabricated amount", async () => {
+  const pool = makePool();
+  setModelCap({
+    poolId: pool.id,
+    apiKeyId: KEY_A,
+    model: MODEL_M,
+    capValue: 1,
+    capUnit: "usd",
+  });
+
+  await recordConsumption({
+    apiKeyId: KEY_A,
+    connectionId: CONN_ID,
+    provider: PROVIDER,
+    model: MODEL_M,
+    cost: { tokens: 200, requests: 1, usdKnown: false },
+  });
+
+  const blocked = await enforceQuotaShare({
+    apiKeyId: KEY_A,
+    connectionId: CONN_ID,
+    provider: PROVIDER,
+    model: MODEL_M,
+  });
+  assert.equal(blocked.kind, "block");
+  assert.ok("reason" in blocked && blocked.reason.includes("Model cap cannot be enforced"));
+
+  const otherModel = await enforceQuotaShare({
+    apiKeyId: KEY_A,
+    connectionId: CONN_ID,
+    provider: PROVIDER,
+    model: MODEL_M2,
+  });
+  assert.equal(otherModel.kind, "allow");
 });

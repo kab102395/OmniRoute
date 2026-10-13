@@ -46,6 +46,7 @@ const providerPlans = await import("../../../src/lib/db/providerPlans.ts");
 const quotaPools = await import("../../../src/lib/db/quotaPools.ts");
 const { SqliteQuotaStore } = await import("../../../src/lib/quota/sqliteQuotaStore.ts");
 const { enforceQuotaShare } = await import("../../../src/lib/quota/enforce.ts");
+const { recordConsumption } = await import("../../../src/lib/quota/enforce.ts");
 const core = await import("../../../src/lib/db/core.ts");
 
 // ── Suite cleanup ─────────────────────────────────────────────────────────────
@@ -158,4 +159,33 @@ await test("quota-division-blocks: countable-unit enforcement (block + allow)", 
       `[B] Expected allow when poolTotal(40) < effectiveLimit(100); got: ${JSON.stringify(decision)}`
     );
   });
+});
+
+await test("unknown USD usage blocks later admission until its quota window expires", async () => {
+  const CONN = "conn-unknown-usd";
+  const PROV = "test-provider-unknown-usd";
+  const KEY = "key-unknown-usd";
+  providerPlans.upsertPlan(CONN, PROV, [{ unit: "usd", window: "monthly", limit: 5 }], "manual");
+  quotaPools.createPool({
+    connectionId: CONN,
+    name: "Unknown USD Pool",
+    allocations: [{ apiKeyId: KEY, weight: 100, policy: "hard" }],
+  });
+
+  await recordConsumption({
+    apiKeyId: KEY,
+    connectionId: CONN,
+    provider: PROV,
+    model: "unpriced-model",
+    cost: { tokens: 100, requests: 1, usdKnown: false },
+  });
+
+  const decision = await enforceQuotaShare({
+    apiKeyId: KEY,
+    connectionId: CONN,
+    provider: PROV,
+    model: "unpriced-model",
+  });
+  assert.equal(decision.kind, "block");
+  assert.ok("reason" in decision && decision.reason.includes("unknown-usd-usage"));
 });

@@ -68,6 +68,52 @@ test("poolConsumedTotal: keyA(3) + keyB(2) in same pool → total === 5", async 
   assert.ok(total <= 5, `Expected <=5, got ${total}`);
 });
 
+test("unknown USD usage is durable per key and visible to the whole pool", async () => {
+  const { SqliteQuotaStore } = await import("../../src/lib/quota/sqliteQuotaStore.ts");
+  const { createPool } = await import("../../src/lib/db/quotaPools.ts");
+  const store = new SqliteQuotaStore();
+  const pool = createPool({
+    connectionId: "c-unknown",
+    name: "Unknown USD",
+    allocations: [{ apiKeyId: "keyA", weight: 100, policy: "hard" }],
+  });
+  const dim = { poolId: pool.id, unit: "usd" as const, window: "daily" as const };
+
+  assert.equal(await store.hasUnknownUsd("keyA", dim), false);
+  assert.equal(await store.poolHasUnknownUsd(pool.id, dim), false);
+  await store.markUnknownUsd("keyA", dim);
+  assert.equal(await store.hasUnknownUsd("keyA", dim), true);
+  assert.equal(await store.hasUnknownUsd("keyB", dim), false);
+  assert.equal(await store.poolHasUnknownUsd(pool.id, dim), true);
+  assert.equal(
+    await store.poolHasUnknownUsd("other-pool", { ...dim, poolId: "other-pool" }),
+    false
+  );
+  const snapshot = await store.poolUsageWithDimensions(pool.id, [
+    { unit: "usd", window: "daily", limit: 10 },
+  ]);
+  assert.equal(snapshot.dimensions[0]?.unknownUsdUsage, true);
+  await store.clear("keyA", dim);
+  assert.equal(await store.poolHasUnknownUsd(pool.id, dim), false);
+});
+
+test("unknown USD markers stop blocking when their quota window expires", async () => {
+  const { SqliteQuotaStore } = await import("../../src/lib/quota/sqliteQuotaStore.ts");
+  const store = new SqliteQuotaStore();
+  const dim = { poolId: "p-expiry", unit: "usd" as const, window: "hourly" as const };
+  const realNow = Date.now;
+  let now = 1_800_000_000_000;
+  Date.now = () => now;
+  try {
+    await store.markUnknownUsd("key-expiry", dim);
+    assert.equal(await store.hasUnknownUsd("key-expiry", dim), true);
+    now += 2 * 60 * 60 * 1000;
+    assert.equal(await store.hasUnknownUsd("key-expiry", dim), false);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 // ─── Isolation: different pool ───────────────────────────────────────────────
 
 test("poolConsumedTotal: different poolId → returns 0 (isolation)", async () => {

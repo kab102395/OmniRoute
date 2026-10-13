@@ -155,6 +155,7 @@ test("quota_consumption schema has correct columns", () => {
   assert.ok(colNames.includes("dimension_key"), "should have 'dimension_key' column");
   assert.ok(colNames.includes("bucket_index"), "should have 'bucket_index' column");
   assert.ok(colNames.includes("consumed"), "should have 'consumed' column");
+  assert.ok(colNames.includes("unknown_usd_count"), "should have 'unknown_usd_count' column");
   assert.ok(colNames.includes("updated_at"), "should have 'updated_at' column");
 });
 

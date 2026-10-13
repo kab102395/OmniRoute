@@ -136,6 +136,24 @@ export async function enforceQuotaShare(input: EnforceInput): Promise<EnforceDec
       // DB error — fail-open per B16
     }
     if (modelCap && modelCap.capValue > Number.EPSILON) {
+      if (modelCap.capUnit === "usd") {
+        const modelBucketPoolId = `${pool.id}:model:${input.model}`;
+        const modelDimKey = {
+          poolId: modelBucketPoolId,
+          unit: "usd" as const,
+          window: "hourly" as const,
+        };
+        const hasUnknownUsd = await store
+          .hasUnknownUsd(input.apiKeyId, modelDimKey)
+          .catch(() => true);
+        if (hasUnknownUsd) {
+          return {
+            kind: "block",
+            reason: `Model cap cannot be enforced while prior usage cost is unknown for ${input.provider}/${input.model} [unknown-usd-usage]`,
+            httpStatus: 429,
+          };
+        }
+      }
       const modelBucketPoolId = `${pool.id}:model:${input.model}`;
       const modelDimKey = {
         poolId: modelBucketPoolId,
@@ -197,6 +215,17 @@ export async function enforceQuotaShare(input: EnforceInput): Promise<EnforceDec
     if (!(dim.limit > Number.EPSILON)) continue;
     const dimKey = { poolId: pool.id, unit: dim.unit, window: dim.window };
     const dimKeyStr = dimensionKeyToString(dimKey);
+
+    if (dim.unit === "usd") {
+      const hasUnknownUsd = await store.poolHasUnknownUsd(pool.id, dimKey).catch(() => true);
+      if (hasUnknownUsd) {
+        return {
+          kind: "block",
+          reason: `USD quota cannot be enforced while prior usage cost is unknown for ${input.provider} [unknown-usd-usage]`,
+          httpStatus: 429,
+        };
+      }
+    }
 
     const consumedThisKey = await store.peek(input.apiKeyId, dimKey).catch(() => 0);
     consumedByThisKey[dimKeyStr] = consumedThisKey;
@@ -331,6 +360,13 @@ export async function recordConsumption(input: RecordConsumptionInput): Promise<
   // Pool-level dimension consumption (existing behaviour).
   for (const dim of plan.dimensions) {
     const dimKey = { poolId, unit: dim.unit, window: dim.window };
+    if (dim.unit === "usd" && input.cost.usdKnown === false) {
+      // Let persistence errors reach scheduleRecordConsumption so they are logged.
+      // The completed response cannot be rolled back, but silently dropping this
+      // marker would make later USD admission treat unknown spend as zero.
+      await store.markUnknownUsd(input.apiKeyId, dimKey);
+      continue;
+    }
     const cost = costForUnit(input.cost, dim.unit);
     if (cost > 0) {
       await store.consume(input.apiKeyId, dimKey, cost).catch(() => {
@@ -351,6 +387,15 @@ export async function recordConsumption(input: RecordConsumptionInput): Promise<
       // DB not available — silent no-op per B29
     }
     if (modelCap && modelCap.capValue > Number.EPSILON) {
+      if (modelCap.capUnit === "usd" && input.cost.usdKnown === false) {
+        const modelBucketPoolId = `${poolId}:model:${input.model}`;
+        await store.markUnknownUsd(input.apiKeyId, {
+          poolId: modelBucketPoolId,
+          unit: "usd",
+          window: "hourly",
+        });
+        return;
+      }
       const cost = costForUnit(input.cost, modelCap.capUnit);
       if (cost > 0) {
         const modelBucketPoolId = `${poolId}:model:${input.model}`;

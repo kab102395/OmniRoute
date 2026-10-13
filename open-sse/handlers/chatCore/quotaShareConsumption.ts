@@ -17,13 +17,13 @@ export async function scheduleQuotaShareConsumption(args: {
   model?: string | null | undefined;
   usage: unknown;
   estimatedCost: number;
+  costKnown: boolean;
   log?: LoggerLike;
 }): Promise<void> {
   if (!args.apiKeyId || !args.connectionId) return;
   try {
-    const { scheduleRecordConsumption, buildConsumptionCost } = await import(
-      "@/lib/quota/spendRecorder"
-    );
+    const { scheduleRecordConsumption, buildConsumptionCost } =
+      await import("@/lib/quota/spendRecorder");
     scheduleRecordConsumption(
       {
         apiKeyId: args.apiKeyId,
@@ -31,7 +31,10 @@ export async function scheduleQuotaShareConsumption(args: {
         provider: args.provider ?? "unknown",
         // Per-(key,model) cap accounting — same resolved model id used at enforce time.
         model: args.model ?? undefined,
-        cost: buildConsumptionCost(args.usage, args.estimatedCost),
+        cost: buildConsumptionCost(args.usage, {
+          costUsd: args.estimatedCost,
+          costKnown: args.costKnown,
+        }),
       },
       args.log
     );

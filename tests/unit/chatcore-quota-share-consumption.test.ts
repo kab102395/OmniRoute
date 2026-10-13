@@ -38,6 +38,7 @@ test("missing apiKeyId is a no-op (never throws)", async () => {
       provider: "openai",
       usage: validUsage,
       estimatedCost: 0.01,
+      costKnown: true,
     })
   );
 });
@@ -50,6 +51,7 @@ test("missing connectionId is a no-op (never throws)", async () => {
       provider: "openai",
       usage: validUsage,
       estimatedCost: 0.01,
+      costKnown: true,
     })
   );
 });
@@ -62,6 +64,7 @@ test("valid input schedules consumption and never throws (fire-and-forget)", asy
       provider: "openai",
       usage: validUsage,
       estimatedCost: 0.0123,
+      costKnown: true,
     })
   );
   // give the scheduled setImmediate consumption a tick to run (fail-open, no assertion on DB
@@ -77,6 +80,7 @@ test("absent provider falls back without throwing", async () => {
       provider: null,
       usage: null,
       estimatedCost: 0,
+      costKnown: false,
     })
   );
 });

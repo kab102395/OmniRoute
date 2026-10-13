@@ -229,6 +229,13 @@ executor returns success
       → fail-open: errors logged as pino.warn, never propagated to client
 ```
 
+For USD dimensions, a completed request whose pricing or usage amount is unknown is recorded as
+unknown USD usage, not as a `$0` charge. The marker follows the configured quota window in both
+SQLite and Redis stores. Subsequent admission to that USD pool (or a USD model cap) is blocked until
+the marker ages out, because the remaining monetary headroom cannot be established. Pool usage
+snapshots expose `unknownUsdUsage` for USD dimensions; `consumedTotal` continues to contain only
+known numeric charges.
+
 **Drift note**: if `consume` fails post-response, the rolling counter under-counts.
 The saturation signal from the provider (e.g. `anthropic-ratelimit-unified-5h-utilization`)
 corrects the global estimate on the next request.

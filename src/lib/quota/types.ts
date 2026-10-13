@@ -8,6 +8,8 @@ export interface PoolUsageSnapshot {
     window: QuotaDimension["window"];
     limit: number;
     consumedTotal: number;
+    /** True when the active window includes usage whose USD amount is unknown. */
+    unknownUsdUsage?: boolean;
     perKey: Array<{
       apiKeyId: string;
       consumed: number;
@@ -44,6 +46,9 @@ export interface QuotaStore {
    * the enforce path can block when the pool total hits the plan limit.
    */
   poolConsumedTotal(poolId: string, dim: DimensionKey): Promise<number>;
+  markUnknownUsd(apiKeyId: string, dim: DimensionKey): Promise<void>;
+  hasUnknownUsd(apiKeyId: string, dim: DimensionKey): Promise<boolean>;
+  poolHasUnknownUsd(poolId: string, dim: DimensionKey): Promise<boolean>;
   poolUsage(poolId: string): Promise<PoolUsageSnapshot>;
   /**
    * Build a PoolUsageSnapshot with explicit plan dimensions. This is the
@@ -90,5 +95,5 @@ export interface RecordConsumptionInput {
    * pre-check in `enforceQuotaShare` (Fase 3 #7). Backward-compatible.
    */
   model?: string;
-  cost: { tokens?: number; usd?: number; requests?: number };
+  cost: { tokens?: number; usd?: number; usdKnown?: boolean; requests?: number };
 }

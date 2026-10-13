@@ -321,7 +321,7 @@ import { handleBypassRequest } from "../utils/bypassHandler.ts";
 import { saveRequestUsage, trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import { finalizePendingScope, updatePendingScope } from "@/lib/usage/pendingRequestScope";
 import { recordCost, recordUnknownCost } from "@/domain/costRules";
-import { calculateCost, calculateCostWithEvidence } from "@/lib/usage/costCalculator";
+import { calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import { updateRequestUsageAccounting } from "@/lib/usageDb";
 import { scheduleOpenRouterReceiptEnrichment } from "./chatCore/openrouterReceiptEnrichment.ts";
 import { isOpenRouterGenerationId } from "@/lib/usage/openrouterGeneration";
@@ -5667,6 +5667,7 @@ export async function handleChatCore({
       model,
       usage,
       estimatedCost,
+      costKnown: costAssessment.costKnown,
       log,
     });
     // === /Quota Share POST-hook ===
@@ -6133,7 +6134,7 @@ export async function handleChatCore({
     });
 
     // === Quota Share POST-hook streaming (B/F7) — fire-and-forget, fail-open ===
-    // Resolve the real per-request cost (calculateCost) so USD-unit pools accrue
+    // Resolve per-request cost with its known/unknown evidence so USD-unit pools accrue
     // on streaming traffic too; this previously recorded usd:0 hardcoded, which
     // meant DeepSeek-style `usd/monthly` shared pools never blocked on streams.
     scheduleStreamingQuotaShareConsumption({
@@ -6145,7 +6146,7 @@ export async function handleChatCore({
       streamStatus: normalizedStreamStatus,
       serviceTier: effectiveServiceTier,
       requestCount: Math.max(1, executionAttemptTotal),
-      calculateCost,
+      calculateCostWithEvidence,
       log,
     });
     // === /Quota Share POST-hook streaming ===

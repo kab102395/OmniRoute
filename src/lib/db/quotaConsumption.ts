@@ -36,6 +36,10 @@ interface BucketRow {
   consumed: number;
 }
 
+interface UnknownBucketRow {
+  unknown_usd_count: number;
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -67,11 +71,7 @@ export interface ConsumptionEvent {
 /**
  * Read the consumed value for a single bucket. Returns 0 if no row exists.
  */
-export function getBucket(
-  apiKeyId: string,
-  dimensionKey: string,
-  bucketIndex: number
-): number {
+export function getBucket(apiKeyId: string, dimensionKey: string, bucketIndex: number): number {
   const row = getDb()
     .prepare<BucketRow>(
       `SELECT consumed FROM quota_consumption
@@ -109,6 +109,68 @@ export function incrementBucket(
          updated_at = excluded.updated_at`
     )
     .run(apiKeyId, dimensionKey, bucketIndex, delta, nowMs);
+}
+
+export function incrementUnknownUsdBucket(
+  apiKeyId: string,
+  dimensionKey: string,
+  bucketIndex: number,
+  nowMs: number
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO quota_consumption (api_key_id, dimension_key, bucket_index, unknown_usd_count, updated_at)
+       VALUES (?, ?, ?, 1, ?)
+       ON CONFLICT(api_key_id, dimension_key, bucket_index)
+       DO UPDATE SET
+         unknown_usd_count = unknown_usd_count + 1,
+         updated_at = excluded.updated_at`
+    )
+    .run(apiKeyId, dimensionKey, bucketIndex, nowMs);
+}
+
+export function getUnknownUsdPair(
+  apiKeyId: string,
+  dimensionKey: string,
+  currentBucket: number
+): { curr: number; prev: number } {
+  const prevBucket = currentBucket - 1;
+  const query = getDb().prepare<UnknownBucketRow>(
+    `SELECT unknown_usd_count FROM quota_consumption
+     WHERE api_key_id = ? AND dimension_key = ? AND bucket_index = ?`
+  );
+  return {
+    curr: query.get(apiKeyId, dimensionKey, currentBucket)?.unknown_usd_count ?? 0,
+    prev: query.get(apiKeyId, dimensionKey, prevBucket)?.unknown_usd_count ?? 0,
+  };
+}
+
+export function sumPoolUnknownUsd(
+  dimensionKey: string,
+  currentBucket: number
+): { currTotal: number; prevTotal: number } {
+  const query = getDb().prepare<{ total: number }>(
+    `SELECT COALESCE(SUM(unknown_usd_count), 0) AS total FROM quota_consumption
+     WHERE dimension_key = ? AND bucket_index = ?`
+  );
+  return {
+    currTotal: query.get(dimensionKey, currentBucket)?.total ?? 0,
+    prevTotal: query.get(dimensionKey, currentBucket - 1)?.total ?? 0,
+  };
+}
+
+export function clearUnknownUsdBucket(
+  apiKeyId: string,
+  dimensionKey: string,
+  bucketIndex: number,
+  nowMs: number
+): void {
+  getDb()
+    .prepare(
+      `UPDATE quota_consumption SET unknown_usd_count = 0, updated_at = ?
+       WHERE api_key_id = ? AND dimension_key = ? AND bucket_index = ?`
+    )
+    .run(nowMs, apiKeyId, dimensionKey, bucketIndex);
 }
 
 /**

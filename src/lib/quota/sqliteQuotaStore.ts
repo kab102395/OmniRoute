@@ -16,7 +16,16 @@
  */
 
 import { getPool } from "@/lib/db/quotaPools";
-import { getBucket, incrementBucket, getPair, sumPoolDimension } from "@/lib/db/quotaConsumption";
+import {
+  getBucket,
+  incrementBucket,
+  getPair,
+  sumPoolDimension,
+  incrementUnknownUsdBucket,
+  getUnknownUsdPair,
+  sumPoolUnknownUsd,
+  clearUnknownUsdBucket,
+} from "@/lib/db/quotaConsumption";
 import { WINDOW_MS, dimensionKeyToString } from "./dimensions";
 import type { DimensionKey } from "./dimensions";
 import type { QuotaStore, PoolUsageSnapshot } from "./types";
@@ -125,6 +134,32 @@ export class SqliteQuotaStore implements QuotaStore {
     return slidingWindowEffective(currTotal, prevTotal, nowMs, windowMs);
   }
 
+  async markUnknownUsd(apiKeyId: string, dim: DimensionKey): Promise<void> {
+    const nowMs = Date.now();
+    const dimKey = dimensionKeyToString(dim);
+    const currentBucket = Math.floor(nowMs / WINDOW_MS[dim.window]);
+    incrementUnknownUsdBucket(apiKeyId, dimKey, currentBucket, nowMs);
+  }
+
+  async hasUnknownUsd(apiKeyId: string, dim: DimensionKey): Promise<boolean> {
+    const nowMs = Date.now();
+    const windowMs = WINDOW_MS[dim.window];
+    const currentBucket = Math.floor(nowMs / windowMs);
+    const { curr, prev } = getUnknownUsdPair(apiKeyId, dimensionKeyToString(dim), currentBucket);
+    return slidingWindowEffective(curr, prev, nowMs, windowMs) > 0;
+  }
+
+  async poolHasUnknownUsd(poolId: string, dim: DimensionKey): Promise<boolean> {
+    const nowMs = Date.now();
+    const windowMs = WINDOW_MS[dim.window];
+    const currentBucket = Math.floor(nowMs / windowMs);
+    const { currTotal, prevTotal } = sumPoolUnknownUsd(
+      dimensionKeyToString({ ...dim, poolId }),
+      currentBucket
+    );
+    return slidingWindowEffective(currTotal, prevTotal, nowMs, windowMs) > 0;
+  }
+
   /**
    * Return a PoolUsageSnapshot for the given pool, aggregating per-key
    * consumption across all dimensions and computing fairShare / deficit /
@@ -217,6 +252,15 @@ export class SqliteQuotaStore implements QuotaStore {
         window: planDim.window as PoolUsageSnapshot["dimensions"][number]["window"],
         limit: planDim.limit,
         consumedTotal,
+        ...(planDim.unit === "usd"
+          ? {
+              unknownUsdUsage: await this.poolHasUnknownUsd(poolId, {
+                poolId,
+                unit: "usd",
+                window: planDim.window as DimensionKey["window"],
+              }),
+            }
+          : {}),
         perKey,
       });
     }
@@ -268,6 +312,8 @@ export class SqliteQuotaStore implements QuotaStore {
       if (prevVal !== 0) {
         incrementBucket(apiKeyId, dimKey, prevBucket, -prevVal, nowMs);
       }
+      clearUnknownUsdBucket(apiKeyId, dimKey, currentBucket, nowMs);
+      clearUnknownUsdBucket(apiKeyId, dimKey, prevBucket, nowMs);
     });
   }
 }

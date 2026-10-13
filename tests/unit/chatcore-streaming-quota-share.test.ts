@@ -1,8 +1,8 @@
 // Characterization of scheduleStreamingQuotaShareConsumption — the streaming shared-quota POST-hook
 // extracted from handleChatCore's onStreamComplete (chatCore god-file decomposition, #3501). Sync
-// fire-and-forget / fail-open. The injected calculateCost is used as the observable. Locks: the
+// fire-and-forget / fail-open. The injected evidence resolver is used as the observable. Locks: the
 // guard (missing ids OR streamStatus != 200 → no recording) and that a valid 200 stream resolves
-// the cost via calculateCost.
+// the cost via calculateCostWithEvidence.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,16 +18,16 @@ const { scheduleStreamingQuotaShareConsumption } =
 
 function makeCostSpy() {
   const calls: Array<{ provider: string; model: string; requestCount?: number }> = [];
-  const calculateCost = async (
+  const calculateCostWithEvidence = async (
     provider: string,
     model: string,
     _usage: unknown,
     options?: { requestCount?: number }
   ) => {
     calls.push({ provider, model, requestCount: options?.requestCount });
-    return 0.0042;
+    return { costUsd: 0.0042, costKnown: true };
   };
-  return { calculateCost, calls };
+  return { calculateCostWithEvidence, calls };
 }
 
 async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
@@ -51,7 +51,7 @@ after(() => {
 });
 
 test("streamStatus != 200 records nothing (calculateCost never called)", async () => {
-  const { calculateCost, calls } = makeCostSpy();
+  const { calculateCostWithEvidence, calls } = makeCostSpy();
   scheduleStreamingQuotaShareConsumption({
     apiKeyId: "key-1",
     connectionId: "conn-1",
@@ -60,14 +60,14 @@ test("streamStatus != 200 records nothing (calculateCost never called)", async (
     streamUsage: { prompt_tokens: 10, completion_tokens: 5 },
     streamStatus: 500,
     serviceTier: "standard",
-    calculateCost,
+    calculateCostWithEvidence,
   });
   await new Promise((r) => setTimeout(r, 80));
   assert.equal(calls.length, 0);
 });
 
 test("missing connectionId records nothing", async () => {
-  const { calculateCost, calls } = makeCostSpy();
+  const { calculateCostWithEvidence, calls } = makeCostSpy();
   scheduleStreamingQuotaShareConsumption({
     apiKeyId: "key-1",
     connectionId: null,
@@ -75,14 +75,14 @@ test("missing connectionId records nothing", async () => {
     model: "gpt-x",
     streamUsage: { prompt_tokens: 10 },
     streamStatus: 200,
-    calculateCost,
+    calculateCostWithEvidence,
   });
   await new Promise((r) => setTimeout(r, 80));
   assert.equal(calls.length, 0);
 });
 
 test("valid 200 stream resolves cost via injected calculateCost", async () => {
-  const { calculateCost, calls } = makeCostSpy();
+  const { calculateCostWithEvidence, calls } = makeCostSpy();
   scheduleStreamingQuotaShareConsumption({
     apiKeyId: "key-1",
     connectionId: "conn-1",
@@ -92,7 +92,7 @@ test("valid 200 stream resolves cost via injected calculateCost", async () => {
     streamStatus: 200,
     serviceTier: "standard",
     requestCount: 4,
-    calculateCost,
+    calculateCostWithEvidence,
   });
   await waitFor(() => calls.length > 0);
   assert.equal(calls.length, 1);
