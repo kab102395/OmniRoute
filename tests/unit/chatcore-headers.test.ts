@@ -6,6 +6,7 @@ import {
   isFreeRouteOnlyRequested,
   isZeroCostOnlyRequested,
   isToolCallingRequiredRequested,
+  forbidsCrossModelEmergencyFallback,
   isSseMetadataRequested,
   resolveCompressionHeader,
 } from "../../open-sse/handlers/chatCore/headers.ts";
@@ -78,6 +79,18 @@ test("isToolCallingRequiredRequested recognizes only the explicit true header", 
     false
   );
   assert.equal(isToolCallingRequiredRequested({}), false);
+});
+
+test("cross-model emergency fallback is forbidden by exact, free, zero-cost, and capability constraints", () => {
+  for (const name of [
+    "X-OmniRoute-Strict-Model",
+    "X-OmniRoute-Require-Free-Route",
+    "X-OmniRoute-Require-Zero-Cost",
+    "X-OmniRoute-Require-Tool-Calling",
+  ]) {
+    assert.equal(forbidsCrossModelEmergencyFallback(new Headers({ [name]: "true" })), true, name);
+  }
+  assert.equal(forbidsCrossModelEmergencyFallback(new Headers()), false);
 });
 
 test("getHeaderValueCaseInsensitive returns null for null/undefined/non-object inputs", () => {

@@ -63,6 +63,18 @@ export function isToolCallingRequiredRequested(
   );
 }
 
+/** Prevent cross-model emergency fallback when request policy constrains routing. */
+export function forbidsCrossModelEmergencyFallback(
+  headers: Record<string, unknown> | Headers | null | undefined
+): boolean {
+  return (
+    isStrictModelIdentityRequested(headers) ||
+    isFreeRouteOnlyRequested(headers) ||
+    isZeroCostOnlyRequested(headers) ||
+    isToolCallingRequiredRequested(headers)
+  );
+}
+
 /** Opt in to final accounting metadata as an SSE comment for this request only. */
 export function isSseMetadataRequested(
   headers: Record<string, unknown> | Headers | null | undefined
