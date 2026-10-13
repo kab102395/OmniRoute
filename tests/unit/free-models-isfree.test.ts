@@ -27,4 +27,20 @@ describe("isFreeModel isFree opt-in", () => {
     assert.equal(isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 0 } }), true);
     assert.equal(isFreeModel("any", { id: "foo", pricing: { prompt: 0, completion: 1 } }), false);
   });
+  it("does not treat missing, empty, or malformed prices as numeric zero", () => {
+    for (const price of [undefined, "", " ", "0x0", "NaN", null]) {
+      assert.equal(
+        isFreeModel("any", {
+          id: "foo",
+          pricing: { prompt: price as string, completion: "0" },
+        }),
+        false,
+        `prompt price ${String(price)} must not imply free pricing`
+      );
+    }
+    assert.equal(
+      isFreeModel("any", { id: "foo", pricing: { prompt: "0.00", completion: "0" } }),
+      true
+    );
+  });
 });

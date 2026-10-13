@@ -2,7 +2,7 @@
  * openrouterCatalog.ts — Feature 09
  * Catálogo OpenRouter com cache persistente em arquivo JSON local.
  *
- * - TTL configurável via env OPENROUTER_CATALOG_TTL_MS (default: 24h)
+ * - TTL configurável via env OPENROUTER_CATALOG_TTL_MS (default: 15m)
  * - Fallback stale-if-error: retorna último snapshot válido se fetch falhar
  * - Atualização oportunista em background (não bloqueia o caller)
  */
@@ -12,11 +12,14 @@ import path from "path";
 import { invalidateModelCatalogCache } from "@/lib/db/readCache";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/models";
-const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 minutes: free routes rotate more often than pricing catalogs
+const FETCH_FAILURE_RETRY_MS = 60 * 1000;
 
 function getTTL(): number {
   const env = process.env.OPENROUTER_CATALOG_TTL_MS;
-  return env ? parseInt(env, 10) : DEFAULT_TTL_MS;
+  if (!env) return DEFAULT_TTL_MS;
+  const parsed = Number.parseInt(env, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_MS;
 }
 
 function getCacheFilePath(): string {
@@ -65,6 +68,27 @@ interface CacheFile {
 }
 
 let inFlightCatalogFetch: Promise<OpenRouterCatalogEntry[]> | null = null;
+let retryAfterFetchFailureAt = 0;
+
+function catalogResultFromCache(
+  cache: CacheFile | null,
+  stale: boolean,
+  ttl: number
+): {
+  data: OpenRouterCatalogEntry[];
+  stale: boolean;
+  cachedAt: string | null;
+  fromCache: boolean;
+  cacheTtlMs: number;
+} {
+  return {
+    data: cache?.data ?? [],
+    stale,
+    cachedAt: cache?.fetchedAt ?? null,
+    fromCache: cache !== null,
+    cacheTtlMs: ttl,
+  };
+}
 
 function fetchCatalogOnce(): Promise<OpenRouterCatalogEntry[]> {
   if (inFlightCatalogFetch) return inFlightCatalogFetch;
@@ -159,13 +183,20 @@ export async function getOpenRouterCatalog(): Promise<{
     }
   }
 
+  // Avoid retrying an unavailable upstream on every short-TTL /v1/models
+  // rebuild. Stale entries remain displayable, but callers receive stale=true
+  // so they cannot treat them as current free-route authorization.
+  if (now < retryAfterFetchFailureAt) return catalogResultFromCache(cache, true, ttl);
+
   // Cache expired or missing — attempt fresh fetch
   try {
     const data = await fetchCatalogOnce();
     const fetchedAt = new Date().toISOString();
+    retryAfterFetchFailureAt = 0;
     writeCache(data, fetchedAt);
     return { data, stale: false, cachedAt: fetchedAt, fromCache: false, cacheTtlMs: ttl };
   } catch (err) {
+    retryAfterFetchFailureAt = Date.now() + FETCH_FAILURE_RETRY_MS;
     console.warn("[OpenRouterCatalog] Fetch failed, using stale cache:", err);
 
     // Stale-if-error: return old cache if available
@@ -195,10 +226,12 @@ export async function refreshOpenRouterCatalog(): Promise<{
 }> {
   try {
     const data = await fetchCatalogOnce();
+    retryAfterFetchFailureAt = 0;
     writeCache(data, new Date().toISOString());
     invalidateModelCatalogCache();
     return { data, ok: true };
   } catch (err) {
+    retryAfterFetchFailureAt = Date.now() + FETCH_FAILURE_RETRY_MS;
     const error = err instanceof Error ? err.message : String(err);
     return { data: [], ok: false, error };
   }

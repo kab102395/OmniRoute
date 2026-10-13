@@ -257,3 +257,36 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
     ["provider/replacement:free"]
   );
 });
+
+test("OpenRouter catalog refreshes free routes within the bounded TTL and throttles outage retries", async () => {
+  installMockOpenRouterFetch({ data: [{ id: "provider/old:free" }] });
+  const primed = await openRouterCatalog.refreshOpenRouterCatalog();
+  assert.equal(primed.ok, true);
+
+  const cachePath = path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json");
+  const cached = JSON.parse(fs.readFileSync(cachePath, "utf8")) as {
+    data: Array<Record<string, unknown>>;
+  };
+  fs.writeFileSync(
+    cachePath,
+    JSON.stringify({ fetchedAt: "2000-01-01T00:00:00.000Z", data: cached.data })
+  );
+  process.env.OPENROUTER_CATALOG_TTL_MS = "900000";
+
+  let attempts = 0;
+  globalThis.fetch = (async () => {
+    attempts += 1;
+    throw new Error("simulated outage");
+  }) as typeof fetch;
+  try {
+    const staleFirstRead = await openRouterCatalog.getOpenRouterCatalog();
+    const staleSecondRead = await openRouterCatalog.getOpenRouterCatalog();
+    assert.equal(staleFirstRead.stale, true);
+    assert.equal(staleFirstRead.cacheTtlMs, 900_000);
+    assert.equal(staleSecondRead.stale, true);
+    assert.equal(attempts, 1, "failed catalog fetch is throttled for the retry window");
+  } finally {
+    delete process.env.OPENROUTER_CATALOG_TTL_MS;
+    restoreRealFetch();
+  }
+});

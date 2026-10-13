@@ -7,6 +7,7 @@ import path from "node:path";
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-model-catalog-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
 process.env.API_KEY_SECRET = process.env.API_KEY_SECRET || "catalog-test-secret";
+const REAL_FETCH = globalThis.fetch;
 
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
@@ -566,6 +567,63 @@ test("v1 models catalog resolves provider aliases without corrupting slashful mo
     assert.equal(combo.max_output_tokens, 150);
   } finally {
     modelsDevSync.saveModelsDevCapabilities({});
+  }
+});
+
+test("v1 models exposes selectable exact OpenRouter free variants with their own capabilities", async () => {
+  await seedConnection("openrouter");
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "vendor/coder:free",
+            name: "Vendor Coder Free",
+            context_length: 64000,
+            top_provider: { max_completion_tokens: 4096 },
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+            supported_parameters: ["tools"],
+          },
+          {
+            id: "vendor/coder",
+            name: "Vendor Coder Paid",
+            pricing: { prompt: "0.000001", completion: "0.000002" },
+            supported_parameters: [],
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id?: string;
+        free?: boolean;
+        capabilities?: Record<string, boolean>;
+        context_length?: number;
+        max_output_tokens?: number;
+        pricing_provenance?: { zeroCostEligibility?: string };
+        pricing?: { input?: number };
+      }>;
+    };
+    const freeRoute = body.data.find((model) => model.id === "openrouter/vendor/coder:free");
+    const paidRoute = body.data.find((model) => model.id === "openrouter/vendor/coder");
+
+    assert.ok(freeRoute, "the exact :free route must be individually selectable");
+    assert.equal(freeRoute.free, true);
+    assert.equal(freeRoute.capabilities.tool_calling, true);
+    assert.equal(freeRoute.context_length, 64000);
+    assert.equal(freeRoute.max_output_tokens, 4096);
+    assert.equal(freeRoute.pricing_provenance.zeroCostEligibility, "verified_free_variant");
+    assert.ok(paidRoute, "the paid sibling remains a separate selectable route");
+    assert.equal(paidRoute.free, false);
+    assert.equal(paidRoute.pricing.input, 1);
+  } finally {
+    globalThis.fetch = REAL_FETCH;
   }
 });
 

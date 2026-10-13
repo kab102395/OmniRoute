@@ -73,9 +73,7 @@ export function providerHasFreeModels(providerId: string | undefined | null): bo
 
 function isZeroPrice(value: unknown): boolean {
   if (typeof value === "number") return value === 0;
-  if (typeof value !== "string") return false;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed === 0;
+  return typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value);
 }
 
 export interface FreeModelCandidate {
