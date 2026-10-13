@@ -37,6 +37,14 @@ test("extractUsageFromResponse reads OpenAI chat completion usage", () => {
   });
 });
 
+test("extractUsageFromResponse preserves an OpenRouter cost receipt when token counts are absent", () => {
+  assert.deepEqual(extractUsageFromResponse({ usage: { cost: 0.00123 } }, "openrouter"), {
+    provider_reported_cost_usd: 0.00123,
+  });
+  assert.equal(extractUsageFromResponse({ usage: { cost: "0.00123" } }, "openrouter"), null);
+  assert.equal(extractUsageFromResponse({ usage: { cost: 0.00123 } }, "openai"), null);
+});
+
 test("extractUsageFromResponse reads OpenAI usage when cache/reasoning live under input/output token details", () => {
   const usage = extractUsageFromResponse(
     {

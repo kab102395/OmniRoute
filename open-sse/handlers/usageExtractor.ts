@@ -9,6 +9,15 @@ export function extractUsageFromResponse(responseBody, provider) {
     providerId === "claude" ||
     providerId === "anthropic" ||
     providerId.startsWith("anthropic-compatible");
+  const reportedOpenRouterCost =
+    providerId === "openrouter" &&
+    responseBody.usage &&
+    typeof responseBody.usage === "object" &&
+    typeof responseBody.usage.cost === "number" &&
+    Number.isFinite(responseBody.usage.cost) &&
+    responseBody.usage.cost >= 0
+      ? { provider_reported_cost_usd: responseBody.usage.cost }
+      : {};
 
   // OpenAI format (has prompt_tokens / completion_tokens)
   if (
@@ -24,6 +33,7 @@ export function extractUsageFromResponse(responseBody, provider) {
       responseBody.usage.input_tokens_details?.cache_write_tokens ??
       responseBody.usage.cache_write_tokens;
     return {
+      ...reportedOpenRouterCost,
       prompt_tokens: responseBody.usage.prompt_tokens || 0,
       completion_tokens: responseBody.usage.completion_tokens || 0,
       // DeepSeek native API uses flat prompt_cache_hit_tokens (NOT
@@ -84,6 +94,7 @@ export function extractUsageFromResponse(responseBody, provider) {
     const promptTokens = inputTokens + cacheRead + cacheCreation;
 
     return {
+      ...reportedOpenRouterCost,
       prompt_tokens: promptTokens,
       completion_tokens: responseBody.usage.output_tokens || 0,
       cache_read_input_tokens: cacheRead,
@@ -102,6 +113,7 @@ export function extractUsageFromResponse(responseBody, provider) {
     (responsesUsage.input_tokens !== undefined || responsesUsage.output_tokens !== undefined)
   ) {
     return {
+      ...reportedOpenRouterCost,
       prompt_tokens: responsesUsage.input_tokens || 0,
       completion_tokens: responsesUsage.output_tokens || 0,
       cache_read_input_tokens: responsesUsage.cache_read_input_tokens,
@@ -133,5 +145,5 @@ export function extractUsageFromResponse(responseBody, provider) {
     };
   }
 
-  return null;
+  return Object.keys(reportedOpenRouterCost).length > 0 ? reportedOpenRouterCost : null;
 }

@@ -2424,7 +2424,7 @@ test("chatCore reports the concrete model that succeeded after model-family fall
   assert.equal(callLog.servedProvider, "claude");
   assert.equal(callLog.servedModel, "claude-sonnet-4-6");
 });
-test("chatCore marks OpenRouter usage.cost as provider-reported accounting", async () => {
+test("chatCore preserves an OpenRouter usage.cost receipt without token counts", async () => {
   const { result } = await invokeChatCore({
     provider: "openrouter",
     model: "openai/gpt-4o-mini",
@@ -2442,7 +2442,7 @@ test("chatCore marks OpenRouter usage.cost as provider-reported accounting", asy
           choices: [
             { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
           ],
-          usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6, cost: 0.00123 },
+          usage: { cost: 0.00123 },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
