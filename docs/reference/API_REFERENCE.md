@@ -416,10 +416,13 @@ GET /v1/models?prefix=canonical    # only the full provider-id prefix
 A `dual`-mode mirror can also be recognised without the query parameter: it carries a `parent`
 field pointing at the primary id.
 
-OpenRouter model entries retain source-specific `pricing_provenance`: the exact reported
-prompt/completion values (USD per token), any reported image/request values, source model id,
-catalog retrieval time, cache TTL/stale state, and downstream-host selection status. The
-legacy `pricing` object remains in USD per million tokens when both token rates are reported.
+OpenRouter model entries retain source-specific `pricing_provenance`: exact reported prompt and
+completion values (USD per token), image/request/audio prices, cached-input and cache-write prices,
+internal-reasoning and web-search rates, the reported discount, and any conditional pricing
+overrides. It also carries the raw upstream pricing object, source model id, catalog retrieval time,
+cache TTL/stale state, and downstream-host selection status.
+The legacy `pricing` object remains in USD per million tokens when both base token rates are reported
+without conditional overrides.
 Incomplete OpenRouter prices do not fall back to a different provider's generic model price.
 OpenRouter selects the downstream host, so catalog prices do not prove which host will serve a
 future request and are not a guaranteed upper cost bound. Exact `:free` variants listed in the

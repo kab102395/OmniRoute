@@ -14547,6 +14547,123 @@ components:
           example: model
         owned_by:
           type: string
+        pricing_provenance:
+          type: object
+          description: >-
+            Source-attributed pricing for this exact route. OpenRouter rates retain the source's
+            USD/token or modality-specific dimensions and conditional overrides; absent rates
+            remain unknown. Exact routes in OpenRouter's current free catalog may be classified
+            free even when redundant numeric rates are omitted.
+          properties:
+            state:
+              type: string
+              enum:
+                - free_variant
+                - reported
+                - conditional_reported_pricing
+                - incomplete
+                - unavailable
+                - unknown_stale_catalog
+                - not_in_current_free_catalog
+            routeModelId:
+              type: string
+            currency:
+              type: string
+            tokenRateUnit:
+              type: string
+            rates:
+              type: object
+              properties:
+                inputPerTokenUsd:
+                  type: string
+                  nullable: true
+                outputPerTokenUsd:
+                  type: string
+                  nullable: true
+                imageReportedUsd:
+                  type: string
+                  nullable: true
+                imageOutputReportedUsd:
+                  type: string
+                  nullable: true
+                imageTokenReportedUsd:
+                  type: string
+                  nullable: true
+                requestReportedUsd:
+                  type: string
+                  nullable: true
+                audioInputPerTokenUsd:
+                  type: string
+                  nullable: true
+                audioOutputPerTokenUsd:
+                  type: string
+                  nullable: true
+                inputAudioCachePerTokenUsd:
+                  type: string
+                  nullable: true
+                inputCacheReadPerTokenUsd:
+                  type: string
+                  nullable: true
+                inputCacheWritePerTokenUsd:
+                  type: string
+                  nullable: true
+                inputCacheWrite1hPerTokenUsd:
+                  type: string
+                  nullable: true
+                internalReasoningPerTokenUsd:
+                  type: string
+                  nullable: true
+                webSearchReportedUsd:
+                  type: string
+                  nullable: true
+            overrides:
+              type: array
+              description: Source-reported conditional pricing overrides.
+              items:
+                type: object
+                additionalProperties: true
+            reportedPricing:
+              type: object
+              description: Complete raw pricing object returned by OpenRouter, including future fields.
+              additionalProperties: true
+              nullable: true
+            discountReported:
+              oneOf:
+                - type: number
+                - type: string
+                - type: "null"
+              description: Raw source discount value; malformed values leave pricing incomplete.
+            zeroCostEligibility:
+              type: string
+              enum: [verified_free_variant, unknown_stale_catalog, no]
+            downstreamHost:
+              type: object
+              properties:
+                selection:
+                  type: string
+                  enum: [aggregator_selected, pinned]
+                provider:
+                  type: string
+                  nullable: true
+            source:
+              type: object
+              properties:
+                id:
+                  type: string
+                modelId:
+                  type: string
+                url:
+                  type: string
+                retrievedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                stale:
+                  type: boolean
+                  nullable: true
+                cacheTtlMs:
+                  type: integer
+                  nullable: true
         capability_status:
           type: object
           description: >-

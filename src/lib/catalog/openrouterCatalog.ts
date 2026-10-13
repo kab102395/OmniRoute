@@ -36,12 +36,7 @@ export interface OpenRouterCatalogEntry {
   name?: string;
   description?: string;
   context_length?: number;
-  pricing?: {
-    prompt?: string;
-    completion?: string;
-    image?: string;
-    request?: string;
-  };
+  pricing?: OpenRouterPricing;
   top_provider?: {
     max_completion_tokens?: number;
     is_moderated?: boolean;
@@ -57,25 +52,72 @@ export interface OpenRouterCatalogEntry {
   created?: number;
 }
 
+/** OpenRouter's model API pricing dimensions, including route-level overrides. */
+export interface OpenRouterPricing {
+  prompt?: unknown;
+  completion?: unknown;
+  image?: unknown;
+  image_output?: unknown;
+  image_token?: unknown;
+  request?: unknown;
+  audio?: unknown;
+  audio_output?: unknown;
+  input_audio_cache?: unknown;
+  input_cache_read?: unknown;
+  input_cache_write?: unknown;
+  input_cache_write_1h?: unknown;
+  internal_reasoning?: unknown;
+  web_search?: unknown;
+  discount?: unknown;
+  overrides?: unknown;
+}
+
 /** OpenRouter expresses its catalog-level free offering as an exact `:free` route variant. */
 export function isOpenRouterFreeRoute(modelId: string): boolean {
   return /^[^\s]+:free$/.test(modelId);
 }
 
 /** Explicit OpenRouter zero-rate evidence for this exact route, across reported billable fields. */
-export function isOpenRouterZeroPriceRoute(model: {
-  pricing?: { prompt?: unknown; completion?: unknown; image?: unknown; request?: unknown };
-}): boolean {
+export function isOpenRouterZeroPriceRoute(model: { pricing?: OpenRouterPricing }): boolean {
   const isNumericZero = (value: unknown) =>
     (typeof value === "number" && value === 0) ||
     (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
   const pricing = model.pricing;
+  const billableRateKeys = [
+    "prompt",
+    "completion",
+    "image",
+    "image_output",
+    "image_token",
+    "request",
+    "audio",
+    "audio_output",
+    "input_audio_cache",
+    "input_cache_read",
+    "input_cache_write",
+    "input_cache_write_1h",
+    "internal_reasoning",
+    "web_search",
+  ] as const;
+  const reportedRatesAreZero = (rates: Record<string, unknown>) =>
+    billableRateKeys.every((key) => rates[key] === undefined || isNumericZero(rates[key]));
+  const overrides = pricing?.overrides;
+  const overridesAreZero =
+    overrides === undefined ||
+    (Array.isArray(overrides) &&
+      overrides.every(
+        (override) =>
+          override !== null &&
+          typeof override === "object" &&
+          !Array.isArray(override) &&
+          reportedRatesAreZero(override as Record<string, unknown>)
+      ));
   return (
     pricing !== undefined &&
     isNumericZero(pricing.prompt) &&
     isNumericZero(pricing.completion) &&
-    (pricing.image === undefined || isNumericZero(pricing.image)) &&
-    (pricing.request === undefined || isNumericZero(pricing.request))
+    reportedRatesAreZero(pricing as Record<string, unknown>) &&
+    overridesAreZero
   );
 }
 

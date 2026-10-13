@@ -219,6 +219,34 @@ test("catalogOpenrouter: free-model detection + display name", () => {
     false,
     "a nonzero image rate prevents an all-dimensions zero-cost classification"
   );
+  assert.equal(
+    isOpenRouterFreeModel({
+      id: "z/cache-priced-model",
+      pricing: { prompt: "0", completion: "0", input_cache_read: "0.0000001" },
+    }),
+    false,
+    "a nonzero cached-input rate prevents a zero-cost classification"
+  );
+  assert.equal(
+    isOpenRouterFreeModel({
+      id: "z/conditionally-priced-model",
+      pricing: {
+        prompt: "0",
+        completion: "0",
+        overrides: [{ min_prompt_tokens: 100000, prompt: "0.0000001" }],
+      },
+    }),
+    false,
+    "a nonzero conditional pricing override prevents a zero-cost classification"
+  );
+  assert.equal(
+    isOpenRouterFreeModel({
+      id: "z/current-catalog-free:free",
+      pricing: { prompt: "0", completion: "0", internal_reasoning: "0.01" },
+    }),
+    true,
+    "authoritative exact free variants remain eligible regardless of redundant price fields"
+  );
   assert.equal(getOpenRouterDisplayName({ id: "z/m", name: "Some Model" }), "Some Model");
   assert.equal(
     getOpenRouterDisplayName({ id: "z/m:free", name: "Free Model" }),
@@ -270,6 +298,49 @@ test("catalogOpenrouter: source pricing evidence preserves exact rates and host 
   assert.deepEqual(toOpenRouterLegacyTokenPricing(evidence), { input: 0, output: 0 });
 });
 
+test("catalogOpenrouter: pricing evidence retains cache, reasoning, modality, and conditional rates", () => {
+  const evidence = buildOpenRouterPricingEvidence(
+    {
+      id: "vendor/conditional-model",
+      pricing: {
+        prompt: "0.000001",
+        completion: "0.000002",
+        input_cache_read: "0.0000003",
+        input_cache_write: "0.0000008",
+        internal_reasoning: "0.000002",
+        audio: "0.00001",
+        audio_output: "0.00002",
+        web_search: "0.01",
+        discount: 0.1,
+        overrides: [{ min_prompt_tokens: 100000, prompt: "0.000003" }],
+      },
+    },
+    { retrievedAt: "2026-10-13T00:00:00.000Z", stale: false, ttlMs: 900_000 }
+  );
+
+  assert.equal(evidence.state, "conditional_reported_pricing");
+  assert.equal(evidence.rates.inputCacheReadPerTokenUsd, "0.0000003");
+  assert.equal(evidence.rates.inputCacheWritePerTokenUsd, "0.0000008");
+  assert.equal(evidence.rates.internalReasoningPerTokenUsd, "0.000002");
+  assert.equal(evidence.rates.audioInputPerTokenUsd, "0.00001");
+  assert.equal(evidence.rates.audioOutputPerTokenUsd, "0.00002");
+  assert.equal(evidence.rates.webSearchReportedUsd, "0.01");
+  assert.equal(evidence.discountReported, 0.1);
+  assert.deepEqual(evidence.overrides, [{ min_prompt_tokens: 100000, prompt: "0.000003" }]);
+  assert.deepEqual(evidence.reportedPricing, {
+    prompt: "0.000001",
+    completion: "0.000002",
+    input_cache_read: "0.0000003",
+    input_cache_write: "0.0000008",
+    internal_reasoning: "0.000002",
+    audio: "0.00001",
+    audio_output: "0.00002",
+    web_search: "0.01",
+    discount: 0.1,
+    overrides: [{ min_prompt_tokens: 100000, prompt: "0.000003" }],
+  });
+});
+
 test("catalogOpenrouter: incomplete or malformed route prices do not become zero", () => {
   const evidence = buildOpenRouterPricingEvidence(
     { id: "deepseek/model", pricing: { prompt: "0.0000003", completion: "NaN" } },
@@ -282,6 +353,26 @@ test("catalogOpenrouter: incomplete or malformed route prices do not become zero
   assert.equal(evidence.source.stale, true);
   assert.equal(evidence.zeroCostEligibility, "no");
   assert.equal(toOpenRouterLegacyTokenPricing(evidence), null);
+
+  const malformedOptionalRate = buildOpenRouterPricingEvidence(
+    {
+      id: "vendor/malformed-audio-price",
+      pricing: { prompt: "0.000001", completion: "0.000002", audio: "not-a-number" },
+    },
+    { retrievedAt: "2026-10-12T00:00:00.000Z", stale: false, ttlMs: 900_000 }
+  );
+  assert.equal(malformedOptionalRate.state, "incomplete");
+  assert.equal(malformedOptionalRate.reportedPricing?.audio, "not-a-number");
+
+  const malformedDiscount = buildOpenRouterPricingEvidence(
+    {
+      id: "vendor/malformed-discount",
+      pricing: { prompt: "0.000001", completion: "0.000002", discount: "free" },
+    },
+    { retrievedAt: "2026-10-12T00:00:00.000Z", stale: false, ttlMs: 900_000 }
+  );
+  assert.equal(malformedDiscount.state, "incomplete");
+  assert.equal(malformedDiscount.discountReported, "free");
 });
 
 test("catalogOpenrouter: synchronized free routes lose eligibility when absent from current catalog", () => {

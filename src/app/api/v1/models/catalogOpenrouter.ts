@@ -1,4 +1,8 @@
-import { isOpenRouterFreeRoute, isOpenRouterZeroPriceRoute } from "@/lib/catalog/openrouterCatalog";
+import {
+  isOpenRouterFreeRoute,
+  isOpenRouterZeroPriceRoute,
+  type OpenRouterPricing,
+} from "@/lib/catalog/openrouterCatalog";
 
 // OpenRouter-specific catalog normalization helpers. Extracted verbatim from
 // ./catalog.ts as a cohesive leaf — id qualification, modality normalization,
@@ -29,10 +33,7 @@ export function isZeroPrice(value: unknown) {
   return true;
 }
 
-export function isOpenRouterFreeModel(model: {
-  id?: string;
-  pricing?: { prompt?: string; completion?: string; image?: string; request?: string };
-}) {
+export function isOpenRouterFreeModel(model: { id?: string; pricing?: OpenRouterPricing }) {
   // Exact `:free` variants are OpenRouter's provider-classified free routes;
   // complete explicit zero rates are also authoritative for that exact route.
   // A sibling route never inherits another route's free classification.
@@ -43,7 +44,7 @@ export function isOpenRouterFreeModel(model: {
 export function getOpenRouterDisplayName(model: {
   id?: string;
   name?: string;
-  pricing?: { prompt?: string; completion?: string; image?: string; request?: string };
+  pricing?: OpenRouterPricing;
 }) {
   const name = model.name || model.id || "OpenRouter model";
   return isOpenRouterFreeModel(model) && !/\bgr[aá]tis\b/i.test(name) ? `${name} (Grátis)` : name;
@@ -148,12 +149,7 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
   return result;
 }
 
-type OpenRouterReportedPricing = {
-  prompt?: string;
-  completion?: string;
-  image?: string;
-  request?: string;
-};
+type OpenRouterReportedPricing = OpenRouterPricing;
 
 function parseReportedRate(value: unknown): string | null {
   if (typeof value !== "string" || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return null;
@@ -169,24 +165,78 @@ export function buildOpenRouterPricingEvidence(
   model: { id: string; pricing?: OpenRouterReportedPricing },
   options: { retrievedAt: string; stale: boolean; ttlMs: number }
 ) {
+  const reportedRates = {
+    inputPerTokenUsd: model.pricing?.prompt,
+    outputPerTokenUsd: model.pricing?.completion,
+    imageReportedUsd: model.pricing?.image,
+    imageOutputReportedUsd: model.pricing?.image_output,
+    imageTokenReportedUsd: model.pricing?.image_token,
+    requestReportedUsd: model.pricing?.request,
+    audioInputPerTokenUsd: model.pricing?.audio,
+    audioOutputPerTokenUsd: model.pricing?.audio_output,
+    inputAudioCachePerTokenUsd: model.pricing?.input_audio_cache,
+    inputCacheReadPerTokenUsd: model.pricing?.input_cache_read,
+    inputCacheWritePerTokenUsd: model.pricing?.input_cache_write,
+    inputCacheWrite1hPerTokenUsd: model.pricing?.input_cache_write_1h,
+    internalReasoningPerTokenUsd: model.pricing?.internal_reasoning,
+    webSearchReportedUsd: model.pricing?.web_search,
+  };
   const rates = {
-    inputPerTokenUsd: parseReportedRate(model.pricing?.prompt),
-    outputPerTokenUsd: parseReportedRate(model.pricing?.completion),
-    imageReportedUsd: parseReportedRate(model.pricing?.image),
-    requestReportedUsd: parseReportedRate(model.pricing?.request),
+    inputPerTokenUsd: parseReportedRate(reportedRates.inputPerTokenUsd),
+    outputPerTokenUsd: parseReportedRate(reportedRates.outputPerTokenUsd),
+    imageReportedUsd: parseReportedRate(reportedRates.imageReportedUsd),
+    imageOutputReportedUsd: parseReportedRate(reportedRates.imageOutputReportedUsd),
+    imageTokenReportedUsd: parseReportedRate(reportedRates.imageTokenReportedUsd),
+    requestReportedUsd: parseReportedRate(reportedRates.requestReportedUsd),
+    audioInputPerTokenUsd: parseReportedRate(reportedRates.audioInputPerTokenUsd),
+    audioOutputPerTokenUsd: parseReportedRate(reportedRates.audioOutputPerTokenUsd),
+    inputAudioCachePerTokenUsd: parseReportedRate(reportedRates.inputAudioCachePerTokenUsd),
+    inputCacheReadPerTokenUsd: parseReportedRate(reportedRates.inputCacheReadPerTokenUsd),
+    inputCacheWritePerTokenUsd: parseReportedRate(reportedRates.inputCacheWritePerTokenUsd),
+    inputCacheWrite1hPerTokenUsd: parseReportedRate(reportedRates.inputCacheWrite1hPerTokenUsd),
+    internalReasoningPerTokenUsd: parseReportedRate(reportedRates.internalReasoningPerTokenUsd),
+    webSearchReportedUsd: parseReportedRate(reportedRates.webSearchReportedUsd),
   };
   const hasAnyRate = Object.values(rates).some((rate) => rate !== null);
+  const malformedReportedRates = Object.values(reportedRates).some(
+    (value) => value !== undefined && value !== null && parseReportedRate(value) === null
+  );
   const completeTokenRates = rates.inputPerTokenUsd !== null && rates.outputPerTokenUsd !== null;
   const isFreeVariant = isOpenRouterFreeModel(model);
+  const pricingOverrides = model.pricing?.overrides;
+  const hasPricingOverrides = Array.isArray(pricingOverrides) && pricingOverrides.length > 0;
+  const malformedPricingOverrides =
+    pricingOverrides !== undefined &&
+    (!Array.isArray(pricingOverrides) ||
+      pricingOverrides.some(
+        (override) => !override || typeof override !== "object" || Array.isArray(override)
+      ));
+  const pricingDiscount = model.pricing?.discount;
+  const malformedPricingDiscount =
+    pricingDiscount !== undefined &&
+    (typeof pricingDiscount !== "number" ||
+      !Number.isFinite(pricingDiscount) ||
+      pricingDiscount < 0 ||
+      pricingDiscount > 1);
+  const state = isFreeVariant
+    ? "free_variant"
+    : malformedPricingOverrides ||
+        malformedReportedRates ||
+        malformedPricingDiscount ||
+        !hasAnyRate ||
+        !completeTokenRates
+      ? hasAnyRate ||
+        malformedPricingOverrides ||
+        malformedReportedRates ||
+        malformedPricingDiscount
+        ? "incomplete"
+        : "unavailable"
+      : hasPricingOverrides
+        ? "conditional_reported_pricing"
+        : "reported";
 
   return {
-    state: isFreeVariant
-      ? "free_variant"
-      : !hasAnyRate
-        ? "unavailable"
-        : completeTokenRates
-          ? "reported"
-          : "incomplete",
+    state,
     routeModelId: model.id,
     source: {
       id: "openrouter.models_api",
@@ -199,6 +249,9 @@ export function buildOpenRouterPricingEvidence(
     currency: "USD",
     tokenRateUnit: "USD/token",
     rates,
+    reportedPricing: model.pricing ?? null,
+    ...(pricingOverrides !== undefined ? { overrides: pricingOverrides } : {}),
+    ...(model.pricing?.discount !== undefined ? { discountReported: model.pricing.discount } : {}),
     zeroCostEligibility: isFreeVariant
       ? options.stale
         ? "unknown_stale_catalog"
