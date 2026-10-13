@@ -429,6 +429,7 @@ describe("modelsDevSync — mapProviderId", () => {
     assert.deepEqual(mapProviderId("vertex_ai"), ["vertex"]);
     assert.deepEqual(mapProviderId("google-vertex-anthropic"), ["vertex"]);
     assert.deepEqual(mapProviderId("ollama-cloud"), ["ollama-cloud", "ollamacloud"]);
+    assert.deepEqual(mapProviderId("amazon-bedrock"), ["bedrock"]);
   });
 });
 

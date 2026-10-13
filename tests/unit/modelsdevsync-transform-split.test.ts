@@ -176,6 +176,37 @@ describe("modelsDevSync/transform split-guard", () => {
     assert.equal(capabilities.ollamacloud["glm-5.3-flash"].limit_output, 131_072);
   });
 
+  it("synchronizes the current Amazon Bedrock source id to the Bedrock provider", () => {
+    const raw = {
+      "amazon-bedrock": {
+        id: "amazon-bedrock",
+        models: {
+          "anthropic.claude-sonnet-4-5-20250929-v1:0": {
+            id: "anthropic.claude-sonnet-4-5-20250929-v1:0",
+            name: "Claude Sonnet 4.5",
+            cost: { input: 3, output: 15 },
+            tool_call: true,
+            limit: { context: 200_000, output: 64_000 },
+          },
+        },
+      },
+    };
+    const pricing = transformModelsDevToPricing(raw as never);
+    const capabilities = transformModelsDevToCapabilities(raw as never);
+
+    assert.deepEqual(pricing.bedrock["anthropic.claude-sonnet-4-5-20250929-v1:0"], {
+      input: 3,
+      output: 15,
+    });
+    assert.equal(pricing["amazon-bedrock"], undefined);
+    assert.equal(capabilities.bedrock["anthropic.claude-sonnet-4-5-20250929-v1:0"].tool_call, true);
+    assert.equal(
+      capabilities.bedrock["anthropic.claude-sonnet-4-5-20250929-v1:0"].limit_context,
+      200_000
+    );
+    assert.equal(capabilities["amazon-bedrock"], undefined);
+  });
+
   it("drops malformed optional billing dimensions instead of persisting unsafe values", () => {
     const raw = {
       openai: {
