@@ -59,6 +59,35 @@ test("GET /api/openapi/spec documents its conditional management auth contract",
   );
 });
 
+test("provider-limits documents cached quota provenance and management auth", () => {
+  const getOperation = paths["/api/usage/provider-limits"]?.get;
+  const postOperation = paths["/api/usage/provider-limits"]?.post;
+
+  for (const operation of [getOperation, postOperation]) {
+    assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }]);
+    assert.match(operation?.description ?? "", /when `requireLogin` is enabled/i);
+    assert.equal(
+      operation?.responses?.["401"]?.$ref,
+      "#/components/responses/ManagementAuthenticationRequired"
+    );
+    assert.equal(
+      operation?.responses?.["403"]?.$ref,
+      "#/components/responses/ManagementInvalidToken"
+    );
+    assert.equal(
+      operation?.responses?.["200"]?.content?.["application/json"]?.schema?.$ref,
+      "#/components/schemas/ProviderLimitsResponse"
+    );
+  }
+
+  assert.match(postOperation?.description ?? "", /does not execute model inference/i);
+  const entry = raw.components?.schemas?.ProviderLimitsCacheEntry;
+  assert.deepEqual(entry?.required, ["quotas", "plan", "message", "fetchedAt"]);
+  assert.equal(entry?.properties?.fetchedAt?.format, "date-time");
+  assert.equal(entry?.properties?.source?.nullable, true);
+  assert.equal(entry?.properties?.billing?.type, "object");
+});
+
 test("POST /api/openapi/try documents its bounded management proxy contract", () => {
   const operation = paths["/api/openapi/try"]?.post;
 

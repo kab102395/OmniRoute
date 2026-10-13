@@ -1650,10 +1650,6 @@ paths:
                 type: string
                 enum: ["true", "false"]
               description: Whether the response was served from cache.
-            X-OmniRoute-Fallback-Attempts:
-              schema:
-                type: string
-              description: Number of fallback attempts (only present when > 0).
             X-OmniRoute-Decision:
               schema:
                 type: string
@@ -12233,16 +12229,45 @@ paths:
       tags:
         - Usage
       summary: "GET usage › provider limits"
+      description: >-
+        Returns cached provider quota and billing observations without querying upstream providers.
+        Provider-specific `quotas`, `plan`, and `billing` values are preserved as reported; use
+        `fetchedAt` and `source` to judge freshness and provenance. Requires management
+        authentication when `requireLogin` is enabled.
+      security:
+        - ManagementSessionAuth: []
       responses:
         "200":
-          description: OK
+          description: Cached provider limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderLimitsResponse"
+        "401":
+          $ref: "#/components/responses/ManagementAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/ManagementInvalidToken"
     post:
       tags:
         - Usage
       summary: "POST usage › provider limits"
+      description: >-
+        Refreshes provider quota and billing observations using configured provider connections.
+        This may issue provider metadata/usage requests but does not execute model inference.
+        Requires management authentication when `requireLogin` is enabled.
+      security:
+        - ManagementSessionAuth: []
       responses:
         "200":
-          description: OK
+          description: Refresh results and provider limits cache
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderLimitsResponse"
+        "401":
+          $ref: "#/components/responses/ManagementAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/ManagementInvalidToken"
   /api/usage/provider-window-costs:
     get:
       tags:
@@ -13251,6 +13276,64 @@ components:
             requestId: 0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 
   schemas:
+    ProviderLimitsResponse:
+      type: object
+      required: [caches, intervalMinutes, lastAutoSyncAt]
+      properties:
+        caches:
+          type: object
+          description: Provider connection id to its last cached quota/billing observation.
+          additionalProperties:
+            $ref: "#/components/schemas/ProviderLimitsCacheEntry"
+        intervalMinutes:
+          type: integer
+          minimum: 1
+        lastAutoSyncAt:
+          type: string
+          format: date-time
+          nullable: true
+        total:
+          type: integer
+          description: Present on POST; number of supported active connections considered.
+        succeeded:
+          type: integer
+          description: Present on POST; number of refreshed cache entries.
+        failed:
+          type: integer
+          description: Present on POST; number of failed refreshes.
+        errors:
+          type: object
+          description: Present on POST; refresh error by provider connection id.
+          additionalProperties:
+            type: string
+    ProviderLimitsCacheEntry:
+      type: object
+      required: [quotas, plan, message, fetchedAt]
+      properties:
+        quotas:
+          type: object
+          nullable: true
+          description: Provider-specific quota windows and balances; numeric semantics vary by provider.
+          additionalProperties: true
+        plan:
+          description: Provider-reported plan metadata, when available.
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        fetchedAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+          nullable: true
+        bankedResetCredits:
+          type: number
+        billing:
+          type: object
+          description: Sanitized provider-reported billing status when supplied.
+          additionalProperties: true
+
     ExclusiveConnectionLeaseLifecycle:
       type: object
       description: >-
