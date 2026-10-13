@@ -39,7 +39,10 @@ test("estimateBatchCost: known model (gpt-4o) → pricingSource=exact-match, no 
 test("estimateBatchCost: batchCostUsd = syncCostUsd * 0.5", () => {
   const jsonl = makeJsonl([makeLine("req-1")]);
   const result = estimateBatchCost({ jsonl, model: "gpt-4o", endpoint: ENDPOINT });
-  assert.ok(Math.abs(result.batchCostUsd - result.syncCostUsd * 0.5) < 1e-12, "batch cost should be half of sync");
+  assert.ok(
+    Math.abs(result.batchCostUsd - result.syncCostUsd * 0.5) < 1e-12,
+    "batch cost should be half of sync"
+  );
 });
 
 test("estimateBatchCost: savingsUsd = syncCostUsd - batchCostUsd", () => {
@@ -50,15 +53,19 @@ test("estimateBatchCost: savingsUsd = syncCostUsd - batchCostUsd", () => {
 
 // ── Unknown model ──────────────────────────────────────────────────────────────
 
-test("estimateBatchCost: unknown model → pricingSource=fallback, warning added, cost=0", () => {
+test("estimateBatchCost: unknown model → pricingSource=fallback, warning added, cost unknown", () => {
   const jsonl = makeJsonl([makeLine("req-1", "totally-unknown-model-xyz-999")]);
-  const result = estimateBatchCost({ jsonl, model: "totally-unknown-model-xyz-999", endpoint: ENDPOINT });
+  const result = estimateBatchCost({
+    jsonl,
+    model: "totally-unknown-model-xyz-999",
+    endpoint: ENDPOINT,
+  });
   assert.equal(result.pricingSource, "fallback");
   assert.ok(result.warnings.length > 0, "should have a warning for unknown model");
   assert.ok(result.warnings[0].includes("totally-unknown-model-xyz-999"));
-  assert.equal(result.syncCostUsd, 0);
-  assert.equal(result.batchCostUsd, 0);
-  assert.equal(result.savingsUsd, 0);
+  assert.equal(result.syncCostUsd, null);
+  assert.equal(result.batchCostUsd, null);
+  assert.equal(result.savingsUsd, null);
 });
 
 // ── Token counting heuristic ──────────────────────────────────────────────────
@@ -95,7 +102,11 @@ test("estimateBatchCost: missing max_tokens → defaults to 256", () => {
 
 test("estimateBatchCost: multiple requests → totalRequests sums correctly", () => {
   const lines = Array.from({ length: 5 }, (_, i) => makeLine(`req-${i}`, "gpt-4o", 100));
-  const result = estimateBatchCost({ jsonl: makeJsonl(lines), model: "gpt-4o", endpoint: ENDPOINT });
+  const result = estimateBatchCost({
+    jsonl: makeJsonl(lines),
+    model: "gpt-4o",
+    endpoint: ENDPOINT,
+  });
   assert.equal(result.totalRequests, 5);
   assert.equal(result.estimatedOutputTokens, 500, "5 * min(100, 1024) = 500");
 });
@@ -181,7 +192,7 @@ test("estimateBatchCost: alias-match path triggers when model differs only in ca
   // exact-match (if the table normalizes); both are valid "found" results.
   assert.ok(
     result.pricingSource === "alias-match" || result.pricingSource === "exact-match",
-    `expected match (alias or exact), got ${result.pricingSource}`,
+    `expected match (alias or exact), got ${result.pricingSource}`
   );
   assert.ok(result.syncCostUsd > 0, "non-zero cost expected when pricing is found");
 });

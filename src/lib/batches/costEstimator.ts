@@ -68,7 +68,7 @@ const CHARS_PER_TOKEN = 4; // heuristic: ~4 UTF-8 chars per token
  * - Output tokens: `min(max_tokens || 256, 1024)` per request.
  * - Batch discount: -50% on both input and output (OpenAI / Anthropic batch APIs).
  * - Prices from `DEFAULT_PRICING` in `src/shared/constants/pricing.ts`.
- * - If model is not in the table, costs are 0 and a warning is added.
+ * - If model is not in the table, costs are unknown (`null`) and a warning is added.
  *
  * Always label results as "estimated (~)" in the UI.
  */
@@ -101,20 +101,23 @@ export function estimateBatchCost(input: {
   const price = getPrice(input.model);
   const warnings: string[] = [];
   let pricingSource: CostEstimate["pricingSource"] = "fallback";
-  let inputRate = 0;
-  let outputRate = 0;
+  let inputRate: number | null = null;
+  let outputRate: number | null = null;
 
   if (price) {
     inputRate = price.input;
     outputRate = price.output;
     pricingSource = price.src;
   } else {
-    warnings.push(`model "${input.model}" not found in pricing table — cost shown as $0 (fallback)`);
+    warnings.push(`model "${input.model}" not found in pricing table — cost is unknown`);
   }
 
-  // Rates are per 1 million tokens
-  const syncCostUsd = (inputTokens * inputRate + outputTokens * outputRate) / 1_000_000;
-  const batchCostUsd = syncCostUsd * BATCH_DISCOUNT;
+  // Rates are per 1 million tokens. Missing pricing must not masquerade as free.
+  const syncCostUsd =
+    inputRate === null || outputRate === null
+      ? null
+      : (inputTokens * inputRate + outputTokens * outputRate) / 1_000_000;
+  const batchCostUsd = syncCostUsd === null ? null : syncCostUsd * BATCH_DISCOUNT;
 
   return {
     model: input.model,
@@ -123,7 +126,7 @@ export function estimateBatchCost(input: {
     estimatedOutputTokens: outputTokens,
     syncCostUsd,
     batchCostUsd,
-    savingsUsd: syncCostUsd - batchCostUsd,
+    savingsUsd: syncCostUsd === null || batchCostUsd === null ? null : syncCostUsd - batchCostUsd,
     pricingSource,
     warnings,
   };

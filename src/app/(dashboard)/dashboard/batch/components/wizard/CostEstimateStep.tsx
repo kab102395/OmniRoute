@@ -38,17 +38,17 @@ export default function CostEstimateStep({
         setEstimate(est);
       } catch (err) {
         console.error("[CostEstimateStep] cost estimation error:", err);
-        // Fallback: zero-cost estimate so user can still proceed
+        // Keep the workflow available, but do not represent estimation failure as free.
         setEstimate({
           model,
           totalRequests: 0,
           estimatedInputTokens: 0,
           estimatedOutputTokens: 0,
-          syncCostUsd: 0,
-          batchCostUsd: 0,
-          savingsUsd: 0,
+          syncCostUsd: null,
+          batchCostUsd: null,
+          savingsUsd: null,
           pricingSource: "fallback",
-          warnings: ["Cost estimation failed — shown as $0."],
+          warnings: ["Cost estimation failed — cost is unknown."],
         });
       } finally {
         setLoading(false);
@@ -76,7 +76,7 @@ export default function CostEstimateStep({
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-sm text-[var(--color-text-muted)]">{t("wizardCostSync")}</span>
             <span className="text-sm text-[var(--color-text-muted)] line-through">
-              ${estimate.syncCostUsd.toFixed(4)}
+              {estimate.syncCostUsd === null ? "—" : `$${estimate.syncCostUsd.toFixed(4)}`}
             </span>
           </div>
 
@@ -88,7 +88,7 @@ export default function CostEstimateStep({
                 -50%
               </span>
               <span className="text-sm font-semibold text-emerald-400">
-                ${estimate.batchCostUsd.toFixed(4)}
+                {estimate.batchCostUsd === null ? "—" : `$${estimate.batchCostUsd.toFixed(4)}`}
               </span>
             </div>
           </div>
@@ -96,7 +96,9 @@ export default function CostEstimateStep({
           {/* Savings */}
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-sm text-[var(--color-text-muted)]">{t("wizardCostSavings")}</span>
-            <span className="text-sm text-emerald-400">${estimate.savingsUsd.toFixed(4)}</span>
+            <span className="text-sm text-emerald-400">
+              {estimate.savingsUsd === null ? "—" : `$${estimate.savingsUsd.toFixed(4)}`}
+            </span>
           </div>
 
           {/* Stats */}
