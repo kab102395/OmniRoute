@@ -1,4 +1,8 @@
-import { isOpenRouterFreeRoute, type OpenRouterCatalogEntry } from "./openrouterCatalog";
+import {
+  isOpenRouterFreeRoute,
+  isOpenRouterZeroPriceRoute,
+  type OpenRouterCatalogEntry,
+} from "./openrouterCatalog";
 
 export interface DiscoveredFreeModel {
   provider: "openrouter";
@@ -24,13 +28,14 @@ export interface DiscoveredFreeModel {
 }
 
 function isFree(entry: OpenRouterCatalogEntry): boolean {
-  return isOpenRouterFreeRoute(entry.id);
+  return isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
 }
 
 /**
  * Convert the public OpenRouter catalog into discovery-only free entries.
- * OpenRouter's exact `:free` variant in the current catalog is authoritative
- * free-route membership. Quotas and account eligibility remain unknown.
+ * OpenRouter's exact `:free` variant or explicit all-dimension zero rates in
+ * the current catalog are authoritative free-route evidence. Quotas and
+ * account eligibility remain unknown.
  */
 export function discoverOpenRouterFreeModels(
   entries: readonly OpenRouterCatalogEntry[],

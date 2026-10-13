@@ -221,7 +221,15 @@ test("refreshOpenRouterCatalog invalidates only on success", async () => {
 test("OpenRouter free route eligibility follows each successful catalog refresh", async () => {
   const snapshots = [
     { data: [{ id: "provider/new-free:free", supported_parameters: ["tools"] }] },
-    { data: [{ id: "provider/replacement:free", supported_parameters: ["tools"] }] },
+    {
+      data: [
+        { id: "provider/replacement:free", supported_parameters: ["tools"] },
+        {
+          id: "provider/explicit-zero",
+          pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+        },
+      ],
+    },
   ];
   globalThis.fetch = (async () =>
     new Response(JSON.stringify(snapshots.shift()), {
@@ -253,8 +261,8 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
   const secondCatalog = await openRouterCatalog.getOpenRouterCatalog();
   assert.deepEqual(
     [...(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds())!],
-    ["provider/replacement:free"],
-    "a successful rotation immediately removes the previous route from eligibility"
+    ["provider/replacement:free", "provider/explicit-zero"],
+    "rotation removes the old route and preserves a distinct exact route with authoritative zero rates"
   );
   assert.deepEqual(
     openRouterFreeModels
@@ -264,7 +272,7 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
         secondCatalog.stale
       )
       .map((model) => model.modelId),
-    ["provider/replacement:free"]
+    ["provider/explicit-zero", "provider/replacement:free"]
   );
 });
 

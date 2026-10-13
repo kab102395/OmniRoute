@@ -1,4 +1,4 @@
-import { isOpenRouterFreeRoute } from "@/lib/catalog/openrouterCatalog";
+import { isOpenRouterFreeRoute, isOpenRouterZeroPriceRoute } from "@/lib/catalog/openrouterCatalog";
 
 // OpenRouter-specific catalog normalization helpers. Extracted verbatim from
 // ./catalog.ts as a cohesive leaf — id qualification, modality normalization,
@@ -31,12 +31,13 @@ export function isZeroPrice(value: unknown) {
 
 export function isOpenRouterFreeModel(model: {
   id?: string;
-  pricing?: { prompt?: string; completion?: string };
+  pricing?: { prompt?: string; completion?: string; image?: string; request?: string };
 }) {
-  // Exact `:free` variants in OpenRouter's current models catalog are its
-  // explicit free-route classification. A base/paid model sharing that family
-  // remains a separate route with its own pricing assessment.
-  return typeof model.id === "string" && isOpenRouterFreeRoute(model.id);
+  // Exact `:free` variants are OpenRouter's provider-classified free routes;
+  // complete explicit zero rates are also authoritative for that exact route.
+  // A sibling route never inherits another route's free classification.
+  if (typeof model.id === "string" && isOpenRouterFreeRoute(model.id)) return true;
+  return isOpenRouterZeroPriceRoute(model);
 }
 
 export function getOpenRouterDisplayName(model: {
@@ -82,7 +83,14 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
   for (const model of models) {
     const id = typeof model.id === "string" ? model.id : "";
     const sourceModelId = id.replace(/^openrouter\//, "");
-    const isOpenRouterFreeRow = model.owned_by === "openrouter" && isOpenRouterFreeModel({ id });
+    const provenance = model.pricing_provenance;
+    const hasFreeProvenance =
+      provenance !== null &&
+      typeof provenance === "object" &&
+      (provenance as { state?: unknown }).state === "free_variant";
+    const isOpenRouterFreeRow =
+      model.owned_by === "openrouter" &&
+      (isOpenRouterFreeModel({ id }) || model.free === true || hasFreeProvenance);
     const isCurrentFreeRoute = currentRouteIds.has(id) || currentRouteIds.has(sourceModelId);
     if (!isOpenRouterFreeRow || (!options.stale && isCurrentFreeRoute)) {
       result.push(model);
@@ -157,7 +165,7 @@ export function buildOpenRouterPricingEvidence(
   };
   const hasAnyRate = Object.values(rates).some((rate) => rate !== null);
   const completeTokenRates = rates.inputPerTokenUsd !== null && rates.outputPerTokenUsd !== null;
-  const isFreeVariant = isOpenRouterFreeRoute(model.id);
+  const isFreeVariant = isOpenRouterFreeModel(model);
 
   return {
     state: isFreeVariant

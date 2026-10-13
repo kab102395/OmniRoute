@@ -62,6 +62,23 @@ export function isOpenRouterFreeRoute(modelId: string): boolean {
   return /^[^\s]+:free$/.test(modelId);
 }
 
+/** Explicit OpenRouter zero-rate evidence for this exact route, across reported billable fields. */
+export function isOpenRouterZeroPriceRoute(model: {
+  pricing?: { prompt?: unknown; completion?: unknown; image?: unknown; request?: unknown };
+}): boolean {
+  const isNumericZero = (value: unknown) =>
+    (typeof value === "number" && value === 0) ||
+    (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
+  const pricing = model.pricing;
+  return (
+    pricing !== undefined &&
+    isNumericZero(pricing.prompt) &&
+    isNumericZero(pricing.completion) &&
+    (pricing.image === undefined || isNumericZero(pricing.image)) &&
+    (pricing.request === undefined || isNumericZero(pricing.request))
+  );
+}
+
 /** Exact OpenRouter routes currently advertised as free, or null when unverified. */
 export async function getCurrentOpenRouterFreeRouteIds(): Promise<Set<string> | null> {
   const catalog = await getOpenRouterCatalog();
@@ -69,11 +86,7 @@ export async function getCurrentOpenRouterFreeRouteIds(): Promise<Set<string> | 
   return new Set(
     catalog.data
       .filter((entry) => {
-        if (isOpenRouterFreeRoute(entry.id)) return true;
-        const isNumericZero = (value: unknown) =>
-          (typeof value === "number" && value === 0) ||
-          (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
-        return isNumericZero(entry.pricing?.prompt) && isNumericZero(entry.pricing?.completion);
+        return isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
       })
       .map((entry) => entry.id)
   );

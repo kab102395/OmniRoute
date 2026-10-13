@@ -208,8 +208,16 @@ test("catalogOpenrouter: free-model detection + display name", () => {
   );
   assert.equal(
     isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0", completion: "0" } }),
+    true,
+    "an exact route with explicit zero input and output rates is free"
+  );
+  assert.equal(
+    isOpenRouterFreeModel({
+      id: "z/model",
+      pricing: { prompt: "0", completion: "0", image: "0.01" },
+    }),
     false,
-    "a paid/base route is not free merely because its reported prices are zero"
+    "a nonzero image rate prevents an all-dimensions zero-cost classification"
   );
   assert.equal(getOpenRouterDisplayName({ id: "z/m", name: "Some Model" }), "Some Model");
   assert.equal(
