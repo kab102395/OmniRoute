@@ -75,6 +75,29 @@ test("isFreeModel: a priced model is NOT free", () => {
   );
 });
 
+test("isFreeModel: zero text rates do not hide positive or unknown reported billing dimensions", () => {
+  for (const pricing of [
+    { prompt: "0", completion: "0", audio: "0.00001" },
+    { prompt: "0", completion: "0", output_cost_per_image: 0.04 },
+    { prompt: "0", completion: "0", request: null },
+    { prompt: "0", completion: "0", input_cache_write: "malformed" },
+  ]) {
+    assert.equal(
+      isFreeModel("groq", { id: "unlisted/model", pricing }),
+      false,
+      `reported pricing dimensions must all be verified zero: ${JSON.stringify(pricing)}`
+    );
+  }
+
+  assert.equal(
+    isFreeModel("groq", {
+      id: "unlisted/model",
+      pricing: { prompt: "0", completion: "0", audio: "0", output_cost_per_image: 0 },
+    }),
+    true
+  );
+});
+
 test("isFreeModel: a model with no pricing and no :free suffix is NOT free", () => {
   assert.equal(isFreeModel("openrouter", { id: "some/paid-model" }), false);
 });

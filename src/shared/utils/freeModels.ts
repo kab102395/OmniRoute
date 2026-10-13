@@ -79,13 +79,47 @@ function isZeroPrice(value: unknown): boolean {
   return typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value);
 }
 
+const REPORTED_BILLABLE_PRICE_FIELDS = [
+  "prompt",
+  "completion",
+  "input",
+  "output",
+  "cached",
+  "cache_creation",
+  "reasoning",
+  "image",
+  "image_output",
+  "image_token",
+  "request",
+  "audio",
+  "audio_output",
+  "input_audio",
+  "output_audio",
+  "input_audio_cache",
+  "input_cache_read",
+  "input_cache_write",
+  "input_cache_write_1h",
+  "internal_reasoning",
+  "video",
+  "web_search",
+  "input_cost_per_second",
+  "output_cost_per_second",
+  "input_cost_per_image",
+  "output_cost_per_image",
+  "input_cost_per_pixel",
+  "output_cost_per_pixel",
+  "input_cost_per_character",
+  "output_cost_per_character",
+  "input_cost_per_video_per_second",
+  "output_cost_per_video_per_second",
+  "search_unit_cost",
+  "ocr_cost_per_page",
+] as const;
+
 export interface FreeModelCandidate {
   id?: string;
   pricing?: {
-    prompt?: string | number;
-    completion?: string | number;
-    image?: string | number | null;
-    request?: string | number | null;
+    [key: string]: unknown;
   };
   isFree?: boolean;
   /**
@@ -108,8 +142,9 @@ export function isFreeModel(provider: string, model: FreeModelCandidate): boolea
   if (
     isZeroPrice(model.pricing?.prompt) &&
     isZeroPrice(model.pricing?.completion) &&
-    (model.pricing?.image === undefined || isZeroPrice(model.pricing.image)) &&
-    (model.pricing?.request === undefined || isZeroPrice(model.pricing.request))
+    REPORTED_BILLABLE_PRICE_FIELDS.every(
+      (field) => model.pricing?.[field] === undefined || isZeroPrice(model.pricing[field])
+    )
   ) {
     return true;
   }
