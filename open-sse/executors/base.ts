@@ -328,7 +328,7 @@ export type ExecutorAttemptSummary = {
   durationMs?: number;
   statusCode: number | null;
   providerRequestId?: string;
-  outcome: "response" | "network_error";
+  outcome: "response" | "network_error" | "provider_error";
   costAttribution: "unknown" | "provider_reported" | "estimated";
   attemptSource: "executor_reported" | "wrapper_observed";
   routeLeg?: "native" | "proxy_fallback";

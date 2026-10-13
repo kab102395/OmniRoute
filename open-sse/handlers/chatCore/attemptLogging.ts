@@ -324,7 +324,11 @@ function sanitizeExecutionAttemptReceipt(
   ) {
     receipt.statusCode = attempt.statusCode;
   }
-  if (attempt.outcome === "response" || attempt.outcome === "network_error") {
+  if (
+    attempt.outcome === "response" ||
+    attempt.outcome === "network_error" ||
+    attempt.outcome === "provider_error"
+  ) {
     receipt.outcome = attempt.outcome;
   }
   if (

@@ -13952,7 +13952,7 @@ components:
           type: string
         outcome:
           type: string
-          enum: [response, network_error]
+          enum: [response, network_error, provider_error]
         costAttribution:
           type: string
           enum: [unknown, provider_reported, estimated]

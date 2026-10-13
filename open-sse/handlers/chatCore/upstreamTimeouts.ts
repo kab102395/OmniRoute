@@ -198,7 +198,7 @@ export function normalizeExecutorResult(result: unknown): {
     startedAt?: string;
     durationMs?: number;
     statusCode: number | null;
-    outcome: "response" | "network_error";
+    outcome: "response" | "network_error" | "provider_error";
     costAttribution: "unknown";
     attemptSource: "executor_reported" | "wrapper_observed";
     routeLeg?: "native" | "proxy_fallback";
@@ -242,7 +242,7 @@ export function normalizeExecutorResult(result: unknown): {
       startedAt?: string;
       durationMs?: number;
       statusCode: number | null;
-      outcome: "response" | "network_error";
+      outcome: "response" | "network_error" | "provider_error";
       costAttribution: "unknown";
       attemptSource: "executor_reported" | "wrapper_observed";
       routeLeg?: "native" | "proxy_fallback";

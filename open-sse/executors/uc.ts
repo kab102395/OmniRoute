@@ -29,7 +29,12 @@
  * durable ~30-day Clerk window has lapsed and the caller is prompted to re-run the
  * browserless email login (see ./uc/emailLogin.ts).
  */
-import { BaseExecutor, type ExecuteInput, type ExecutorExecuteResult } from "./base.ts";
+import {
+  BaseExecutor,
+  type ExecuteInput,
+  type ExecutorAttemptSummary,
+  type ExecutorExecuteResult,
+} from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 import { prepareToolMessages, parseToolCallsFromText } from "../translator/webTools.ts";
@@ -39,7 +44,7 @@ import { resolveUcCredential, type UcCredential } from "./uc/credentials.ts";
 import { mintUcSessionToken, ucTokenCache, type UcSessionToken } from "./uc/clerkAuth.ts";
 import { assembleUcTurn } from "./uc/protocol.ts";
 import { detectUcSoftError, estimateUcTokens } from "./uc/stream.ts";
-import { runUcTurn, type UcTurnResult } from "./uc/ws.ts";
+import { runUcTurn, type UcTurnInput, type UcTurnResult } from "./uc/ws.ts";
 import {
   ucUsesCodestyle,
   ucLooksLikeRefusal,
@@ -124,13 +129,51 @@ function injectExtraDialectCalls(answer: string, requestedTools: unknown, model:
 function wrap(
   response: Response,
   url: string,
-  capture?: { headers?: Record<string, string>; transformedBody?: unknown }
-): { response: Response; url: string; headers: Record<string, string>; transformedBody: unknown } {
+  capture?: {
+    headers?: Record<string, string>;
+    transformedBody?: unknown;
+    executionAttempts?: ExecutorAttemptSummary[];
+  }
+): {
+  response: Response;
+  url: string;
+  headers: Record<string, string>;
+  transformedBody: unknown;
+  executionAttempts?: ExecutorAttemptSummary[];
+} {
   return {
     response,
     url,
     headers: capture?.headers ?? {},
     transformedBody: capture?.transformedBody ?? null,
+    ...(capture?.executionAttempts ? { executionAttempts: capture.executionAttempts } : {}),
+  };
+}
+
+async function runUcTurnWithReceipt(
+  input: UcTurnInput,
+  index: number
+): Promise<{ turn: UcTurnResult; attempt: ExecutorAttemptSummary }> {
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  const turn = await runUcTurn(input);
+  const isTransportError =
+    typeof turn.error === "string" &&
+    /(?:ws|websocket).*(?:connect failed|connection error|error|closed|timed out|timeout|aborted|send failed)|request aborted/i.test(
+      turn.error
+    );
+  return {
+    turn,
+    attempt: {
+      index,
+      startedAt,
+      durationMs: Math.max(0, Date.now() - startedMs),
+      // A WebSocket completion has no HTTP response status of its own.
+      statusCode: null,
+      outcome: turn.error ? (isTransportError ? "network_error" : "provider_error") : "response",
+      costAttribution: "unknown",
+      attemptSource: "executor_reported",
+    },
   };
 }
 
@@ -266,16 +309,22 @@ export class UcExecutor extends BaseExecutor {
     // shim parse <tool> blocks into tool_calls (with a terminal SSE replay for
     // streaming callers). Mirrors every web-cookie provider's tool path.
     if (hasTools) {
-      let turn = await runUcTurn({
-        jwt,
-        uid: cred.uid,
-        model: input.model,
-        text,
-        history,
-        media,
-        signal: input.signal,
-      });
-      const errResp = this.turnErrorResponse(turn, url);
+      const executionAttempts: ExecutorAttemptSummary[] = [];
+      const first = await runUcTurnWithReceipt(
+        {
+          jwt,
+          uid: cred.uid,
+          model: input.model,
+          text,
+          history,
+          media,
+          signal: input.signal,
+        },
+        executionAttempts.length + 1
+      );
+      executionAttempts.push(first.attempt);
+      let turn = first.turn;
+      const errResp = this.turnErrorResponse(turn, url, executionAttempts);
       if (errResp) return errResp;
 
       let answer = turn.content;
@@ -290,15 +339,20 @@ export class UcExecutor extends BaseExecutor {
         parseUcExtraDialects(answer, requestedTools, input.model).length > 0;
       if (!firstHasCall && !codestyle && ucLooksLikeRefusal(answer)) {
         const curedText = applyCodestylePreamble(assembled.text);
-        const retry = await runUcTurn({
-          jwt,
-          uid: cred.uid,
-          model: input.model,
-          text: curedText,
-          history,
-          media,
-          signal: input.signal,
-        });
+        const retryResult = await runUcTurnWithReceipt(
+          {
+            jwt,
+            uid: cred.uid,
+            model: input.model,
+            text: curedText,
+            history,
+            media,
+            signal: input.signal,
+          },
+          executionAttempts.length + 1
+        );
+        executionAttempts.push(retryResult.attempt);
+        const retry = retryResult.turn;
         if (!retry.error && retry.content) {
           const retryHasCall =
             !!parseToolCallsFromText(retry.content, "probe", requestedTools).toolCalls ||
@@ -349,7 +403,7 @@ export class UcExecutor extends BaseExecutor {
         model: input.model,
         idSeed: "uc",
       });
-      return wrap(response, url, capture);
+      return wrap(response, url, { ...capture, executionAttempts });
     }
 
     if (input.stream) {
@@ -358,16 +412,20 @@ export class UcExecutor extends BaseExecutor {
     }
 
     // Non-streaming: run the turn to completion, build a chat.completion.
-    const turn = await runUcTurn({
-      jwt,
-      uid: cred.uid,
-      model: input.model,
-      text,
-      history,
-      media,
-      signal: input.signal,
-    });
-    const errResp = this.turnErrorResponse(turn, url);
+    const { turn, attempt } = await runUcTurnWithReceipt(
+      {
+        jwt,
+        uid: cred.uid,
+        model: input.model,
+        text,
+        history,
+        media,
+        signal: input.signal,
+      },
+      1
+    );
+    const executionAttempts = [attempt];
+    const errResp = this.turnErrorResponse(turn, url, executionAttempts);
     if (errResp) return errResp;
 
     const answer = turn.content;
@@ -398,7 +456,7 @@ export class UcExecutor extends BaseExecutor {
     return wrap(
       new Response(JSON.stringify(response), { status: 200, headers: JSON_HEADERS }),
       url,
-      capture
+      { ...capture, executionAttempts }
     );
   }
 
@@ -408,20 +466,29 @@ export class UcExecutor extends BaseExecutor {
    * message returned AS the answer) is surfaced as a retryable 502 so OmniRoute
    * can fall back instead of handing the user a bogus reply.
    */
-  private turnErrorResponse(turn: UcTurnResult, url: string): ReturnType<typeof wrap> | null {
+  private turnErrorResponse(
+    turn: UcTurnResult,
+    url: string,
+    executionAttempts: ExecutorAttemptSummary[] = []
+  ): ReturnType<typeof wrap> | null {
     if (turn.error) {
       const { status, code } = classifyTurnError(turn.error);
-      return wrap(errorResponse(status, `UC persona turn failed: ${turn.error}`, code), url);
+      return wrap(errorResponse(status, `UC persona turn failed: ${turn.error}`, code), url, {
+        executionAttempts,
+      });
     }
     const soft = detectUcSoftError(turn.content);
     if (soft) {
       return wrap(
         errorResponse(502, `UC returned a transient soft-error: ${soft}`, "uc_soft_error"),
-        url
+        url,
+        { executionAttempts }
       );
     }
     if (!turn.content) {
-      return wrap(errorResponse(502, "UC returned an empty response.", "uc_empty_response"), url);
+      return wrap(errorResponse(502, "UC returned an empty response.", "uc_empty_response"), url, {
+        executionAttempts,
+      });
     }
     return null;
   }

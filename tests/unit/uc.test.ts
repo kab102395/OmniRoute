@@ -503,6 +503,30 @@ function makeFakeWs(frames: string[], opts: { failConnect?: boolean } = {}) {
   } as unknown as typeof import("ws").default;
 }
 
+function makeSequencedFakeWs(sequence: string[][]) {
+  let socketIndex = 0;
+  return class FakeWS {
+    onopen: (() => void) | null = null;
+    onmessage: ((e: { data: unknown }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    readyState = 1;
+    private readonly frames: string[];
+    constructor(_url: string, _opts?: unknown) {
+      this.frames = sequence[Math.min(socketIndex, sequence.length - 1)] ?? [];
+      socketIndex += 1;
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(_data: string) {
+      setTimeout(() => {
+        for (const frame of this.frames) this.onmessage?.({ data: frame });
+        this.onclose?.();
+      }, 0);
+    }
+    close() {}
+  } as unknown as typeof import("ws").default;
+}
+
 /** Mint-token fetch stub so the executor's ensureSessionToken succeeds. */
 function tokenFetch(): typeof fetch {
   const jwt = fakeJwt({ uid: UID, sid: SID, exp: Math.floor(Date.now() / 1000) + 60 });
@@ -554,6 +578,75 @@ test("UcExecutor non-streaming returns an OpenAI chat.completion", async (t) => 
   assert.equal(json.choices[0].message.content, "PONG");
   assert.equal(json.choices[0].finish_reason, "stop");
   assert.ok(json.usage.total_tokens > 0);
+});
+
+test("UcExecutor records both model turns when its tool-refusal cure retries", async (t) => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = tokenFetch();
+  const restore = __setUcWebSocketForTesting(
+    makeSequencedFakeWs([
+      [
+        JSON.stringify({
+          message_type: "text",
+          end_of_stream: true,
+          raw_text: "I'm sorry, but I cannot assist with that.",
+        }),
+      ],
+      [
+        JSON.stringify({
+          message_type: "text",
+          end_of_stream: true,
+          raw_text: 'get_weather("Paris")',
+        }),
+      ],
+    ])
+  );
+  t.after(() => {
+    restore();
+    globalThis.fetch = origFetch;
+  });
+
+  const exec = new UcExecutor();
+  const result = (await exec.execute({
+    model: "claude-opus-46",
+    stream: false,
+    credentials: { providerSpecificData: psd() },
+    body: {
+      messages: [{ role: "user", content: "What's the weather in Paris?" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "get_weather",
+            parameters: {
+              type: "object",
+              properties: { city: { type: "string" } },
+              required: ["city"],
+            },
+          },
+        },
+      ],
+    },
+  } as never)) as {
+    response: Response;
+    executionAttempts?: Array<{ index: number; statusCode: number | null; outcome: string }>;
+  };
+
+  assert.deepEqual(
+    result.executionAttempts?.map(({ index, statusCode, outcome }) => [index, statusCode, outcome]),
+    [
+      [1, null, "response"],
+      [2, null, "response"],
+    ],
+    "the WebSocket turn has no HTTP completion status, but both attempts must be preserved"
+  );
+  const body = (await result.response.json()) as LooseCompletion;
+  assert.equal(body.choices?.[0]?.finish_reason, "tool_calls");
+  assert.equal(
+    (body.choices?.[0]?.message?.tool_calls as Array<{ function: { name: string } }>)[0]?.function
+      .name,
+    "get_weather"
+  );
 });
 
 test("UcExecutor streaming emits SSE chunks incl the raw_text remainder", async (t) => {
@@ -659,6 +752,37 @@ test("UcExecutor maps a paywall_exceeded frame to a 429", async (t) => {
   const { status, json } = await readJson(result);
   assert.equal(status, 429);
   assert.equal(json.error.code, "uc_paywall_exceeded");
+  assert.deepEqual(
+    (
+      result as { executionAttempts?: Array<{ outcome: string; statusCode: number | null }> }
+    ).executionAttempts?.map((attempt) => [attempt.outcome, attempt.statusCode]),
+    [["provider_error", null]],
+    "UC provider errors retain a receipt without inventing an HTTP status"
+  );
+});
+
+test("UcExecutor records WebSocket connection failures as network attempts", async (t) => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = tokenFetch();
+  const restore = __setUcWebSocketForTesting(makeFakeWs([], { failConnect: true }));
+  t.after(() => {
+    restore();
+    globalThis.fetch = origFetch;
+  });
+
+  const exec = new UcExecutor();
+  const result = await exec.execute({
+    model: "claude-opus-46",
+    stream: false,
+    credentials: { providerSpecificData: psd() },
+    body: { messages: [{ role: "user", content: "ping" }] },
+  } as never);
+  assert.deepEqual(
+    (
+      result as { executionAttempts?: Array<{ outcome: string; statusCode: number | null }> }
+    ).executionAttempts?.map((attempt) => [attempt.outcome, attempt.statusCode]),
+    [["network_error", null]]
+  );
 });
 
 test("UcExecutor returns 401 when the connection is unconfigured", async () => {
