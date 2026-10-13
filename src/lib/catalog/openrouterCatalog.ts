@@ -232,7 +232,7 @@ export async function getOpenRouterCatalog(): Promise<{
   // Return cached data if still within TTL
   if (cache && cache.fetchedAt) {
     const age = now - new Date(cache.fetchedAt).getTime();
-    if (age < ttl) {
+    if (age >= 0 && age < ttl) {
       return {
         data: cache.data,
         stale: false,

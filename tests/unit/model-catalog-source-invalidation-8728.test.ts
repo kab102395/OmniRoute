@@ -267,6 +267,31 @@ test("malformed cached OpenRouter data is ignored and cannot authorize free rout
   }
 });
 
+test("future-dated OpenRouter cache timestamps are not fresh free-route evidence", async () => {
+  installMockOpenRouterFetch({ data: [{ id: "provider/current:free" }] });
+  try {
+    assert.equal((await openRouterCatalog.refreshOpenRouterCatalog()).ok, true);
+    const cachePath = path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json");
+    const cached = JSON.parse(fs.readFileSync(cachePath, "utf8")) as {
+      data: Array<Record<string, unknown>>;
+    };
+    fs.writeFileSync(
+      cachePath,
+      JSON.stringify({
+        fetchedAt: new Date(Date.now() + 60_000).toISOString(),
+        data: cached.data,
+      })
+    );
+    installFailingOpenRouterFetch();
+
+    const catalog = await openRouterCatalog.getOpenRouterCatalog();
+    assert.equal(catalog.stale, true);
+    assert.equal(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds(), null);
+  } finally {
+    restoreRealFetch();
+  }
+});
+
 test("OpenRouter free route eligibility follows each successful catalog refresh", async () => {
   const snapshots = [
     { data: [{ id: "provider/new-free:free", supported_parameters: ["tools"] }] },
