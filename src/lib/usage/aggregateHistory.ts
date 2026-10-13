@@ -166,6 +166,8 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
           COALESCE(tokens_cache_read, 0) as requestCacheReadTokens,
           COALESCE(tokens_cache_creation, 0) as requestCacheCreationTokens,
           COALESCE(tokens_reasoning, 0) as requestReasoningTokens,
+          CASE WHEN json_valid(accounting_json) THEN json_extract(accounting_json, '$.kind') END as accountingKind,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') THEN CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) END END as requestReportedCost,
           COALESCE(SUM(tokens_input), 0) as inputTokens,
           COALESCE(SUM(tokens_output), 0) as outputTokens,
           COALESCE(SUM(tokens_cache_read), 0) as cacheReadTokens,
@@ -177,7 +179,7 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
           AND model IS NOT NULL AND model != ''
         GROUP BY LOWER(provider), LOWER(model), DATE(timestamp), serviceTier,
           requestInputTokens, requestOutputTokens, requestCacheReadTokens,
-          requestCacheCreationTokens, requestReasoningTokens`
+          requestCacheCreationTokens, requestReasoningTokens, accountingKind, requestReportedCost`
       )
       .all(beforeDate) as Array<{
       provider: string;
@@ -190,6 +192,8 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
       requestCacheReadTokens: number;
       requestCacheCreationTokens: number;
       requestReasoningTokens: number;
+      accountingKind: string | null;
+      requestReportedCost: number | null;
       inputTokens: number;
       outputTokens: number;
       cacheReadTokens: number;
@@ -208,25 +212,43 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
         // one cache-heavy request's clamped surplus cancel another request's
         // billable input.
         totalCost:
-          (await calculateCost(
-            row.provider,
-            row.model,
-            {
-              input: row.requestInputTokens,
-              output: row.requestOutputTokens,
-              cacheRead: row.requestCacheReadTokens,
-              cacheCreation: row.requestCacheCreationTokens,
-              reasoning: row.requestReasoningTokens,
-            },
-            {
-              provider: row.provider,
-              model: row.model,
-              serviceTier: row.serviceTier,
-              // The archive stores API-equivalent value. Billed-cost consumers
-              // still mask flat-rate providers when they read this value.
-              flatRateAsZero: false,
-            }
-          )) * row.totalRequests,
+          row.accountingKind === "zero_cost" ||
+          (row.accountingKind === "provider_reported_billed_cost" &&
+            Number.isFinite(row.requestReportedCost) &&
+            Number(row.requestReportedCost) >= 0)
+            ? 0
+            : (await calculateCost(
+                row.provider,
+                row.model,
+                {
+                  input: row.requestInputTokens,
+                  output: row.requestOutputTokens,
+                  cacheRead: row.requestCacheReadTokens,
+                  cacheCreation: row.requestCacheCreationTokens,
+                  reasoning: row.requestReasoningTokens,
+                },
+                {
+                  provider: row.provider,
+                  model: row.model,
+                  serviceTier: row.serviceTier,
+                  // The archive stores API-equivalent value. Billed-cost consumers
+                  // still mask flat-rate providers when they read this value.
+                  flatRateAsZero: false,
+                }
+              )) * row.totalRequests,
+        providerReportedCost:
+          row.accountingKind === "provider_reported_billed_cost" &&
+          Number.isFinite(row.requestReportedCost) &&
+          Number(row.requestReportedCost) >= 0
+            ? Number(row.requestReportedCost) * row.totalRequests
+            : 0,
+        providerReportedRequests:
+          row.accountingKind === "zero_cost" ||
+          (row.accountingKind === "provider_reported_billed_cost" &&
+            Number.isFinite(row.requestReportedCost) &&
+            Number(row.requestReportedCost) >= 0)
+            ? row.totalRequests
+            : 0,
       }))
     );
 
@@ -240,6 +262,8 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
             existing.inputTokens += row.inputTokens;
             existing.outputTokens += row.outputTokens;
             existing.totalCost += row.totalCost;
+            existing.providerReportedCost += row.providerReportedCost;
+            existing.providerReportedRequests += row.providerReportedRequests;
           } else {
             byDay.set(key, {
               provider: row.provider,
@@ -249,22 +273,26 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
               inputTokens: row.inputTokens,
               outputTokens: row.outputTokens,
               totalCost: row.totalCost,
+              providerReportedCost: row.providerReportedCost,
+              providerReportedRequests: row.providerReportedRequests,
             });
           }
           return byDay;
-        }, new Map<string, { provider: string; model: string; date: string; totalRequests: number; inputTokens: number; outputTokens: number; totalCost: number }>())
+        }, new Map<string, { provider: string; model: string; date: string; totalRequests: number; inputTokens: number; outputTokens: number; totalCost: number; providerReportedCost: number; providerReportedRequests: number }>())
         .values()
     );
 
     const upsert = db.prepare(
       `INSERT INTO daily_usage_summary
-        (provider, model, date, total_requests, total_input_tokens, total_output_tokens, total_cost)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+        (provider, model, date, total_requests, total_input_tokens, total_output_tokens, total_cost, provider_reported_cost, provider_reported_requests)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(provider, model, date) DO UPDATE SET
         total_requests = excluded.total_requests,
         total_input_tokens = excluded.total_input_tokens,
         total_output_tokens = excluded.total_output_tokens,
-        total_cost = excluded.total_cost`
+        total_cost = excluded.total_cost,
+        provider_reported_cost = excluded.provider_reported_cost,
+        provider_reported_requests = excluded.provider_reported_requests`
     );
     const insertRows = db.transaction((items: typeof archivedRows) =>
       items.reduce(
@@ -277,7 +305,9 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
             row.totalRequests,
             row.inputTokens,
             row.outputTokens,
-            row.totalCost
+            row.totalCost,
+            row.providerReportedCost,
+            row.providerReportedRequests
           ).changes,
         0
       )

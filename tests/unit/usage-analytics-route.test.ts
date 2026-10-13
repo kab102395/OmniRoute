@@ -176,6 +176,145 @@ test("GET /api/usage/analytics does not borrow prices from another provider or m
   assert.ok(body.byProvider.every((row: { cost: number }) => row.cost === 0));
 });
 
+test("GET /api/usage/analytics uses provider-reported billing receipts over catalog estimates", async () => {
+  const db = core.getDbInstance();
+  const actualCost = 0.00012345;
+  db.prepare(
+    `INSERT INTO usage_history
+      (provider, model, connection_id, tokens_input, tokens_output, success, latency_ms, timestamp,
+       accounting_json, account_key, api_key_id, api_key_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "openai",
+    "gpt-4o",
+    "openai-conn",
+    1000,
+    500,
+    1,
+    250,
+    new Date().toISOString(),
+    JSON.stringify({
+      kind: "provider_reported_billed_cost",
+      amountUsd: actualCost,
+      amountUsdExact: "0.00012345",
+      currency: "USD",
+      source: "provider.receipt",
+      usageKind: "provider_reported_usage",
+    }),
+    "account:receipt-test",
+    "receipt-test-key",
+    "Receipt test key"
+  );
+
+  const response = await analyticsRoute.GET(makeRequest("http://localhost/api/usage/analytics"));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assertClose(body.summary.totalCost, actualCost);
+  assertClose(body.byProvider[0].cost, actualCost);
+  assertClose(body.byModel[0].cost, actualCost);
+  assertClose(body.byAccount[0].cost, actualCost);
+  assertClose(body.byApiKey[0].cost, actualCost);
+  assertClose(body.summary.costAccounting.providerReportedCost, actualCost);
+  assert.equal(body.summary.costAccounting.providerReportedRequests, 1);
+});
+
+test("usage retention preserves provider-reported charges separately from estimates", async () => {
+  const db = core.getDbInstance();
+  const actualCost = 0.00012345;
+  db.prepare(
+    `INSERT INTO usage_history
+      (provider, model, connection_id, tokens_input, tokens_output, success, latency_ms, timestamp, accounting_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "openai",
+    "gpt-4o",
+    "openai-conn",
+    1000,
+    500,
+    1,
+    250,
+    "2024-01-02T12:00:00.000Z",
+    JSON.stringify({
+      kind: "provider_reported_billed_cost",
+      amountUsd: actualCost,
+      amountUsdExact: "0.00012345",
+      currency: "USD",
+      source: "provider.receipt",
+      usageKind: "provider_reported_usage",
+    })
+  );
+
+  const { rollupUsageHistoryBeforeDate } = await import("@/lib/usage/aggregateHistory");
+  const rollup = await rollupUsageHistoryBeforeDate("2024-04-01");
+  assert.equal(rollup.errors, 0);
+  const archived = db
+    .prepare(
+      `SELECT total_cost as estimatedCost, provider_reported_cost as reportedCost,
+              provider_reported_requests as reportedRequests
+       FROM daily_usage_summary WHERE provider = 'openai' AND model = 'gpt-4o' AND date = '2024-01-02'`
+    )
+    .get() as { estimatedCost: number; reportedCost: number; reportedRequests: number };
+  assert.equal(archived.estimatedCost, 0);
+  assertClose(archived.reportedCost, actualCost);
+  assert.equal(archived.reportedRequests, 1);
+
+  const response = await analyticsRoute.GET(
+    makeRequest("http://localhost/api/usage/analytics?range=all")
+  );
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assertClose(body.summary.totalCost, actualCost);
+  assertClose(body.summary.costAccounting.providerReportedCost, actualCost);
+  assert.equal(body.summary.costAccounting.providerReportedRequests, 1);
+});
+
+test("GET /api/usage/analytics does not treat malformed receipt amounts as zero-cost", async () => {
+  const db = core.getDbInstance();
+  db.prepare(
+    `INSERT INTO usage_history
+      (provider, model, connection_id, tokens_input, tokens_output, success, latency_ms, timestamp, accounting_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "openai",
+    "gpt-4o",
+    "openai-conn",
+    1000,
+    500,
+    1,
+    250,
+    new Date().toISOString(),
+    JSON.stringify({
+      kind: "provider_reported_billed_cost",
+      amountUsd: "not-a-number",
+      currency: "USD",
+      source: "provider.receipt",
+    })
+  );
+  db.prepare(
+    `INSERT INTO usage_history
+      (provider, model, connection_id, tokens_input, tokens_output, success, latency_ms, timestamp, accounting_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "openai",
+    "gpt-4o",
+    "openai-conn",
+    1000,
+    500,
+    1,
+    250,
+    new Date(Date.now() + 1).toISOString(),
+    "{malformed-json"
+  );
+
+  const response = await analyticsRoute.GET(makeRequest("http://localhost/api/usage/analytics"));
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assertClose(body.summary.totalCost, 0.015);
+  assert.equal(body.summary.costAccounting.providerReportedRequests, 0);
+  assert.equal(body.summary.costAccounting.catalogEstimateRequests, 2);
+});
+
 test("GET /api/usage/analytics can include flat-rate provider estimates for the costs page", async () => {
   const db = core.getDbInstance();
   db.prepare(

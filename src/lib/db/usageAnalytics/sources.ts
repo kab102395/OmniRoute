@@ -106,6 +106,9 @@ export function buildUnifiedSource(opts: BuildUnifiedSourceOptions): UnifiedSour
           account_key,
           api_key_id,
           api_key_name,
+          CASE WHEN json_valid(accounting_json) THEN json_extract(accounting_json, '$.kind') END as accounting_kind,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') THEN CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) END END as reported_cost,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN (json_extract(accounting_json, '$.kind') = 'zero_cost' OR (json_extract(accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) >= 0)) THEN 1 ELSE 0 END ELSE 0 END as reported_requests,
           0.0 as stored_cost,
           0 as is_aggregated,
           1 as requests
@@ -128,6 +131,9 @@ export function buildUnifiedSource(opts: BuildUnifiedSourceOptions): UnifiedSour
           NULL as account_key,
           NULL as api_key_id,
           NULL as api_key_name,
+          'archived_aggregate' as accounting_kind,
+          provider_reported_cost as reported_cost,
+          COALESCE(provider_reported_requests, 0) as reported_requests,
           COALESCE(total_cost, 0.0) as stored_cost,
           1 as is_aggregated,
           total_requests as requests
@@ -140,6 +146,9 @@ export function buildUnifiedSource(opts: BuildUnifiedSourceOptions): UnifiedSour
           tokens_cache_read, tokens_cache_creation, tokens_reasoning,
           service_tier, success, latency_ms,
           connection_id, account_key, api_key_id, api_key_name,
+          CASE WHEN json_valid(accounting_json) THEN json_extract(accounting_json, '$.kind') END as accounting_kind,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') THEN CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) END END as reported_cost,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN (json_extract(accounting_json, '$.kind') = 'zero_cost' OR (json_extract(accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) >= 0)) THEN 1 ELSE 0 END ELSE 0 END as reported_requests,
           0.0 as stored_cost, 0 as is_aggregated,
           1 as requests
         FROM usage_history
@@ -191,6 +200,9 @@ export function buildPresetUnifiedSource(opts: BuildUnifiedSourceOptions): Unifi
         SELECT timestamp, provider, model, service_tier,
           tokens_input, tokens_output,
           tokens_cache_read, tokens_cache_creation, tokens_reasoning,
+          CASE WHEN json_valid(accounting_json) THEN json_extract(accounting_json, '$.kind') END as accounting_kind,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') THEN CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) END END as reported_cost,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN (json_extract(accounting_json, '$.kind') = 'zero_cost' OR (json_extract(accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) >= 0)) THEN 1 ELSE 0 END ELSE 0 END as reported_requests,
           0.0 as stored_cost, 0 as is_aggregated
         FROM usage_history
         ${presetRawWhere}
@@ -204,6 +216,9 @@ export function buildPresetUnifiedSource(opts: BuildUnifiedSourceOptions): Unifi
           0 as tokens_cache_read,
           0 as tokens_cache_creation,
           0 as tokens_reasoning,
+          'archived_aggregate' as accounting_kind,
+          provider_reported_cost as reported_cost,
+          COALESCE(provider_reported_requests, 0) as reported_requests,
           COALESCE(total_cost, 0.0) as stored_cost,
           1 as is_aggregated
         FROM daily_usage_summary
@@ -212,6 +227,9 @@ export function buildPresetUnifiedSource(opts: BuildUnifiedSourceOptions): Unifi
     : `(SELECT timestamp, provider, model, service_tier,
           tokens_input, tokens_output,
           tokens_cache_read, tokens_cache_creation, tokens_reasoning,
+          CASE WHEN json_valid(accounting_json) THEN json_extract(accounting_json, '$.kind') END as accounting_kind,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') THEN CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) END END as reported_cost,
+          CASE WHEN json_valid(accounting_json) THEN CASE WHEN (json_extract(accounting_json, '$.kind') = 'zero_cost' OR (json_extract(accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) >= 0)) THEN 1 ELSE 0 END ELSE 0 END as reported_requests,
           0.0 as stored_cost, 0 as is_aggregated
         FROM usage_history
         ${presetRawWhere}

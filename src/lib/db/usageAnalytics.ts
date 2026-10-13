@@ -127,6 +127,10 @@ export interface DailyCostRow {
   reasoningTokens: number;
   storedCost: number;
   isAggregated: number;
+  accountingKind: string | null;
+  reportedCost: number | null;
+  requests: number;
+  reportedRequests: number;
 }
 
 /**
@@ -148,9 +152,13 @@ export function getDailyCostRows(unifiedSource: string, params: AnalyticsParams)
         COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
         COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
         COALESCE(SUM(stored_cost), 0.0) as storedCost,
-        MAX(is_aggregated) as isAggregated
+        MAX(is_aggregated) as isAggregated,
+        accounting_kind as accountingKind,
+        SUM(reported_cost) as reportedCost,
+        COALESCE(SUM(requests), 0) as requests,
+        COALESCE(SUM(reported_requests), 0) as reportedRequests
       FROM ${unifiedSource} AS _u
-      GROUP BY DATE(timestamp), LOWER(provider), LOWER(model), serviceTier
+      GROUP BY DATE(timestamp), LOWER(provider), LOWER(model), serviceTier, accounting_kind
       ORDER BY date ASC
     `
     )
@@ -207,6 +215,9 @@ export interface ModelUsageRow {
   lastUsed: string;
   storedCost: number;
   isAggregated: number;
+  accountingKind: string | null;
+  reportedCost: number | null;
+  reportedRequests: number;
 }
 
 /**
@@ -232,12 +243,15 @@ export function getModelUsageRows(unifiedSource: string, params: AnalyticsParams
         COALESCE(SUM(CASE WHEN success = 1 THEN requests ELSE 0 END), 0) as successfulRequests,
         COALESCE(MAX(timestamp), '') as lastUsed,
         COALESCE(SUM(stored_cost), 0.0) as storedCost,
-        MAX(is_aggregated) as isAggregated
+        MAX(is_aggregated) as isAggregated,
+        accounting_kind as accountingKind,
+        SUM(reported_cost) as reportedCost
+        ,COALESCE(SUM(reported_requests), 0) as reportedRequests
       FROM ${unifiedSource} AS _u
       -- Keep cost inputs separated by day. Historical provider rows do not
       -- always use one cache-token convention, and computeCostFromPricing's
       -- non-cached-input clamp is intentionally non-linear across those rows.
-      GROUP BY DATE(timestamp), LOWER(model), LOWER(provider), serviceTier
+      GROUP BY DATE(timestamp), LOWER(model), LOWER(provider), serviceTier, accounting_kind
       ORDER BY requests DESC
     `
     )
@@ -257,6 +271,9 @@ export interface ProviderCostRow {
   reasoningTokens: number;
   storedCost: number;
   isAggregated: number;
+  accountingKind: string | null;
+  reportedCost: number | null;
+  reportedRequests: number;
 }
 
 /**
@@ -280,9 +297,12 @@ export function getProviderCostRows(
         COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
         COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
         COALESCE(SUM(stored_cost), 0.0) as storedCost,
-        MAX(is_aggregated) as isAggregated
+        MAX(is_aggregated) as isAggregated,
+        accounting_kind as accountingKind,
+        SUM(reported_cost) as reportedCost
+        ,COALESCE(SUM(reported_requests), 0) as reportedRequests
       FROM ${unifiedSource} AS _u
-      GROUP BY DATE(timestamp), LOWER(provider), LOWER(model), serviceTier
+      GROUP BY DATE(timestamp), LOWER(provider), LOWER(model), serviceTier, accounting_kind
     `
     )
     .all(params) as ProviderCostRow[];
@@ -368,6 +388,9 @@ export function getAccountCostRows(whereClause: string, params: AnalyticsParams)
           usage_history.tokens_cache_read,
           usage_history.tokens_cache_creation,
           usage_history.tokens_reasoning
+          ,CASE WHEN json_valid(usage_history.accounting_json) THEN json_extract(usage_history.accounting_json, '$.kind') END as accounting_kind
+          ,CASE WHEN json_valid(usage_history.accounting_json) THEN CASE WHEN json_type(usage_history.accounting_json, '$.amountUsd') IN ('integer', 'real') THEN CAST(json_extract(usage_history.accounting_json, '$.amountUsd') AS REAL) END END as reported_cost
+          ,CASE WHEN json_valid(usage_history.accounting_json) THEN CASE WHEN (json_extract(usage_history.accounting_json, '$.kind') = 'zero_cost' OR (json_extract(usage_history.accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(usage_history.accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(usage_history.accounting_json, '$.amountUsd') AS REAL) >= 0)) THEN 1 ELSE 0 END ELSE 0 END as reported_requests
         FROM usage_history
         ${whereClause}
       )
@@ -380,9 +403,12 @@ export function getAccountCostRows(whereClause: string, params: AnalyticsParams)
         COALESCE(SUM(account_events.tokens_output), 0) as completionTokens,
         COALESCE(SUM(account_events.tokens_cache_read), 0) as cacheReadTokens,
         COALESCE(SUM(account_events.tokens_cache_creation), 0) as cacheCreationTokens,
-        COALESCE(SUM(account_events.tokens_reasoning), 0) as reasoningTokens
+        COALESCE(SUM(account_events.tokens_reasoning), 0) as reasoningTokens,
+        account_events.accounting_kind as accountingKind,
+        SUM(CASE WHEN account_events.accounting_kind = 'provider_reported_billed_cost' AND account_events.reported_requests = 1 THEN account_events.reported_cost END) as reportedCost,
+        SUM(account_events.reported_requests) as reportedRequests
       FROM account_events
-      GROUP BY DATE(account_events.timestamp), accountKey, LOWER(account_events.provider), LOWER(account_events.model), serviceTier
+      GROUP BY DATE(account_events.timestamp), accountKey, LOWER(account_events.provider), LOWER(account_events.model), serviceTier, account_events.accounting_kind
     `
     )
     .all(params) as AccountCostRow[];
@@ -530,9 +556,12 @@ export function getApiKeyUsageRows(
         COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
         COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
         COALESCE(SUM(tokens_input + tokens_output), 0) as totalTokens
+        ,CASE WHEN json_valid(accounting_json) THEN json_extract(accounting_json, '$.kind') END as accountingKind
+        ,SUM(CASE WHEN json_valid(accounting_json) THEN CASE WHEN json_extract(accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) >= 0 THEN CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) END END) as reportedCost
+        ,SUM(CASE WHEN json_valid(accounting_json) THEN CASE WHEN (json_extract(accounting_json, '$.kind') = 'zero_cost' OR (json_extract(accounting_json, '$.kind') = 'provider_reported_billed_cost' AND json_type(accounting_json, '$.amountUsd') IN ('integer', 'real') AND CAST(json_extract(accounting_json, '$.amountUsd') AS REAL) >= 0)) THEN 1 ELSE 0 END ELSE 0 END) as reportedRequests
       FROM usage_history
       ${apiKeyWhereClause}
-      GROUP BY DATE(timestamp), COALESCE(NULLIF(api_key_id, ''), NULLIF(api_key_name, ''), 'unknown'), NULLIF(api_key_id, ''), LOWER(provider), LOWER(model), serviceTier
+      GROUP BY DATE(timestamp), COALESCE(NULLIF(api_key_id, ''), NULLIF(api_key_name, ''), 'unknown'), NULLIF(api_key_id, ''), LOWER(provider), LOWER(model), serviceTier, accountingKind
     `
     )
     .all(params) as ApiKeyUsageRow[];
@@ -553,6 +582,9 @@ export interface ServiceTierUsageRow {
   totalTokens: number;
   storedCost: number;
   isAggregated: number;
+  accountingKind: string | null;
+  reportedCost: number | null;
+  reportedRequests: number;
 }
 
 /**
@@ -579,9 +611,12 @@ export function getServiceTierUsageRows(
         COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
         COALESCE(SUM(tokens_input + tokens_output), 0) as totalTokens,
         COALESCE(SUM(stored_cost), 0.0) as storedCost,
-        MAX(is_aggregated) as isAggregated
+        MAX(is_aggregated) as isAggregated,
+        accounting_kind as accountingKind,
+        SUM(reported_cost) as reportedCost
+        ,COALESCE(SUM(reported_requests), 0) as reportedRequests
       FROM ${unifiedSource} AS _u
-      GROUP BY DATE(timestamp), serviceTier, LOWER(provider), LOWER(model)
+      GROUP BY DATE(timestamp), serviceTier, LOWER(provider), LOWER(model), accounting_kind
     `
     )
     .all(params) as ServiceTierUsageRow[];
@@ -678,6 +713,9 @@ export interface PresetCostModelRow {
   reasoningTokens: number;
   storedCost: number;
   isAggregated: number;
+  accountingKind: string | null;
+  reportedCost: number | null;
+  reportedRequests: number;
 }
 
 /**
@@ -702,9 +740,12 @@ export function getPresetCostModelRows(
         COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
         COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
         COALESCE(SUM(stored_cost), 0.0) as storedCost,
-        MAX(is_aggregated) as isAggregated
+        MAX(is_aggregated) as isAggregated,
+        accounting_kind as accountingKind,
+        SUM(reported_cost) as reportedCost
+        ,COALESCE(SUM(reported_requests), 0) as reportedRequests
       FROM ${presetUnifiedSource} AS _pu
-      GROUP BY DATE(timestamp), LOWER(model), LOWER(provider), serviceTier
+      GROUP BY DATE(timestamp), LOWER(model), LOWER(provider), serviceTier, accounting_kind
     `
     )
     .all(params) as PresetCostModelRow[];

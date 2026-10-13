@@ -83,7 +83,7 @@ function toStringValue(value: unknown, fallback = ""): string {
 }
 
 function roundCost(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
+  return Math.round(value * 100_000_000) / 100_000_000;
 }
 
 function normalizeServiceTier(value: unknown): "standard" | "priority" | "flex" {
@@ -230,6 +230,31 @@ function computeUsageRowCost(
   const serviceTier = normalizeServiceTier(row.serviceTier ?? row.service_tier);
   const isAggregated = toNumber(row.isAggregated ?? row.is_aggregated) > 0;
   const storedCost = toNumber(row.storedCost ?? row.stored_cost);
+  const accountingKind = toStringValue(row.accountingKind ?? row.accounting_kind);
+  const rawReportedCost = row.reportedCost ?? row.reported_cost;
+  if (accountingKind === "zero_cost") return 0;
+  if (accountingKind === "archived_aggregate") {
+    const reportedCost = Number(rawReportedCost);
+    const safeReportedCost =
+      rawReportedCost !== null &&
+      rawReportedCost !== undefined &&
+      Number.isFinite(reportedCost) &&
+      reportedCost >= 0
+        ? reportedCost
+        : 0;
+    return (flatRateAsZero && isFlatRateProvider(provider) ? 0 : storedCost) + safeReportedCost;
+  }
+  if (accountingKind === "provider_reported_billed_cost") {
+    const reportedCost = Number(rawReportedCost);
+    if (
+      rawReportedCost !== null &&
+      rawReportedCost !== undefined &&
+      Number.isFinite(reportedCost) &&
+      reportedCost >= 0
+    ) {
+      return reportedCost;
+    }
+  }
 
   if (isAggregated) {
     if (flatRateAsZero && isFlatRateProvider(provider)) return 0;
@@ -511,6 +536,14 @@ export async function GET(request: Request) {
           : 0,
       avgLatencyMs: Math.round(Number(summaryRow?.avgLatencyMs || 0)),
       totalCost: 0,
+      costAccounting: {
+        providerReportedCost: 0,
+        providerReportedRequests: 0,
+        catalogEstimateCost: 0,
+        catalogEstimateRequests: 0,
+        legacyStoredEstimateCost: 0,
+        legacyStoredEstimateRequests: 0,
+      },
       firstRequest: summaryRow?.firstRequest || "",
       lastRequest: summaryRow?.lastRequest || "",
       fallbackCount: Number(fallbackRow?.fallbacks || 0),
@@ -549,6 +582,12 @@ export async function GET(request: Request) {
     const allModels = new Set<string>();
 
     const dailyCostByDate = new Map<string, number>();
+    let providerReportedCost = 0;
+    let providerReportedRequests = 0;
+    let catalogEstimateCost = 0;
+    let catalogEstimateRequests = 0;
+    let legacyStoredEstimateCost = 0;
+    let legacyStoredEstimateRequests = 0;
     for (const row of dailyCostRows) {
       const date = toStringValue(row.date);
       if (!date) continue;
@@ -563,6 +602,40 @@ export async function GET(request: Request) {
         !includeFlatRateEstimates
       );
       dailyCostByDate.set(date, (dailyCostByDate.get(date) || 0) + cost);
+
+      const accountingKind = toStringValue(row.accountingKind ?? row.accounting_kind);
+      const requests = Number(row.requests || 0);
+      const reportedRequests = Number(row.reportedRequests ?? row.reported_requests ?? 0);
+      const rawReportedCost = row.reportedCost ?? row.reported_cost;
+      if (accountingKind === "archived_aggregate") {
+        const reportedCost = Number(row.reportedCost ?? row.reported_cost);
+        if (Number.isFinite(reportedCost) && reportedCost >= 0) {
+          providerReportedCost += reportedCost;
+        }
+        providerReportedRequests += reportedRequests;
+        const archivedEstimate = Number(row.storedCost ?? row.stored_cost ?? 0);
+        legacyStoredEstimateCost +=
+          !includeFlatRateEstimates && isFlatRateProvider(toStringValue(row.provider))
+            ? 0
+            : archivedEstimate;
+        legacyStoredEstimateRequests += Math.max(0, requests - reportedRequests);
+      } else if (
+        accountingKind === "zero_cost" ||
+        (accountingKind === "provider_reported_billed_cost" &&
+          rawReportedCost !== null &&
+          rawReportedCost !== undefined &&
+          Number.isFinite(Number(rawReportedCost)) &&
+          Number(rawReportedCost) >= 0)
+      ) {
+        providerReportedCost += cost;
+        providerReportedRequests += requests;
+      } else if (Number(row.isAggregated ?? row.is_aggregated) > 0) {
+        legacyStoredEstimateCost += cost;
+        legacyStoredEstimateRequests += requests;
+      } else {
+        catalogEstimateCost += cost;
+        catalogEstimateRequests += requests;
+      }
 
       // Group tokens by model for the day
       const model = normalizeModelName(row.model as string);
@@ -660,6 +733,14 @@ export async function GET(request: Request) {
 
     const totalCost = Array.from(dailyCostByDate.values()).reduce((sum, cost) => sum + cost, 0);
     summary.totalCost = roundCost(totalCost);
+    summary.costAccounting = {
+      providerReportedCost: roundCost(providerReportedCost),
+      providerReportedRequests,
+      catalogEstimateCost: roundCost(catalogEstimateCost),
+      catalogEstimateRequests,
+      legacyStoredEstimateCost: roundCost(legacyStoredEstimateCost),
+      legacyStoredEstimateRequests,
+    };
 
     const providerCostByProvider = new Map<string, number>();
     for (const row of providerCostRows) {
