@@ -433,6 +433,11 @@ separate dynamic multi-model router and exposes
 `route_selection: { kind: "dynamic_free_model", exactModelIdentity: false }`; it does not guarantee
 an exact model identity for a request.
 
+Other catalog routes expose `pricing_provenance` from the matched models.dev, LiteLLM, static, or
+provider-specific pricing source. If no configured source has a matching price, `pricing` remains
+absent and `pricing_provenance.state` is `unavailable` with a reason; consumers must treat that
+route's price as unknown.
+
 Model rows also expose `capability_status.tool_calling` with `status` (`supported`, `unsupported`,
 or `unknown`) and a metadata `source`. Routing that requires tools should require `supported`;
 the older `capabilities.tool_calling` boolean remains for compatibility and may include a model-name

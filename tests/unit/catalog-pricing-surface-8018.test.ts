@@ -65,13 +65,21 @@ describe("catalog pricing surface (#8018)", () => {
     assert.equal((entry.pricing as CatalogPricing).input, 0.006);
   });
 
-  it("omits pricing when unknown", () => {
+  it("keeps numeric pricing absent and marks pricing explicitly unavailable when unknown", () => {
     const entry = enrichCatalogModelEntry({
       id: "unknown/provider-model-xyz",
       owned_by: "unknown",
       root: "provider-model-xyz",
     });
     assert.equal(entry.pricing, undefined);
+    assert.deepEqual(entry.pricing_provenance, {
+      state: "unavailable",
+      routeModelId: "provider-model-xyz",
+      currency: "USD",
+      source: { id: "omniroute.catalog_pricing_resolution", retrievedAt: null, stale: null },
+      reason:
+        "No matching provider pricing metadata was available from the configured catalog sources",
+    });
   });
 
   it("does not replace explicit route pricing uncertainty with generic model pricing", () => {

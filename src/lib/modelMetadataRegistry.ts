@@ -762,13 +762,23 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       nextEntry.pricing = resolved.pricing;
       nextEntry.pricing_provenance = resolved.provenance;
     }
-  } else if (nextEntry.pricing != null && nextEntry.pricing_provenance == null) {
+  }
+  if (nextEntry.pricing != null && nextEntry.pricing_provenance == null) {
     nextEntry.pricing_provenance = {
       state: "unverified_pricing",
       routeModelId: model,
       currency: "USD",
       source: { id: "catalog_entry.unattributed", retrievedAt: null, stale: null },
       authority: "The catalog contains rates, but their source and freshness are unavailable",
+    };
+  } else if (nextEntry.pricing_provenance == null) {
+    nextEntry.pricing_provenance = {
+      state: "unavailable",
+      routeModelId: model || asNonEmptyString(entry.id),
+      currency: "USD",
+      source: { id: "omniroute.catalog_pricing_resolution", retrievedAt: null, stale: null },
+      reason:
+        "No matching provider pricing metadata was available from the configured catalog sources",
     };
   }
 

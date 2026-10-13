@@ -14567,6 +14567,9 @@ components:
                 - not_in_current_free_catalog
             routeModelId:
               type: string
+            reason:
+              type: string
+              description: Why an authoritative pricing assessment could not be established.
             currency:
               type: string
             tokenRateUnit:
