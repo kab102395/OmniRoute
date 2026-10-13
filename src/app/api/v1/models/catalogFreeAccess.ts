@@ -4,22 +4,7 @@ import {
   type FreeModelBudget,
 } from "@omniroute/open-sse/config/freeModelCatalog";
 import { resolveProviderId } from "@/shared/constants/providers";
-
-export interface CatalogFreeAccess {
-  classification: "documented_free_tier";
-  freeType: FreeModelBudget["freeType"];
-  monthlyTokens: number;
-  creditTokens: number;
-  hardStopGuaranteed: boolean | null;
-  accountEligibility: "unknown";
-  zeroCostOnExhaustion: "provider_hard_stop" | "not_guaranteed";
-  termsOfService: FreeModelBudget["tos"];
-  source: {
-    id: "omniroute.free_model_catalog";
-    freshness: "release_catalog";
-    retrievedAt: null;
-  };
-}
+import type { CatalogFreeAccess } from "@/domain/modelCatalogContract";
 
 const FREE_ACCESS_BY_ROUTE = new Map<string, FreeModelBudget>();
 for (const entry of FREE_MODEL_BUDGETS) {

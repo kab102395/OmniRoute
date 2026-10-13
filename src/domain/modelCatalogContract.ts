@@ -113,7 +113,11 @@ export interface CatalogFreeAccess {
   accountEligibility: "unknown";
   zeroCostOnExhaustion: "provider_hard_stop" | "not_guaranteed";
   termsOfService: "ok" | "caution" | "ambiguous" | "avoid" | "unknown";
-  source: CatalogMetadataSource;
+  source: {
+    id: "omniroute.free_model_catalog";
+    freshness: "release_catalog";
+    retrievedAt: null;
+  };
 }
 
 export interface CatalogRouteSelection {
