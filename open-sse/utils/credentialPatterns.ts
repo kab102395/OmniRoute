@@ -18,7 +18,7 @@ export const CREDENTIAL_PATTERNS: CredentialPattern[] = [
     regex: /sk-ant-[A-Za-z0-9_-]{20,}/g,
     replacement: "[REDACTED:anthropic]",
   },
-  { name: "google", regex: /AIza[0-9A-Za-z_-]{35}/g, replacement: "[REDACTED:google]" },
+  { name: "google", regex: /AIza[0-9A-Za-z_-]{20,}/g, replacement: "[REDACTED:google]" },
   { name: "huggingface", regex: /hf_[A-Za-z0-9]{34}/g, replacement: "[REDACTED:hf]" },
   { name: "replicate", regex: /r8_[A-Za-z0-9]{37}/g, replacement: "[REDACTED:replicate]" },
   { name: "github", regex: /gh[pousr]_[A-Za-z0-9]{36,}/g, replacement: "[REDACTED:github]" },
