@@ -2130,9 +2130,44 @@ paths:
     get:
       tags: [Models]
       summary: List available models
-      description: Returns all models available across configured providers.
+      description: >-
+        Returns the unified model catalog. `free_only=true` filters to exact OpenRouter free
+        variants and the optional dynamic OpenRouter free router, based on a fresh upstream
+        catalog. It does not filter to other providers' documented quota-based free tiers; those
+        are reported as `free_access` facts. None of these catalog filters establishes that an
+        account currently has quota or can execute successfully.
       security:
         - BearerAuth: []
+      parameters:
+        - in: query
+          name: prefix
+          required: false
+          schema:
+            type: string
+            enum: [alias, canonical, dual]
+          description: >-
+            Model ID prefix representation. Defaults to the server's configured prefix mode.
+        - in: query
+          name: configuredOnly
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            Keep only model routes with an active configured connection that is not excluded by
+            that connection's model rules. This does not prove live account eligibility, available
+            quota, or execution health.
+        - in: query
+          name: free_only
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            Keep exact currently free OpenRouter variants and the dynamic OpenRouter free router
+            only while the upstream catalog is fresh. Does not include provider free tiers from
+            other providers; inspect each model's `free_access` metadata for those distinct
+            quota-based offerings.
       responses:
         "200":
           description: Model list

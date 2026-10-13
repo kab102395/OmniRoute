@@ -399,6 +399,17 @@ Authorization: Bearer your-api-key
 → Returns all chat, embedding, and image models + combos in OpenAI format
 ```
 
+Catalog query filters:
+
+- `prefix=alias|canonical|dual` selects the emitted model ID forms.
+- `configuredOnly=true` keeps routes with an active configured connection not excluded by that
+  connection's model rules. It does not prove current quota, account eligibility, or execution
+  health.
+- `free_only=true` keeps exact OpenRouter free variants and the dynamic `openrouter/free` router
+  only when a fresh OpenRouter catalog confirms free routes. It does not include other providers'
+  quota-based free tiers; those are described by each model's `free_access` metadata and remain
+  subject to provider/account limits.
+
 ### Model id prefixes (`?prefix=`)
 
 Most models are advertised under a **provider prefix**. Which prefix you get is controlled by
