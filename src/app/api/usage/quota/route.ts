@@ -92,8 +92,8 @@ export function buildQuotaEntry(
       : null;
 
   let quotaTotal: number | null = null;
-  let quotaUsed = 0;
-  let percentRemaining = 100;
+  let quotaUsed: number | null = null;
+  let percentRemaining: number | null = null;
   let quotaSource: QuotaProviderEntry["quotaSource"] = "unknown";
   let quotaRetrievedAt: string | null = null;
   const learned =

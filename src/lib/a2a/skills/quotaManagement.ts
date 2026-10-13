@@ -125,7 +125,7 @@ export async function executeQuotaManagement(task: A2ATask): Promise<QuotaManage
           .map((p) => {
             const quotaLabel =
               p.quotaSource === "learned_limit" && p.quotaTotal !== null
-                ? `${p.quotaUsed.toLocaleString()} / ${p.quotaTotal.toLocaleString()} (${Math.round(p.percentRemaining)}% remaining)`
+                ? `${p.quotaUsed?.toLocaleString() ?? "unknown"} / ${p.quotaTotal.toLocaleString()} (${p.percentRemaining === null ? "unknown" : `${Math.round(p.percentRemaining)}%`} remaining)`
                 : p.quotaSource === "observed_rate_limit"
                   ? `rate limited${p.resetAt ? ` until ${p.resetAt}` : ""}`
                   : p.quotaSource === "observed_queue_pressure"

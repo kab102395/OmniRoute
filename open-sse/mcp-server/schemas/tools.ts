@@ -285,9 +285,9 @@ export const checkQuotaOutput = z.object({
       name: z.string(),
       provider: z.string(),
       connectionId: z.string(),
-      quotaUsed: z.number(),
+      quotaUsed: z.number().nullable(),
       quotaTotal: z.number().nullable(),
-      percentRemaining: z.number(),
+      percentRemaining: z.number().nullable(),
       resetAt: z.string().nullable(),
       tokenStatus: z.enum(["valid", "expiring", "expired", "refreshing"]),
     })

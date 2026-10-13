@@ -12540,11 +12540,13 @@ paths:
                           nullable: true
                         quotaUsed:
                           type: number
+                          nullable: true
                         percentRemaining:
                           type: number
+                          nullable: true
                           description: >-
-                            Backward-compatible numeric projection. Consult quotaSource before
-                            interpreting 100 as known available capacity.
+                            Null when remaining capacity is unknown. Consult quotaSource for the
+                            evidence behind any numeric projection.
                         quotaSource:
                           type: string
                           enum:

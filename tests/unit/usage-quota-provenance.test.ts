@@ -30,6 +30,8 @@ test("quota OpenAPI exposes source, freshness, and connection health", () => {
     };
   };
   const properties = body.schema.properties.providers.items.properties;
+  assert.equal(properties.quotaUsed.nullable, true);
+  assert.equal(properties.percentRemaining.nullable, true);
   assert.deepEqual(properties.quotaSource.enum, [
     "learned_limit",
     "observed_rate_limit",
@@ -54,13 +56,15 @@ test("quota OpenAPI exposes source, freshness, and connection health", () => {
 test("quota response identifies missing account capacity as unknown", () => {
   const entry = buildQuotaEntry(connection, null, { queued: 0, running: 0, executing: 0 });
   assert.equal(entry.quotaTotal, null);
-  assert.equal(entry.percentRemaining, 100, "the legacy numeric field remains backward compatible");
+  assert.equal(entry.quotaUsed, null);
+  assert.equal(entry.percentRemaining, null);
   assert.equal(entry.quotaSource, "unknown");
   assert.equal(entry.quotaRetrievedAt, null);
   assert.equal(entry.connectionStatus, "unknown");
 
   const normalized = normalizeQuotaResponse({ providers: [entry] }).providers[0];
   assert.equal(normalized?.quotaSource, "unknown");
+  assert.equal(normalized?.percentRemaining, null);
 });
 
 test("learned limits without a remaining count do not imply full remaining quota", () => {

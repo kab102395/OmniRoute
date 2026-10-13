@@ -1,3 +1,5 @@
+import { toNumberOrNull } from "@/shared/utils/numeric";
+
 export type QuotaTokenStatus = "valid" | "expiring" | "expired" | "refreshing";
 export type QuotaConnectionStatus =
   | "available"
@@ -17,9 +19,9 @@ export interface QuotaProviderEntry {
   name: string;
   provider: string;
   connectionId: string;
-  quotaUsed: number;
+  quotaUsed: number | null;
   quotaTotal: number | null;
-  percentRemaining: number;
+  percentRemaining: number | null;
   /** Evidence source for percentRemaining; legacy percentages may be synthetic. */
   quotaSource: QuotaSource;
   quotaRetrievedAt: string | null;
@@ -63,15 +65,6 @@ const QUOTA_SOURCES: QuotaSource[] = [
   "unknown",
 ];
 
-function toNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -102,22 +95,23 @@ export function sanitizeQuotaProvider(input: unknown): QuotaProviderEntry {
       ? source.connectionId
       : "unknown";
 
-  const quotaTotalRaw = toNumber(source.quotaTotal);
+  const quotaTotalRaw = toNumberOrNull(source.quotaTotal);
   const quotaTotal = quotaTotalRaw !== null && quotaTotalRaw >= 0 ? quotaTotalRaw : null;
 
-  const quotaUsedRaw = toNumber(source.quotaUsed) ?? 0;
-  const quotaUsed =
-    quotaTotal !== null ? clamp(quotaUsedRaw, 0, quotaTotal) : Math.max(0, quotaUsedRaw);
+  const quotaUsedRaw = toNumberOrNull(source.quotaUsed);
+  const quotaUsed = quotaUsedRaw === null
+    ? null
+    : quotaTotal !== null
+      ? clamp(quotaUsedRaw, 0, quotaTotal)
+      : Math.max(0, quotaUsedRaw);
 
-  let percentRemainingRaw = toNumber(source.percentRemaining);
+  let percentRemainingRaw = toNumberOrNull(source.percentRemaining);
   if (percentRemainingRaw === null) {
-    if (quotaTotal && quotaTotal > 0) {
+    if (quotaTotal && quotaTotal > 0 && quotaUsed !== null) {
       percentRemainingRaw = ((quotaTotal - quotaUsed) / quotaTotal) * 100;
-    } else {
-      percentRemainingRaw = 100;
     }
   }
-  const percentRemaining = clamp(percentRemainingRaw, 0, 100);
+  const percentRemaining = percentRemainingRaw === null ? null : clamp(percentRemainingRaw, 0, 100);
   const quotaSource =
     typeof source.quotaSource === "string" &&
     QUOTA_SOURCES.includes(source.quotaSource as QuotaSource)
