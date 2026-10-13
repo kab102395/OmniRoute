@@ -12806,7 +12806,16 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [provider, connectionId, model, reachable, free, excluded]
+                      required:
+                        [
+                          provider,
+                          connectionId,
+                          model,
+                          reachable,
+                          reachabilityStatus,
+                          free,
+                          excluded,
+                        ]
                       properties:
                         provider:
                           type: string
@@ -12822,6 +12831,17 @@ paths:
                           type: boolean
                         reachable:
                           type: boolean
+                          description: >-
+                            Backward-compatible boolean; true only when reachability is verified.
+                            False includes both known-unreachable and unknown states. Prefer
+                            reachabilityStatus for constrained decisions.
+                        reachabilityStatus:
+                          type: string
+                          enum: [reachable, unreachable, unknown]
+                          description: >-
+                            Combined provider breaker, account cooldown, and model-lockout status.
+                            Unknown means OmniRoute could not read the configured account state;
+                            it must not be treated as reachable.
                         breakerState:
                           type: string
                         connectionCooldown:

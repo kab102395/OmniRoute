@@ -43,6 +43,18 @@ export interface AutoComboCandidateQuota {
   observedAt: string;
 }
 
+export function getCandidateReachabilityStatus(input: {
+  connectionLookupKnown: boolean;
+  breakerReachable: boolean;
+  connectionCooldown: boolean;
+  modelLocked: boolean;
+}): AutoComboCandidateView["reachabilityStatus"] {
+  if (!input.breakerReachable || input.connectionCooldown || input.modelLocked) {
+    return "unreachable";
+  }
+  return input.connectionLookupKnown ? "reachable" : "unknown";
+}
+
 /**
  * One row of the unfiltered, reason-annotated candidate pool (#9133): every
  * eligible provider/model/account combination the routing pool would
@@ -59,6 +71,8 @@ export interface AutoComboCandidateView {
   modelStr: string;
   free: boolean;
   excluded: boolean;
+  /** Three-valued reachability: unknown account lookup must never look healthy. */
+  reachabilityStatus: "reachable" | "unreachable" | "unknown";
   reachable: boolean;
   breakerState: string;
   connectionCooldown: boolean;
@@ -107,7 +121,7 @@ export function buildCandidateView(input: {
   model: string;
   modelStr: string;
   excluded: boolean;
-  reachable: boolean;
+  reachabilityStatus: "reachable" | "unreachable" | "unknown";
   breakerState: string;
   connectionCooldown: boolean;
   modelLocked: boolean;
@@ -124,7 +138,10 @@ export function buildCandidateView(input: {
     modelStr: input.modelStr,
     free,
     excluded: input.excluded,
-    reachable: input.reachable,
+    reachabilityStatus: input.reachabilityStatus,
+    // Retain the legacy boolean. False means the route is either known blocked
+    // or cannot currently be verified; new consumers should use the enum.
+    reachable: input.reachabilityStatus === "reachable",
     breakerState: input.breakerState,
     connectionCooldown: input.connectionCooldown,
     modelLocked: input.modelLocked,
@@ -157,17 +174,18 @@ async function decorateCandidate(candidate: {
   const breakerReachable = breaker.canExecute();
 
   let connectionCooldown = false;
+  let connectionLookupKnown = true;
   if (candidate.connectionId && candidate.connectionId !== "noauth") {
     try {
       const connection = await getProviderConnectionById(candidate.connectionId);
+      if (!connection) connectionLookupKnown = false;
       connectionCooldown =
         hasFutureRateLimit((connection as Record<string, unknown> | null)?.rateLimitedUntil) ||
         (connection as Record<string, unknown> | null)?.testStatus === "unavailable";
     } catch {
-      // Fail-open: an unresolved connection lookup should not mark a
-      // candidate unreachable — the panel is read-only transparency, not the
-      // dispatch path.
-      connectionCooldown = false;
+      // The diagnostic endpoint must not report a route as reachable when it
+      // cannot read the account state that determines reachability.
+      connectionLookupKnown = false;
     }
   }
 
@@ -182,13 +200,19 @@ async function decorateCandidate(candidate: {
   // key isn't family-scoped.
   const bareModel = parseModel(candidate.modelStr).model ?? candidate.model;
   const modelLocked = isModelLocked(candidate.provider, candidate.connectionId, bareModel);
+  const reachabilityStatus = getCandidateReachabilityStatus({
+    connectionLookupKnown,
+    breakerReachable,
+    connectionCooldown,
+    modelLocked,
+  });
   return buildCandidateView({
     provider: candidate.provider,
     connectionId: candidate.connectionId,
     model: candidate.model,
     modelStr: candidate.modelStr,
     excluded: false,
-    reachable: breakerReachable && !connectionCooldown && !modelLocked,
+    reachabilityStatus,
     breakerState: String(breakerStatus.state),
     connectionCooldown,
     modelLocked,

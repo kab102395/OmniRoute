@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildCandidateQuota,
   buildCandidateView,
+  getCandidateReachabilityStatus,
 } from "../../open-sse/handlers/autoComboCandidates.ts";
 
 const cache = (quota: Record<string, unknown>) => ({
@@ -19,8 +20,9 @@ const candidate = (overrides: Record<string, unknown> = {}) =>
     connectionId: "internal-connection-id",
     model: "openrouter/provider/model:free",
     modelStr: "openrouter/provider/model:free",
+    isFree: true,
     excluded: false,
-    reachable: true,
+    reachabilityStatus: "reachable",
     breakerState: "CLOSED",
     connectionCooldown: false,
     modelLocked: false,
@@ -49,6 +51,7 @@ test("paid candidate is not classified as free and has no free quota", () => {
   const view = candidate({
     model: "openrouter/provider/model",
     modelStr: "openrouter/provider/model",
+    isFree: false,
   });
   assert.equal(view.free, false);
   assert.equal(view.quota, null);
@@ -59,6 +62,7 @@ test("catalog classification handles the OpenCode public prefix", () => {
     provider: "opencode",
     model: "oc/deepseek-v4-flash-free",
     modelStr: "oc/deepseek-v4-flash-free",
+    isFree: true,
   });
   assert.equal(view.free, true);
 });
@@ -73,7 +77,7 @@ test("exhausted free quota is reported as zero remaining, not unknown", () => {
 
 test("breaker and cooldown state are preserved without affecting routing", () => {
   const view = candidate({
-    reachable: false,
+    reachabilityStatus: "unreachable",
     breakerState: "OPEN",
     connectionCooldown: true,
   });
@@ -82,17 +86,43 @@ test("breaker and cooldown state are preserved without affecting routing", () =>
   assert.equal(view.connectionCooldown, true);
 });
 
-test("candidate telemetry does not expose raw connection IDs or secrets", () => {
+test("candidate account diagnostics retain connection identity without exposing credentials", () => {
   const view = candidate();
-  assert.equal("connectionId" in view, false);
-  assert.equal(JSON.stringify(view).includes("internal-connection-id"), false);
+  assert.equal(view.connectionId, "internal-connection-id");
   assert.equal(JSON.stringify(view).match(/sk-[A-Za-z0-9_-]+/), null);
 });
 
 test("candidate telemetry preserves the routing reachability decision", () => {
-  const reachable = candidate({ reachable: true });
-  const blocked = candidate({ reachable: false, modelLocked: true });
+  const reachable = candidate({ reachabilityStatus: "reachable" });
+  const blocked = candidate({ reachabilityStatus: "unreachable", modelLocked: true });
   assert.equal(reachable.reachable, true);
+  assert.equal(reachable.reachabilityStatus, "reachable");
   assert.equal(blocked.reachable, false);
+  assert.equal(blocked.reachabilityStatus, "unreachable");
   assert.equal(blocked.modelLocked, true);
+});
+
+test("unknown account lookup is not reported as reachable", () => {
+  assert.equal(
+    getCandidateReachabilityStatus({
+      connectionLookupKnown: false,
+      breakerReachable: true,
+      connectionCooldown: false,
+      modelLocked: false,
+    }),
+    "unknown"
+  );
+  assert.equal(
+    getCandidateReachabilityStatus({
+      connectionLookupKnown: false,
+      breakerReachable: false,
+      connectionCooldown: false,
+      modelLocked: false,
+    }),
+    "unreachable",
+    "a known-open provider breaker takes precedence over unknown account state"
+  );
+  const view = candidate({ reachabilityStatus: "unknown" });
+  assert.equal(view.reachable, false);
+  assert.equal(view.reachabilityStatus, "unknown");
 });
