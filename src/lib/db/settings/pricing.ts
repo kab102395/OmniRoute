@@ -120,56 +120,63 @@ export async function getPricingWithSources(): Promise<{
   };
 }
 
-export async function getPricingForModel(provider: string, model: string) {
-  const pricing = await getPricing();
+function findKeyInsensitive<T>(obj: Record<string, T> | undefined | null, key: string) {
+  if (!obj || !key) return undefined;
+  const lowerKey = key.toLowerCase();
+  for (const [candidate, value] of Object.entries(obj)) {
+    if (candidate.toLowerCase() === lowerKey) return { key: candidate, value };
+  }
+  return undefined;
+}
 
-  const findKeyInsensitive = <T>(
-    obj: Record<string, T> | undefined | null,
-    key: string
-  ): T | undefined => {
-    if (!obj || !key) return undefined;
-    const lowerKey = key.toLowerCase();
-    for (const [k, v] of Object.entries(obj)) {
-      if (k.toLowerCase() === lowerKey) return v;
-    }
-    return undefined;
-  };
+function resolvePricingModelEntry(pricing: PricingByProvider, provider: string, model: string) {
+  const pLower = provider.toLowerCase();
+  let providerMatch = findKeyInsensitive(pricing, pLower);
 
-  const pLower = (provider || "").toLowerCase();
-  let providerPricing = findKeyInsensitive<PricingModels>(pricing, pLower);
-
-  if (!providerPricing) {
-    const alias = findKeyInsensitive<string>(PROVIDER_ID_TO_ALIAS, pLower);
-    if (alias) providerPricing = findKeyInsensitive(pricing, alias);
+  if (!providerMatch) {
+    const alias = findKeyInsensitive(PROVIDER_ID_TO_ALIAS, pLower)?.value;
+    if (alias) providerMatch = findKeyInsensitive(pricing, alias);
   }
 
-  if (!providerPricing) {
+  if (!providerMatch) {
     for (const [id, mappedAlias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
       if (typeof mappedAlias === "string" && mappedAlias.toLowerCase() === pLower) {
-        providerPricing = findKeyInsensitive(pricing, id);
-        if (providerPricing) break;
+        providerMatch = findKeyInsensitive(pricing, id);
+        if (providerMatch) break;
       }
     }
   }
 
-  if (!providerPricing) {
-    const np = pLower.replace(/-cn$/, "");
-    if (np && np !== pLower) {
-      providerPricing = findKeyInsensitive(pricing, np);
-    }
+  if (!providerMatch) {
+    const withoutCn = pLower.replace(/-cn$/, "");
+    if (withoutCn && withoutCn !== pLower) providerMatch = findKeyInsensitive(pricing, withoutCn);
   }
+  if (!providerMatch) return null;
 
-  if (!providerPricing) return null;
+  const mLower = model.toLowerCase();
+  const modelMatch =
+    findKeyInsensitive(providerMatch.value, mLower) ||
+    findKeyInsensitive(providerMatch.value, mLower.replace(/\./g, "-"));
+  if (!modelMatch) return null;
+  return {
+    providerKey: providerMatch.key,
+    modelKey: modelMatch.key,
+    pricing: modelMatch.value,
+  };
+}
 
-  const mLower = (model || "").toLowerCase();
-  let modelPricing = findKeyInsensitive<JsonRecord>(providerPricing, mLower);
+export async function getPricingForModel(provider: string, model: string) {
+  const pricing = await getPricing();
+  return resolvePricingModelEntry(pricing, provider, model)?.pricing ?? null;
+}
 
-  if (!modelPricing) {
-    const hyphenModel = mLower.replace(/\./g, "-");
-    modelPricing = findKeyInsensitive(providerPricing, hyphenModel);
-  }
-
-  return modelPricing || null;
+export async function getPricingForModelWithSource(provider: string, model: string) {
+  const { pricing, sourceMap } = await getPricingWithSources();
+  const entry = resolvePricingModelEntry(pricing, provider, model);
+  if (!entry) return null;
+  const sourceProvider = findKeyInsensitive(sourceMap, entry.providerKey)?.value;
+  const source = findKeyInsensitive(sourceProvider, entry.modelKey)?.value ?? null;
+  return { ...entry, source };
 }
 
 export async function updatePricing(pricingData: PricingByProvider) {

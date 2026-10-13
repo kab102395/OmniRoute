@@ -97,6 +97,8 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
       pricingModel: "openai/gpt-4o-mini",
       pricingVersion: null,
       pricingEffectiveAt: null,
+      pricingRetrievedAt: null,
+      pricingStale: null,
       usageKind: "provider_reported_usage",
     }
   );
@@ -108,6 +110,34 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
       calculatedCostUsd: 0.002,
     }).kind,
     "estimated_cost"
+  );
+  assert.deepEqual(
+    classifyCostAccounting({
+      provider: "openrouter",
+      model: "meta-llama/llama-3.3-70b-instruct:free",
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+      calculatedCostUsd: 0.001,
+      pricingEvidence: {
+        source: "modelsDev",
+        modelId: "meta-llama/llama-3.3-70b-instruct:free",
+        retrievedAt: "2026-10-12T12:00:00.000Z",
+        ttlMs: 60_000,
+        stale: false,
+      },
+    }),
+    {
+      kind: "estimated_cost",
+      amountUsd: 0.001,
+      currency: "USD",
+      source: "models_dev.api_json",
+      pricingProvider: "openrouter",
+      pricingModel: "meta-llama/llama-3.3-70b-instruct:free",
+      pricingVersion: null,
+      pricingEffectiveAt: null,
+      pricingRetrievedAt: "2026-10-12T12:00:00.000Z",
+      pricingStale: false,
+      usageKind: "provider_reported_usage",
+    }
   );
   assert.equal(
     classifyCostAccounting({

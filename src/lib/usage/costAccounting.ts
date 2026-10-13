@@ -16,6 +16,8 @@ export type CostAccountingFacts = {
   pricingModel: string | null;
   pricingVersion: null;
   pricingEffectiveAt: null;
+  pricingRetrievedAt: string | null;
+  pricingStale: boolean | null;
   usageKind: "provider_reported_usage" | "estimated_usage" | "unknown";
 };
 
@@ -41,6 +43,7 @@ export function classifyCostAccounting(args: {
   model: string | null | undefined;
   usage: Record<string, unknown> | null | undefined;
   calculatedCostUsd: number | null | undefined;
+  pricingEvidence?: import("./costCalculator").CostPricingEvidence | null;
 }): CostAccountingFacts {
   const ticks = args.usage?.cost_in_usd_ticks;
   const usageKind = args.usage?.estimated === true ? "estimated_usage" : "provider_reported_usage";
@@ -49,6 +52,8 @@ export function classifyCostAccounting(args: {
     pricingModel: args.model || null,
     pricingVersion: null as null,
     pricingEffectiveAt: null as null,
+    pricingRetrievedAt: null as string | null,
+    pricingStale: null as boolean | null,
   };
 
   if (typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0) {
@@ -82,12 +87,25 @@ export function classifyCostAccounting(args: {
 
   const calculatedCostUsd = Number(args.calculatedCostUsd);
   if (Number.isFinite(calculatedCostUsd) && calculatedCostUsd > 0) {
+    const pricingSource = args.pricingEvidence?.source;
+    const source =
+      pricingSource === "modelsDev"
+        ? "models_dev.api_json"
+        : pricingSource === "litellm"
+          ? "litellm.model_prices"
+          : pricingSource === "user"
+            ? "omniroute.user_pricing"
+            : pricingSource === "default"
+              ? "omniroute.static_pricing"
+              : "omniroute_local_pricing_table";
     return {
       kind: "estimated_cost",
       amountUsd: calculatedCostUsd,
       currency: "USD",
-      source: "omniroute_local_pricing_table",
+      source,
       ...identity,
+      pricingRetrievedAt: args.pricingEvidence?.retrievedAt ?? null,
+      pricingStale: args.pricingEvidence?.stale ?? null,
       usageKind,
     };
   }
@@ -112,6 +130,8 @@ export function classifyCostAccounting(args: {
     pricingModel: null,
     pricingVersion: null,
     pricingEffectiveAt: null,
+    pricingRetrievedAt: null,
+    pricingStale: null,
     usageKind: "unknown",
   };
 }

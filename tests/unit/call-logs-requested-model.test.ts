@@ -52,6 +52,37 @@ test("call logs persist requestedModel and allow filtering by requested model", 
   assert.equal(detail?.requestedModel, "openai/gpt-5.2-codex");
 });
 
+test("call logs preserve pricing source freshness in accounting evidence", async () => {
+  await callLogs.saveCallLog({
+    method: "POST",
+    path: "/v1/chat/completions",
+    status: 200,
+    model: "provider/model",
+    provider: "provider",
+    duration: 123,
+    accounting: {
+      kind: "estimated_cost",
+      amountUsd: 0.001,
+      currency: "USD",
+      source: "models_dev.api_json",
+      pricingProvider: "provider",
+      pricingModel: "model",
+      pricingVersion: null,
+      pricingEffectiveAt: null,
+      pricingRetrievedAt: "2026-10-12T12:00:00.000Z",
+      pricingStale: false,
+      usageKind: "provider_reported_usage",
+    },
+  });
+
+  const logs = await callLogs.getCallLogs({ limit: 10 });
+  assert.equal(logs.length, 1);
+  const detail = await callLogs.getCallLogById(logs[0].id);
+  assert.equal(detail?.accounting?.source, "models_dev.api_json");
+  assert.equal(detail?.accounting?.pricingRetrievedAt, "2026-10-12T12:00:00.000Z");
+  assert.equal(detail?.accounting?.pricingStale, false);
+});
+
 test("requestedModel uses provider node prefix for openai-compatible provider at save time", async () => {
   const providerId = "openai-compatible-chat-07dea2c6-269e-45f7-b731-b310bc016eb8";
 

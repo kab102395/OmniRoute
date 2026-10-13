@@ -37,6 +37,19 @@ export type CostCalculationOptions = {
   flatRateAsZero?: boolean;
 };
 
+export type CostPricingEvidence = {
+  source: "default" | "litellm" | "modelsDev" | "user" | null;
+  modelId: string | null;
+  retrievedAt: string | null;
+  ttlMs: number | null;
+  stale: boolean | null;
+};
+
+export type CostEstimate = {
+  costUsd: number;
+  pricingEvidence: CostPricingEvidence;
+};
+
 /**
  * xAI reports the exact provider-billed cost of a request in the chat-completions
  * `usage` object via `cost_in_usd_ticks` (port of decolua/9router#2453, capability
@@ -190,44 +203,95 @@ export async function calculateCost(
   tokens: Record<string, number | undefined> | null | undefined,
   options: CostCalculationOptions = {}
 ): Promise<number> {
-  if (!tokens || !provider || !model) return 0;
+  return (await calculateCostWithEvidence(provider, model, tokens, options)).costUsd;
+}
+
+function buildCostPricingEvidence(
+  source: "default" | "litellm" | "modelsDev" | "user" | null,
+  modelId: string | null,
+  retrievedAt: string | null,
+  ttlMs: number | null
+): CostPricingEvidence {
+  const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
+  const stale =
+    Number.isFinite(retrievedAtMs) && ttlMs !== null ? Date.now() - retrievedAtMs > ttlMs : null;
+  return {
+    source,
+    modelId,
+    retrievedAt: Number.isFinite(retrievedAtMs) ? retrievedAt : null,
+    ttlMs,
+    stale,
+  };
+}
+
+export async function calculateCostWithEvidence(
+  provider: string,
+  model: string,
+  tokens: Record<string, number | undefined> | null | undefined,
+  options: CostCalculationOptions = {}
+): Promise<CostEstimate> {
+  const unknownEvidence = buildCostPricingEvidence(null, null, null, null);
+  if (!tokens || !provider || !model) return { costUsd: 0, pricingEvidence: unknownEvidence };
 
   // Short-circuit before any pricing DB lookup when a provider-reported amount is present.
   const exactCostUsd = extractExactCostUsd(tokens, provider);
-  if (exactCostUsd !== null) return exactCostUsd;
+  if (exactCostUsd !== null) return { costUsd: exactCostUsd, pricingEvidence: unknownEvidence };
 
   try {
-    const { getPricingForModel } = await import("@/lib/db/settings");
+    const { getPricingForModelWithSource } = await import("@/lib/db/settings");
 
     // Try exact match first, then normalized model name
-    let pricing = await getPricingForModel(provider, model);
-    if (!pricing) {
+    let resolvedPricing = await getPricingForModelWithSource(provider, model);
+    if (!resolvedPricing) {
       const normalized = normalizeModelName(model);
       if (normalized !== model) {
-        pricing = await getPricingForModel(provider, normalized);
+        resolvedPricing = await getPricingForModelWithSource(provider, normalized);
       }
       const providerKey = normalizeServiceTier(provider);
-      if (!pricing && (providerKey === "codex" || providerKey === "cx")) {
+      if (!resolvedPricing && (providerKey === "codex" || providerKey === "cx")) {
         const effortlessModel = stripCodexEffortSuffix(normalized);
         if (effortlessModel !== normalized) {
-          pricing = await getPricingForModel(provider, effortlessModel);
+          resolvedPricing = await getPricingForModelWithSource(provider, effortlessModel);
         }
       }
     }
-    if (!pricing) return 0;
+    if (!resolvedPricing) return { costUsd: 0, pricingEvidence: unknownEvidence };
 
     const pricingRecord =
-      pricing && typeof pricing === "object" && !Array.isArray(pricing)
-        ? (pricing as Record<string, unknown>)
+      resolvedPricing.pricing &&
+      typeof resolvedPricing.pricing === "object" &&
+      !Array.isArray(resolvedPricing.pricing)
+        ? (resolvedPricing.pricing as Record<string, unknown>)
         : {};
-    return computeCostFromPricing(pricingRecord, tokens, {
-      provider,
-      model,
-      ...options,
-    });
+    let retrievedAt: string | null = null;
+    let ttlMs: number | null = null;
+    if (resolvedPricing.source === "modelsDev") {
+      const { getSyncStatus } = await import("@/lib/modelsDevSync");
+      const status = getSyncStatus();
+      retrievedAt = status.sourceRetrievedAt;
+      ttlMs = status.intervalMs;
+    } else if (resolvedPricing.source === "litellm") {
+      const { getSyncStatus } = await import("@/lib/pricingSync");
+      const status = getSyncStatus();
+      retrievedAt = status.lastSync;
+      ttlMs = status.intervalMs;
+    }
+    return {
+      costUsd: computeCostFromPricing(pricingRecord, tokens, {
+        provider,
+        model,
+        ...options,
+      }),
+      pricingEvidence: buildCostPricingEvidence(
+        resolvedPricing.source,
+        resolvedPricing.modelKey,
+        retrievedAt,
+        ttlMs
+      ),
+    };
   } catch (error) {
     console.error("Error calculating cost:", error);
-    return 0;
+    return { costUsd: 0, pricingEvidence: unknownEvidence };
   }
 }
 

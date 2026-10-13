@@ -829,6 +829,7 @@ export {
   getPricing,
   getPricingWithSources,
   getPricingForModel,
+  getPricingForModelWithSource,
   updatePricing,
   resetPricing,
   resetAllPricing,

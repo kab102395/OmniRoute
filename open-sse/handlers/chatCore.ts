@@ -308,7 +308,7 @@ import { handleBypassRequest } from "../utils/bypassHandler.ts";
 import { saveRequestUsage, trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import { finalizePendingScope, updatePendingScope } from "@/lib/usage/pendingRequestScope";
 import { recordCost } from "@/domain/costRules";
-import { calculateCost } from "@/lib/usage/costCalculator";
+import { calculateCost, calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import {
   buildClaudePassthroughToolNameMap,
   mergeResponseToolNameMap,
@@ -5274,16 +5274,18 @@ export async function handleChatCore({
       costUsage && usageWasEstimated ? { ...costUsage, estimated: true } : costUsage;
     const servedIdentity = resolveServedIdentity(provider, finalBody);
     const pricingModel = servedIdentity?.model || currentModel || effectiveModel;
-    const estimatedCost = costUsage
-      ? await calculateCost(provider, pricingModel, costUsage, {
+    const costAssessment = costUsage
+      ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
           serviceTier: effectiveServiceTier,
         })
-      : 0;
+      : { costUsd: 0, pricingEvidence: null };
+    const estimatedCost = costAssessment.costUsd;
     const accounting = classifyCostAccounting({
       provider,
       model: pricingModel,
       usage: usageForAccounting,
       calculatedCostUsd: estimatedCost,
+      pricingEvidence: costAssessment.pricingEvidence,
     });
 
     if (postCallGuardrails.blocked) {
@@ -5842,11 +5844,11 @@ export async function handleChatCore({
           : costUsage;
       void (async () => {
         try {
-          const calculatedCostUsd = costUsage
-            ? await calculateCost(provider, pricingModel, costUsage, {
+          const costAssessment = costUsage
+            ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
                 serviceTier: effectiveServiceTier,
               })
-            : 0;
+            : { costUsd: 0, pricingEvidence: null };
           persistAttemptLogs({
             ...streamLogArgs,
             servedProvider: servedIdentity?.provider || null,
@@ -5855,7 +5857,8 @@ export async function handleChatCore({
               provider,
               model: pricingModel,
               usage: usageForAccounting,
-              calculatedCostUsd,
+              calculatedCostUsd: costAssessment.costUsd,
+              pricingEvidence: costAssessment.pricingEvidence,
             }),
           });
         } catch {
