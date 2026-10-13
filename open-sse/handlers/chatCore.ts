@@ -73,11 +73,13 @@ function routingFinishReason(body: unknown): string | null {
 }
 import {
   getHeaderValueCaseInsensitive,
+  isFreeRouteOnlyRequested,
   isStrictModelIdentityRequested,
   isNoMemoryRequested,
   resolveCompressionHeader,
   isStripReasoningRequested,
 } from "./chatCore/headers.ts";
+import { checkFreeRouteAdmission } from "./chatCore/freeRouteAdmission.ts";
 import { markCodexScopeRateLimited } from "./chatCore/codexFailover.ts";
 import {
   getCodexClientSessionId,
@@ -568,6 +570,32 @@ export async function handleChatCore({
   videoBridgeLog = undefined,
 }) {
   let { provider, model, extendedContext } = modelInfo;
+  const freeRouteOnly = isFreeRouteOnlyRequested(clientRawRequest?.headers);
+  const strictModelRequested = isStrictModelIdentityRequested(clientRawRequest?.headers);
+  const selectedOpenRouterModel = model.replace(/^openrouter\//, "");
+  if (
+    strictModelRequested &&
+    resolveProviderId(provider) === "openrouter" &&
+    selectedOpenRouterModel === "free"
+  ) {
+    return Response.json(
+      buildErrorBody(
+        400,
+        "Strict model identity cannot be guaranteed by the openrouter/free router."
+      ),
+      { status: 400 }
+    );
+  }
+  if (freeRouteOnly) {
+    const admission = await checkFreeRouteAdmission(provider, model);
+    if (admission.kind !== "eligible") {
+      const message =
+        admission.reason === "catalog_unverified"
+          ? "The selected route cannot be verified as currently free."
+          : "The selected route is not classified as free by OmniRoute.";
+      return Response.json(buildErrorBody(403, message), { status: 403 });
+    }
+  }
   // #12150 P1b: true iff the video-bridge guardrail rendered >=1 transcript
   // cue into a replaced part of this request. Gates both request- and
   // response-derived Memory extraction
@@ -610,8 +638,7 @@ export async function handleChatCore({
       : createOdysseusTelemetry(odysseusDecision, traceId, requestedModel);
   const odysseusStrictRoute =
     odysseusDecision.result === "allowed" && odysseusDecision.metadata?.freeOnly === true;
-  const strictModelIdentity =
-    odysseusStrictRoute || isStrictModelIdentityRequested(clientRawRequest?.headers);
+  const strictModelIdentity = odysseusStrictRoute || freeRouteOnly || strictModelRequested;
   // Emit request.started event for real-time dashboard
   setImmediate(() => {
     emit("request.started", {

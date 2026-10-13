@@ -42,7 +42,10 @@ import { mergeAbortSignals } from "@omniroute/open-sse/executors/base.ts";
 import { resolveRequestAutoControls } from "@omniroute/open-sse/services/autoCombo/requestControls.ts";
 import { isVerifiedNativeCodexRequest } from "@omniroute/open-sse/config/codexIdentity.ts";
 import { resolveCompressionSettings } from "@omniroute/open-sse/handlers/chatCore/compressionSettings.ts";
-import { isStrictModelIdentityRequested } from "@omniroute/open-sse/handlers/chatCore/headers.ts";
+import {
+  isFreeRouteOnlyRequested,
+  isStrictModelIdentityRequested,
+} from "@omniroute/open-sse/handlers/chatCore/headers.ts";
 import type { CompressionExclusions } from "@omniroute/open-sse/services/compression/exclusions.ts";
 import { resolveComboConfig } from "@omniroute/open-sse/services/comboConfig.ts";
 import { injectHandoffIntoBody } from "@omniroute/open-sse/services/contextHandoff.ts";
@@ -1240,6 +1243,7 @@ async function handleChatImplementation(
     if (
       !deterministicRoute &&
       !isStrictModelIdentityRequested(request?.headers) &&
+      !isFreeRouteOnlyRequested(request?.headers) &&
       !response.ok &&
       [502, 503].includes(response.status) &&
       typeof (settings as any)?.globalFallbackModel === "string" &&
@@ -2240,7 +2244,9 @@ async function handleSingleModelChat(
       // per-target hop burns extra upstream calls against exhausted providers (#1731).
       // Odysseus free-only requests are never allowed to enter OmniRoute's
       // legacy emergency fallback, which may target a non-approved route.
-      const strictModelIdentity = isStrictModelIdentityRequested(request?.headers);
+      const strictModelIdentity =
+        isStrictModelIdentityRequested(request?.headers) ||
+        isFreeRouteOnlyRequested(request?.headers);
       const odysseusFreeOnly = request?.headers?.get?.("x-odysseus-free-only") === "true";
       if (
         !deterministicRoute &&

@@ -2500,6 +2500,39 @@ test("chatCore honors X-OmniRoute-Strict-Model without provider-specific policy"
   assert.equal(calls.length, 1);
   assert.equal(calls[0].body.model, "claude-sonnet-5");
 });
+
+test("chatCore rejects an exact paid route when free-route-only is required", async () => {
+  const { calls, result } = await invokeChatCore({
+    provider: "openai",
+    model: "gpt-4o-mini",
+    body: {
+      model: "gpt-4o-mini",
+      stream: false,
+      messages: [{ role: "user", content: "must stay free" }],
+    },
+    requestHeaders: { "X-OmniRoute-Require-Free-Route": "true" },
+  });
+
+  assert.equal(result.status, 403);
+  assert.equal(calls.length, 0);
+});
+
+test("chatCore rejects strict identity requests for the dynamic OpenRouter free router", async () => {
+  const { calls, result } = await invokeChatCore({
+    provider: "openrouter",
+    model: "free",
+    body: {
+      model: "openrouter/free",
+      stream: false,
+      messages: [{ role: "user", content: "preserve route identity" }],
+    },
+    requestHeaders: { "X-OmniRoute-Strict-Model": "true" },
+  });
+
+  assert.equal(result.status, 400);
+  assert.equal(calls.length, 0);
+});
+
 test("chatCore preserves an OpenRouter usage.cost receipt without token counts", async () => {
   const { result } = await invokeChatCore({
     provider: "openrouter",

@@ -599,6 +599,35 @@ test("handleChat suppresses cross-model emergency fallback for strict model requ
   assert.deepEqual(seenModels, ["gpt-4.1"]);
 });
 
+test("handleChat suppresses paid-model fallback for a free-route-only assignment", async () => {
+  clearProviderFailure("groq");
+  await seedConnection("groq", { apiKey: "sk-groq-free-route-only" });
+  await seedConnection("nvidia", { apiKey: "sk-nvidia-free-route-paid-fallback" });
+  const seenModels: string[] = [];
+
+  globalThis.fetch = async (_url, init = {}) => {
+    seenModels.push(JSON.parse(String(init.body)).model);
+    return new Response(JSON.stringify({ error: { message: "billing limit exceeded" } }), {
+      status: 402,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const response = await handleChat(
+    buildRequest({
+      headers: { "X-OmniRoute-Require-Free-Route": "true" },
+      body: {
+        model: "groq/openai/gpt-oss-120b",
+        stream: false,
+        messages: [{ role: "user", content: "do not use a paid fallback" }],
+      },
+    })
+  );
+
+  assert.equal(response.status, 402);
+  assert.deepEqual(seenModels, ["openai/gpt-oss-120b"]);
+});
+
 test("handleChat returns the primary budget error when emergency fallback also fails", async () => {
   // Reset provider failure state to avoid circuit breaker interference
   clearProviderFailure("openai");

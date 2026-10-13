@@ -30,6 +30,17 @@ export function isStrictModelIdentityRequested(
   );
 }
 
+/** Require dispatch to stay on a route OmniRoute currently classifies as free. */
+export function isFreeRouteOnlyRequested(
+  headers: Record<string, unknown> | Headers | null | undefined
+): boolean {
+  return (
+    (getHeaderValueCaseInsensitive(headers, "x-omniroute-require-free-route") || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 /**
  * Per-request opt-out of memory (and skills) injection via the
  * `x-omniroute-no-memory` header. Mirrors the existing `x-omniroute-no-cache`

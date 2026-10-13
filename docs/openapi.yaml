@@ -1557,6 +1557,18 @@ paths:
             context-overflow, global, and emergency fallback. Retries may still use another
             configured account for the same provider/model. This does not pin an aggregator's
             downstream serving provider or host.
+        - in: header
+          name: X-OmniRoute-Require-Free-Route
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: >-
+            When true, dispatch only if OmniRoute can classify the selected route as currently
+            free. OpenRouter uses its fresh exact-route catalog; other providers use OmniRoute's
+            curated free-model catalog. Stale or unverified OpenRouter catalog data is rejected.
+            This does not establish account quota or guarantee provider hard-stop billing behavior.
+            Cross-model fallback is disabled.
       security:
         - BearerAuth: []
       requestBody:
