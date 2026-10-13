@@ -103,6 +103,14 @@ from provider billing, so calculations from it are `estimated_cost`, not an invo
 If no amount is available but provider token usage is known, accounting is `usage_only`; if
 neither is known it is `unknown`.
 
+For the direct DeepSeek API, OmniRoute records route resolution separately from the requested
+model id. As of the current DeepSeek documentation, `deepseek-v4-pro` is a legacy alias routed
+to V4.1-Flash and billed at Flash rates; the alias supports vision on that direct route. This
+mapping is time-sensitive and carries its source/freshness in `pricing_provenance`. See
+[DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing/) and the
+[V4.1-Flash route announcement](https://api-docs.deepseek.com/news/news260910/). Other providers'
+models named `deepseek-v4-pro` retain their own provider-specific route facts.
+
 ## Streaming completions
 
 The SSE response is opened after OmniRoute has selected the upstream attempt that will produce

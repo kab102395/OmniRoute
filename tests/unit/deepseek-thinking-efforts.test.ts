@@ -54,6 +54,8 @@ test("native DeepSeek registry includes current V4.1 Flash alias with documented
   assert.equal(current?.toolCalling, true);
   assert.equal(models.get("deepseek-v4-flash")?.supportsVision, true);
   assert.equal(models.get("deepseek-v4-pro")?.contextLength, 1_000_000);
+  assert.equal(models.get("deepseek-v4-pro")?.supportsVision, true);
+  assert.match(models.get("deepseek-v4-pro")?.name ?? "", /V4\.1-Flash/);
 });
 
 test("DeepSeek catalog exposes only the declared effort aliases", async () => {

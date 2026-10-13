@@ -616,6 +616,10 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       : typeof metadata.capabilities.vision === "boolean"
         ? { vision: metadata.capabilities.vision }
         : {}),
+    ...(provider === "deepseek" &&
+    ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"].includes(metadata.model)
+      ? { vision: true }
+      : {}),
     // #8016: never invent chat tool/reasoning defaults onto specialty surfaces.
     // Only copy boolean true when authoritative metadata says so; specialty rows
     // default to false instead of optimistic chat heuristics.
@@ -723,6 +727,17 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   }
 
   if (
+    provider === "deepseek" &&
+    ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"].includes(metadata.model)
+  ) {
+    nextEntry.input_modalities = uniqueStrings([
+      ...((nextEntry.input_modalities as string[]) ?? []),
+      "image",
+    ]);
+    nextEntry.output_modalities = ["text"];
+  }
+
+  if (
     publicProvider !== "openrouter" &&
     !Array.isArray(entry.output_modalities) &&
     metadata.modalities.output.length > 0
@@ -819,10 +834,14 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   // incomplete state) takes precedence over unrelated generic model prices.
   const deepseekPricingEvidence =
     provider === "deepseek" ? getDeepseekPricingEvidence(model, Date.now()) : null;
-  if (deepseekPricingEvidence && nextEntry.pricing_provenance == null) {
+  const existingPricingSourceId =
+    pricingSource && typeof pricingSource.id === "string" ? pricingSource.id : null;
+  const preserveExplicitPricingOverride = existingPricingSourceId === "omniroute.user_pricing";
+  if (deepseekPricingEvidence && !preserveExplicitPricingOverride) {
     nextEntry.pricing_provenance = deepseekPricingEvidence;
-    // A prior catalog pass may have left unattributed numeric rates on this
-    // route. Never pair those with DeepSeek's authoritative provenance.
+    // Generic model feeds can be stale when a provider remaps a model alias.
+    // The direct provider's current price and serving route take precedence;
+    // preserve explicit operator pricing when one was configured.
     const providerPrice = getDefaultPricingForModel(provider, model);
     if (providerPrice) nextEntry.pricing = providerPrice;
     else delete nextEntry.pricing;

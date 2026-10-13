@@ -126,11 +126,11 @@ describe("catalog pricing surface (#8018)", () => {
     );
     assert.equal(
       (pro.pricing_provenance as { resolvedModelId?: string }).resolvedModelId,
-      "deepseek-v4-pro"
+      "deepseek-flash"
     );
     assert.equal(
       (pro.pricing_provenance as { servedModelVersion?: string }).servedModelVersion,
-      "DeepSeek-V4-Pro-0813"
+      "DeepSeek-V4.1-Flash"
     );
     assert.equal(
       (pro.pricing_provenance as { routeResolution?: { source?: { stale?: boolean } } })
@@ -143,7 +143,7 @@ describe("catalog pricing surface (#8018)", () => {
           routeResolution?: { source?: { url?: string; id?: string } };
         }
       ).routeResolution?.source?.url,
-      "https://api-docs.deepseek.com/quick_start/pricing/"
+      "https://api-docs.deepseek.com/news/news260910/"
     );
     assert.deepEqual(
       (
@@ -156,17 +156,17 @@ describe("catalog pricing surface (#8018)", () => {
         }
       ).rates,
       {
-        inputCacheMiss: { offPeak: 0.66, peak: 1.32 },
-        inputCacheHit: { offPeak: 0.022, peak: 0.044 },
-        output: { offPeak: 1.98, peak: 3.96 },
+        inputCacheMiss: { offPeak: 0.15, peak: 0.3 },
+        inputCacheHit: { offPeak: 0.003, peak: 0.006 },
+        output: { offPeak: 0.6, peak: 1.2 },
       }
     );
-    assert.equal((pro.pricing as CatalogPricing).input, 1.32);
-    assert.equal((pro.pricing as CatalogPricing).output, 3.96);
-    assert.equal((pro.pricing as CatalogPricing).cached, 0.044);
-    assert.equal((pro.capabilities as Record<string, unknown>).vision, false);
+    assert.equal((pro.pricing as CatalogPricing).input, 0.3);
+    assert.equal((pro.pricing as CatalogPricing).output, 1.2);
+    assert.equal((pro.pricing as CatalogPricing).cached, 0.006);
+    assert.equal((pro.capabilities as Record<string, unknown>).vision, true);
     assert.equal((pro.capabilities as Record<string, unknown>).structured_output, true);
-    assert.deepEqual(pro.input_modalities, ["text"]);
+    assert.ok((pro.input_modalities as string[]).includes("image"));
     assert.deepEqual(pro.output_modalities, ["text"]);
     assert.equal((pro.capabilities as Record<string, unknown>).tool_calling, true);
     assert.match(
@@ -175,20 +175,28 @@ describe("catalog pricing surface (#8018)", () => {
     );
   });
 
-  it("does not label pre-existing unproven rates with DeepSeek pricing provenance", () => {
+  it("replaces generic stale rates with current DeepSeek alias pricing provenance", () => {
     const entry = enrichCatalogModelEntry({
       id: "deepseek/deepseek-v4-pro",
       owned_by: "deepseek",
       root: "deepseek-v4-pro",
       pricing: { input: 9, output: 99, cached: 8 },
+      pricing_provenance: {
+        state: "third_party_reported_pricing",
+        source: {
+          id: "models_dev.api_json",
+          retrievedAt: "2025-01-01T00:00:00.000Z",
+          stale: true,
+        },
+      },
     });
 
     assert.deepEqual(entry.pricing, {
-      input: 1.32,
-      output: 3.96,
-      cached: 0.044,
-      reasoning: 3.96,
-      cache_creation: 1.32,
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
     });
     assert.equal(
       (entry.pricing_provenance as { source?: { id?: string } }).source?.id,

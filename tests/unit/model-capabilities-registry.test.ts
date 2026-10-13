@@ -217,14 +217,14 @@ test("GPT OSS and DeepSeek Reasoner models support tool calling", () => {
   assert.equal(deepseek.toolCalling, true);
 });
 
-test("native DeepSeek V4 Pro remains a text-only route while V4.1 Flash is multimodal", () => {
+test("native DeepSeek's legacy V4 Pro alias resolves to current multimodal V4.1 Flash", () => {
   const registeredPro = deepseekProvider.models?.find((model) => model.id === "deepseek-v4-pro");
   assert.ok(registeredPro);
-  assert.equal(registeredPro.supportsVision, false);
+  assert.equal(registeredPro.supportsVision, true);
 
   const pro = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-v4-pro");
-  assert.equal(pro.supportsVision, false);
-  assert.ok(!pro.modalitiesInput.includes("image"));
+  assert.equal(pro.supportsVision, true);
+  assert.ok(pro.modalitiesInput.includes("image"));
   assert.equal(pro.structuredOutput, true);
 
   const flash = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-flash");

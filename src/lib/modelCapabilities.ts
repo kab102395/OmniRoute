@@ -874,33 +874,29 @@ export function getResolvedModelCapabilities(
 
   const nativeDeepseekV41FlashRoute =
     resolved.provider === "deepseek" &&
-    ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(
-      resolved.model || ""
-    );
-  const nativeDeepseekV4ProRoute =
-    resolved.provider === "deepseek" && resolved.model === "deepseek-v4-pro";
+    [
+      "deepseek-flash",
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
+    ].includes(resolved.model || "");
   const supportsVision =
-    nativeDeepseekV4ProRoute && customVisionOverride === null
-      ? false
-      : nativeDeepseekV41FlashRoute && customVisionOverride === null
-        ? true
-        : resolveVisionCapability(
-            visionSpec,
-            registryModel,
-            synced,
-            modalitiesInput,
-            modalitiesOutput,
-            lookupKey,
-            customVisionOverride
-          );
+    nativeDeepseekV41FlashRoute && customVisionOverride === null
+      ? true
+      : resolveVisionCapability(
+          visionSpec,
+          registryModel,
+          synced,
+          modalitiesInput,
+          modalitiesOutput,
+          lookupKey,
+          customVisionOverride
+        );
   const effectiveModalitiesInput =
-    nativeDeepseekV4ProRoute && customVisionOverride === null
-      ? ["text"]
-      : nativeDeepseekV41FlashRoute && supportsVision === true
-        ? [...new Set([...modalitiesInput, "text", "image"])]
-        : modalitiesInput;
-  const effectiveModalitiesOutput =
-    nativeDeepseekV4ProRoute && customVisionOverride === null ? ["text"] : modalitiesOutput;
+    nativeDeepseekV41FlashRoute && supportsVision === true
+      ? [...new Set([...modalitiesInput, "text", "image"])]
+      : modalitiesInput;
+  const effectiveModalitiesOutput = modalitiesOutput;
   const supportsAudio = resolveAudioCapability(spec, registryModel, modalitiesInput);
   const supportsVideo = resolveVideoCapability(spec, registryModel, modalitiesInput);
 
@@ -928,10 +924,7 @@ export function getResolvedModelCapabilities(
     supportsVideo,
     supportsMaxTokens: heuristicMaxTokens(lookupKey),
     attachment,
-    structuredOutput:
-      nativeDeepseekV41FlashRoute || nativeDeepseekV4ProRoute
-        ? true
-        : (synced?.structured_output ?? null),
+    structuredOutput: nativeDeepseekV41FlashRoute ? true : (synced?.structured_output ?? null),
     temperature: synced?.temperature ?? null,
     contextWindow,
     maxInputTokens: (() => {

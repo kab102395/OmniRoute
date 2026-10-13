@@ -320,7 +320,8 @@ export const DEFAULT_PRICING_FRONTIER = {
       cache_creation: 0.55,
     },
     // Peak rates from DeepSeek's official pricing page, checked 2026-10-13.
-    // Response-reported cost remains authoritative when available.
+    // The legacy deepseek-v4-pro alias currently routes to V4.1-Flash and is
+    // billed at Flash rates; response-reported cost remains authoritative.
     "deepseek-flash": {
       input: 0.3,
       output: 1.2,
@@ -329,11 +330,11 @@ export const DEFAULT_PRICING_FRONTIER = {
       cache_creation: 0.3,
     },
     "deepseek-v4-pro": {
-      input: 1.32,
-      output: 3.96,
-      cached: 0.044,
-      reasoning: 3.96,
-      cache_creation: 1.32,
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
     },
     "deepseek-v4-flash": {
       input: 0.3,
