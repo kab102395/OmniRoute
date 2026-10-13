@@ -57,6 +57,24 @@ describe("transformToOmniRoute", () => {
     assert.strictEqual(result.gemini["gemini-2.5-flash"].input, 0.3);
   });
 
+  test("keeps Together AI pricing on its direct provider, not OpenRouter routes", () => {
+    const result = transformToOmniRoute({
+      "together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo": {
+        input_cost_per_token: 0.00000088,
+        output_cost_per_token: 0.00000088,
+        litellm_provider: "together_ai",
+        mode: "chat",
+      },
+    });
+
+    assert.deepEqual(result.together?.["meta-llama/Llama-3.3-70B-Instruct-Turbo"], {
+      input: 0.88,
+      output: 0.88,
+      mode: "chat",
+    });
+    assert.equal(result.openrouter, undefined);
+  });
+
   test("ingests non-chat models (embedding token + image per-image)", () => {
     // Phase 2 (cost-telemetry parity): non-chat modes are no longer skipped.
     // Token-priced modes (embedding) are scaled to $/1M like chat; non-token

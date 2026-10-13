@@ -124,7 +124,9 @@ const LITELLM_PROVIDER_MAP: Record<string, string[]> = {
   // synced pricing at all.
   deepseek: ["ds"],
   groq: ["groq"],
-  together_ai: ["openrouter"],
+  // Together AI's direct API rates do not describe OpenRouter's aggregator
+  // routes. Keep them attached to Together's own provider alias.
+  together_ai: ["together"],
   bedrock: ["kr"],
   fireworks_ai: ["fireworks"],
   cerebras: ["cerebras"],
