@@ -132,3 +132,29 @@ test("explicit synced tool capability survives catalog enrichment with its sourc
     });
   }
 });
+
+test("explicit synced structured-output capability keeps its catalog source", () => {
+  const enriched = enrichCatalogModelEntry(
+    {
+      id: "huggingface/fixture-json-model",
+      owned_by: "huggingface",
+      capabilities: { structured_output: true },
+      capability_status: {
+        structured_output: {
+          status: "supported",
+          source: "provider_model_catalog",
+          retrievedAt: "2026-10-12T12:00:00.000Z",
+          stale: false,
+        },
+      },
+    },
+    "huggingface"
+  );
+
+  assert.deepEqual(enriched.capability_status?.structured_output, {
+    status: "supported",
+    source: "provider_model_catalog",
+    retrievedAt: "2026-10-12T12:00:00.000Z",
+    stale: false,
+  });
+});

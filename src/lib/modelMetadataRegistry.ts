@@ -780,6 +780,10 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     entry.capability_status && typeof entry.capability_status === "object"
       ? (entry.capability_status as JsonRecord).tool_calling
       : undefined;
+  const syncedToolCallingSource =
+    syncedToolCallingStatus && typeof syncedToolCallingStatus === "object"
+      ? (syncedToolCallingStatus as JsonRecord).source
+      : undefined;
   const syncedToolCalling =
     syncedToolCallingStatus &&
     typeof syncedToolCallingStatus === "object" &&
@@ -973,6 +977,17 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   const existingStructuredOutputSource = hasExistingStructuredOutputStatus
     ? (existingStructuredOutputStatus as JsonRecord).source
     : null;
+  const existingStructuredOutputEvidence = hasExistingStructuredOutputStatus
+    ? {
+        ...(typeof (existingStructuredOutputStatus as JsonRecord).retrievedAt === "string" ||
+        (existingStructuredOutputStatus as JsonRecord).retrievedAt === null
+          ? { retrievedAt: (existingStructuredOutputStatus as JsonRecord).retrievedAt }
+          : {}),
+        ...(typeof (existingStructuredOutputStatus as JsonRecord).stale === "boolean"
+          ? { stale: (existingStructuredOutputStatus as JsonRecord).stale }
+          : {}),
+      }
+    : {};
   const preserveProviderRouteStructuredOutputStatus =
     (publicProvider === "huggingface" || publicProvider === "hf") &&
     existingStructuredOutputSource === "huggingface.router_models_api";
@@ -988,11 +1003,11 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     : openRouterCapabilityEvidence.retrievedAt !== undefined
       ? openRouterCapabilityEvidence
       : existingStructuredOutputSource === "provider_model_catalog"
-        ? providerCatalogCapabilityEvidence
+        ? existingStructuredOutputEvidence
         : existingStructuredOutputSource === "synced_capability_catalog" ||
             (syncedStructuredOutput !== undefined && metadata.metadata.source.syncedCapability)
-          ? modelsDevCapabilityEvidence
-          : {};
+          ? { ...modelsDevCapabilityEvidence, ...existingStructuredOutputEvidence }
+          : existingStructuredOutputEvidence;
   nextEntry.capability_status = {
     ...(entry.capability_status && typeof entry.capability_status === "object"
       ? (entry.capability_status as JsonRecord)
@@ -1008,8 +1023,8 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
         ? "openrouter.models_api"
         : publicProvider === "openrouter"
           ? "unknown"
-          : syncedToolCalling !== undefined
-            ? "provider_model_catalog"
+          : syncedToolCalling !== undefined && typeof syncedToolCallingSource === "string"
+            ? syncedToolCallingSource
             : metadata.capabilities.supportsToolsSource,
       ...providerCatalogCapabilityEvidence,
       ...modelsDevCapabilityEvidence,
@@ -1027,11 +1042,14 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
             ? "openrouter.models_api"
             : publicProvider === "openrouter"
               ? "unknown"
-              : syncedStructuredOutput !== undefined || metadata.metadata.source.syncedCapability
-                ? "synced_capability_catalog"
-                : metadata.metadata.source.staticSpec
-                  ? "model_spec"
-                  : "unknown",
+              : typeof existingStructuredOutputSource === "string" &&
+                  existingStructuredOutputSource.length > 0
+                ? existingStructuredOutputSource
+                : syncedStructuredOutput !== undefined || metadata.metadata.source.syncedCapability
+                  ? "synced_capability_catalog"
+                  : metadata.metadata.source.staticSpec
+                    ? "model_spec"
+                    : "unknown",
           ...structuredOutputEvidence,
         },
   };
