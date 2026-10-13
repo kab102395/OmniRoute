@@ -14859,6 +14859,54 @@ components:
           example: model
         owned_by:
           type: string
+        root:
+          type: string
+          description: Provider-scoped route id without the OmniRoute provider prefix.
+        name:
+          type: string
+          description: Provider or registry display name for this exact model route.
+        created:
+          type: integer
+        type:
+          type: string
+          description: Model modality/type classification when available.
+        free:
+          type: boolean
+          description: >-
+            OmniRoute's current free classification for this model route. Consumers should retain
+            the adjacent pricing, availability, and provenance fields when making eligibility
+            decisions; a generic free flag does not establish account quota or hard-stop behavior.
+        context_length:
+          type: integer
+          minimum: 1
+        max_input_tokens:
+          type: integer
+          minimum: 1
+        max_output_tokens:
+          type: integer
+          minimum: 1
+        pricing:
+          type: object
+          description: Legacy provider-reported or synchronized pricing representation, when available.
+          additionalProperties: true
+        capabilities:
+          type: object
+          description: Capability booleans known for this exact model route.
+          additionalProperties:
+            type: boolean
+        supported_parameters:
+          type: array
+          description: Provider-reported request parameters accepted by this exact route.
+          items:
+            type: string
+        input_modalities:
+          type: array
+          items:
+            type: string
+        output_modalities:
+          type: array
+          items:
+            type: string
         pricing_provenance:
           type: object
           description: >-

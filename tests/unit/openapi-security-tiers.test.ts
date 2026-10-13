@@ -123,6 +123,38 @@ test("provider health matrix documents account and model routing health", () => 
   ]);
 });
 
+test("model catalog schema documents selectable model constraints and capabilities", () => {
+  const operation = paths["/api/v1/models"]?.get;
+  const modelSchema = raw.components?.schemas?.Model;
+  assert.equal(
+    operation?.responses?.["200"]?.content?.["application/json"]?.schema?.properties?.data?.items
+      ?.$ref,
+    "#/components/schemas/Model"
+  );
+  for (const field of [
+    "free",
+    "pricing",
+    "pricing_provenance",
+    "capabilities",
+    "capability_status",
+    "context_length",
+    "max_input_tokens",
+    "max_output_tokens",
+    "input_modalities",
+    "output_modalities",
+    "supported_parameters",
+    "route_selection",
+    "route_availability",
+    "provider_routes",
+    "provider_routes_provenance",
+  ]) {
+    assert.ok(modelSchema?.properties?.[field], `Model schema must document ${field}`);
+  }
+  assert.equal(modelSchema?.properties?.free?.type, "boolean");
+  assert.equal(modelSchema?.properties?.context_length?.minimum, 1);
+  assert.equal(modelSchema?.properties?.capabilities?.additionalProperties?.type, "boolean");
+});
+
 test("POST /api/openapi/try documents its bounded management proxy contract", () => {
   const operation = paths["/api/openapi/try"]?.post;
 
