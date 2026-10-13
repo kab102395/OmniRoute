@@ -50,6 +50,22 @@ test("buildOmniRouteResponseMetaHeaders formats provider alias, tokens, latency,
   assert.equal(headers["X-OmniRoute-Response-Cost"], "0.0012345679");
 });
 
+test("cost metadata preserves explicit zero and omits missing or malformed amounts", () => {
+  assert.equal(formatOmniRouteCost(0), "0.0000000000");
+  assert.equal(formatOmniRouteCost("0"), "0.0000000000");
+  assert.equal(formatOmniRouteCost(null), null);
+  assert.equal(formatOmniRouteCost(""), null);
+  assert.equal(formatOmniRouteCost("not-a-price"), null);
+  assert.equal(formatOmniRouteCost(-0.1), null);
+
+  const headers = buildOmniRouteResponseMetaHeaders({
+    costUsd: "not-a-price",
+    costSavedUsd: "",
+  });
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.responseCost], undefined);
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.costSaved], undefined);
+});
+
 test("buildOmniRouteResponseMetaHeaders keeps ASCII model header values unchanged", () => {
   const headers = buildOmniRouteResponseMetaHeaders({
     provider: "openai",

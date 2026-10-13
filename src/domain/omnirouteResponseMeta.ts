@@ -78,9 +78,15 @@ export function getOmniRouteTokenCounts(usage: UsageLike): { input: number; outp
   };
 }
 
-export function formatOmniRouteCost(costUsd: unknown): string {
-  const normalized = toFiniteNumber(costUsd);
-  return normalized > 0 ? normalized.toFixed(10) : "0.0000000000";
+export function formatOmniRouteCost(costUsd: unknown): string | null {
+  const normalized =
+    typeof costUsd === "number"
+      ? costUsd
+      : typeof costUsd === "string" && costUsd.trim().length > 0
+        ? Number(costUsd)
+        : Number.NaN;
+  if (!Number.isFinite(normalized) || normalized < 0) return null;
+  return normalized.toFixed(10);
 }
 
 /**
@@ -176,14 +182,18 @@ export function buildOmniRouteResponseMetaHeaders({
   ttftMs?: number | null;
 }): Record<string, string> {
   const tokens = getOmniRouteTokenCounts(usage);
+  const formattedCost = formatOmniRouteCost(costUsd);
   const headers: Record<string, string> = {
     [OMNIROUTE_RESPONSE_HEADERS.cacheHit]: toHeaderValue(String(cacheHit)),
     [OMNIROUTE_RESPONSE_HEADERS.latencyMs]: toHeaderValue(String(toNonNegativeInteger(latencyMs))),
-    [OMNIROUTE_RESPONSE_HEADERS.responseCost]: toHeaderValue(formatOmniRouteCost(costUsd)),
     [OMNIROUTE_RESPONSE_HEADERS.tokensIn]: toHeaderValue(String(tokens.input)),
     [OMNIROUTE_RESPONSE_HEADERS.tokensOut]: toHeaderValue(String(tokens.output)),
     [OMNIROUTE_RESPONSE_HEADERS.version]: toHeaderValue(APP_CONFIG.version),
   };
+
+  if (formattedCost !== null) {
+    headers[OMNIROUTE_RESPONSE_HEADERS.responseCost] = toHeaderValue(formattedCost);
+  }
 
   if (typeof model === "string" && model.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.model] = toHeaderValue(model);
@@ -239,9 +249,10 @@ export function buildOmniRouteResponseMetaHeaders({
   // Cache-saved cost: emitted only when the caller passes a value (cache HITs), so
   // non-cache responses keep their existing header shape. `0` is a valid saved cost.
   if (costSavedUsd != null) {
-    headers[OMNIROUTE_RESPONSE_HEADERS.costSaved] = toHeaderValue(
-      formatOmniRouteCost(costSavedUsd)
-    );
+    const formattedCostSaved = formatOmniRouteCost(costSavedUsd);
+    if (formattedCostSaved !== null) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.costSaved] = toHeaderValue(formattedCostSaved);
+    }
   }
 
   const attempts = toNonNegativeInteger(fallbackAttempts);
