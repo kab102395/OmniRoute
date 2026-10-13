@@ -42,9 +42,9 @@ export function buildConnectionResilienceMap(
 
 function isConnectionResilienceBlocked(connection: ConnectionResilienceView): boolean {
   if (isAccountUnavailable(connection.rateLimitedUntil)) return true;
-  const status = connection.testStatus;
-  if (status === "unavailable") return true;
-  if (typeof status === "string" && TERMINAL_CONNECTION_STATUSES.has(status)) return true;
+  const status =
+    typeof connection.testStatus === "string" ? connection.testStatus.trim().toLowerCase() : "";
+  if (status === "unavailable" || TERMINAL_CONNECTION_STATUSES.has(status)) return true;
   return false;
 }
 
