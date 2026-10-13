@@ -39,23 +39,15 @@ export function getDeepseekPricingEvidence(modelId: string, now = Date.now()) {
 
   if (modelId === "deepseek-v4-pro") {
     return {
-      state: "ambiguous_route_and_pricing",
+      state: "conditional_reported_pricing",
       routeModelId: modelId,
+      resolvedModelId: "deepseek-flash",
       currency: "USD",
       rateUnit: "USD / 1M tokens",
-      // `/quick_start/pricing` lists Pro-0813 rates, while the V4.1 Flash release
-      // notice says v4-pro is routed to Flash at Flash rates. The public sources
-      // do not currently establish which applies to this requested legacy id.
-      pricingCandidates: [
-        { modelId: "deepseek-v4-pro", source: source(now) },
-        {
-          modelId: "deepseek-flash",
-          source: source(now, DEEPSEEK_FLASH_RELEASE_URL),
-          rates: FLASH_RATES,
-        },
-      ],
-      conservativeEstimate: { input: 1.32, cached: 0.044, output: 3.96 },
-      source: source(now),
+      rates: FLASH_RATES,
+      pricingCondition:
+        "All deepseek-v4-pro requests route to V4.1-Flash at Flash rates until V4.1-Pro launches",
+      source: source(now, DEEPSEEK_FLASH_RELEASE_URL),
       zeroCostEligibility: "no",
     } as const;
   }

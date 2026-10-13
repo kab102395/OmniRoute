@@ -5,15 +5,15 @@ import assert from "node:assert/strict";
 const { DEFAULT_PRICING_FRONTIER } =
   await import("../../src/shared/constants/pricing/frontier-labs.ts");
 
-test("deepseek-v4-pro uses the higher published Pro peak estimate for ambiguous routing", () => {
+test("deepseek-v4-pro uses current V4.1-Flash peak rates while the provider redirects it", () => {
   const entry = (DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>)
     .deepseek["deepseek-v4-pro"];
   assert.ok(entry, "deepseek-v4-pro entry must exist under DEFAULT_PRICING_FRONTIER.deepseek");
-  assert.equal(entry.input, 1.32);
-  assert.equal(entry.output, 3.96);
-  assert.equal(entry.cached, 0.044);
-  assert.equal(entry.reasoning, 3.96);
-  assert.equal(entry.cache_creation, 1.32);
+  assert.equal(entry.input, 0.3);
+  assert.equal(entry.output, 1.2);
+  assert.equal(entry.cached, 0.006);
+  assert.equal(entry.reasoning, 1.2);
+  assert.equal(entry.cache_creation, 0.3);
 });
 
 test("deepseek-v4-flash legacy alias and deepseek-flash use peak rates", () => {
@@ -36,7 +36,7 @@ test("DeepSeek route estimates retain published input/output ratios", () => {
     DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>
   ).deepseek;
   for (const [model, outputRatio] of [
-    ["deepseek-v4-pro", 3],
+    ["deepseek-v4-pro", 4],
     ["deepseek-v4-flash", 4],
     ["deepseek-flash", 4],
   ] as const) {

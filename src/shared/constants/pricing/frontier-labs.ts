@@ -320,12 +320,10 @@ export const DEFAULT_PRICING_FRONTIER = {
       cache_creation: 0.55,
     },
     // Peak-rate estimates checked against DeepSeek's official pricing page on
-    // 2026-10-13. The provider now prices deepseek-flash by UTC peak/off-peak
-    // window and has retired the v4-flash alias. The v4-pro alias has conflicting
-    // official descriptions (Pro price table versus temporary routing to Flash),
-    // so use the higher published Pro peak rates as the conservative estimate.
-    // These are estimates, not a provider billing ceiling; see the official
-    // schedule at https://api-docs.deepseek.com/quick_start/pricing/.
+    // 2026-10-13. Official release notes say all deepseek-v4-pro requests route
+    // to V4.1-Flash at Flash rates until V4.1-Pro launches. Use the published
+    // peak schedule as the conservative local estimate; response-reported cost,
+    // when available, remains authoritative.
     "deepseek-flash": {
       input: 0.3,
       output: 1.2,
@@ -334,11 +332,11 @@ export const DEFAULT_PRICING_FRONTIER = {
       cache_creation: 0.3,
     },
     "deepseek-v4-pro": {
-      input: 1.32,
-      output: 3.96,
-      cached: 0.044,
-      reasoning: 3.96,
-      cache_creation: 1.32,
+      input: 0.3,
+      output: 1.2,
+      cached: 0.006,
+      reasoning: 1.2,
+      cache_creation: 0.3,
     },
     "deepseek-v4-flash": {
       input: 0.3,
