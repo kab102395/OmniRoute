@@ -98,6 +98,11 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+function toNonNegativePrice(value: unknown): number | null {
+  const parsed = toNumber(value, Number.NaN);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function normalizeServiceTier(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -163,36 +168,63 @@ export function computeCostFromPricing(
   // per-token pricing rows exist only for estimation, so display surfaces opt in
   // to show $0 instead of an inflated estimate (#5552).
   if (options.flatRateAsZero && isFlatRateProvider(options.provider)) return 0;
-  const inputPrice = toNumber(pricing.input, 0);
-  const cachedPrice = toNumber(pricing.cached, inputPrice);
-  const outputPrice = toNumber(pricing.output, 0);
-  const reasoningPrice = toNumber(pricing.reasoning, outputPrice);
-  const cacheCreationPrice = toNumber(pricing.cache_creation, inputPrice);
+  const inputPrice = toNonNegativePrice(pricing.input);
+  const cachedPrice = toNonNegativePrice(pricing.cached) ?? inputPrice;
+  const outputPrice = toNonNegativePrice(pricing.output);
+  const reasoningPrice = toNonNegativePrice(pricing.reasoning) ?? outputPrice;
+  const cacheCreationPrice = toNonNegativePrice(pricing.cache_creation) ?? inputPrice;
 
   let cost = 0;
-  const inputTokens = tokens.input ?? tokens.prompt_tokens ?? tokens.input_tokens ?? 0;
-  const cachedTokens =
-    tokens.cacheRead ?? tokens.cached_tokens ?? tokens.cache_read_input_tokens ?? 0;
-  const cacheCreationTokens = tokens.cacheCreation ?? tokens.cache_creation_input_tokens ?? 0;
+  const inputTokens = Math.max(
+    0,
+    toNumber(tokens.input ?? tokens.prompt_tokens ?? tokens.input_tokens, 0)
+  );
+  const cachedTokens = Math.max(
+    0,
+    toNumber(tokens.cacheRead ?? tokens.cached_tokens ?? tokens.cache_read_input_tokens, 0)
+  );
+  const cacheCreationTokens = Math.max(
+    0,
+    toNumber(tokens.cacheCreation ?? tokens.cache_creation_input_tokens, 0)
+  );
+  const outputTokens = Math.max(
+    0,
+    toNumber(tokens.output ?? tokens.completion_tokens ?? tokens.output_tokens, 0)
+  );
+  const reasoningTokens = Math.max(0, toNumber(tokens.reasoning ?? tokens.reasoning_tokens, 0));
 
   // prompt_tokens from extractors already includes cache_read + cache_creation,
   // so we must subtract BOTH cache types to avoid pricing cache at the full
   // input rate in addition to their dedicated cache_* rates below.
   const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
-  cost += nonCachedInput * (inputPrice / 1_000_000);
-  if (cachedTokens > 0) cost += cachedTokens * (cachedPrice / 1_000_000);
+  if (
+    (nonCachedInput > 0 && inputPrice === null) ||
+    (cachedTokens > 0 && cachedPrice === null) ||
+    (cacheCreationTokens > 0 && cacheCreationPrice === null) ||
+    (outputTokens > 0 && outputPrice === null) ||
+    (reasoningTokens > 0 && outputPrice === null)
+  ) {
+    return 0;
+  }
 
-  const outputTokens = tokens.output ?? tokens.completion_tokens ?? tokens.output_tokens ?? 0;
-  cost += outputTokens * (outputPrice / 1_000_000);
+  cost += nonCachedInput * ((inputPrice ?? 0) / 1_000_000);
+  if (cachedTokens > 0) cost += cachedTokens * ((cachedPrice ?? 0) / 1_000_000);
+  cost += outputTokens * ((outputPrice ?? 0) / 1_000_000);
 
   // completion_tokens is reasoning-inclusive. Reasoning is already billed at
   // the output rate above, so a dedicated price contributes only its premium.
-  const reasoningTokens = tokens.reasoning ?? tokens.reasoning_tokens ?? 0;
-  if (reasoningTokens > 0 && pricing.reasoning !== undefined && pricing.reasoning !== null) {
+  if (
+    reasoningTokens > 0 &&
+    toNonNegativePrice(pricing.reasoning) !== null &&
+    reasoningPrice !== null &&
+    outputPrice !== null
+  ) {
     cost += reasoningTokens * ((reasoningPrice - outputPrice) / 1_000_000);
   }
 
-  if (cacheCreationTokens > 0) cost += cacheCreationTokens * (cacheCreationPrice / 1_000_000);
+  if (cacheCreationTokens > 0) {
+    cost += cacheCreationTokens * ((cacheCreationPrice ?? 0) / 1_000_000);
+  }
 
   return cost * getCodexFastCostMultiplier(options.provider, options.model, options.serviceTier);
 }

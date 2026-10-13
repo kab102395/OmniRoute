@@ -162,3 +162,23 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
     "unknown"
   );
 });
+
+test("partial rates do not become a zero-priced used billing dimension", () => {
+  const usage = { prompt_tokens: 1_000_000, completion_tokens: 50 };
+  const estimate = computeCostFromPricing({ input: 2 }, usage);
+
+  assert.equal(estimate, 0);
+  assert.equal(
+    classifyCostAccounting({
+      provider: "vendor",
+      model: "partial-price-model",
+      usage,
+      calculatedCostUsd: estimate,
+    }).kind,
+    "usage_only"
+  );
+});
+
+test("partial rates may estimate when every used token dimension has a known price", () => {
+  assert.equal(computeCostFromPricing({ input: 2 }, { input: 1_000_000, output: 0 }), 2);
+});
