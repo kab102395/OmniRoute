@@ -139,12 +139,19 @@ test("an OpenRouter free-looking suffix without current catalog membership is no
   assert.equal(classify(freeLooking, undefined, () => state()).outcome, "not-in-catalog");
 });
 
-test("the OpenRouter free router does not satisfy strict exact model identity", () => {
+test("the OpenRouter free router is eligible only when its dynamic free catalog is current", () => {
   const freeRouter = candidate({ provider: "openrouter", model: "free" });
   assert.equal(
     classifyStrictZeroCostCandidate(freeRouter, undefined, () => state(), {
       ...OPTS,
       verifiedOpenRouterFreeRoutes: new Set(["vendor/exact-model:free"]),
+    }).outcome,
+    "safe"
+  );
+  assert.equal(
+    classifyStrictZeroCostCandidate(freeRouter, undefined, () => state(), {
+      ...OPTS,
+      verifiedOpenRouterFreeRoutes: new Set(),
     }).outcome,
     "not-in-catalog"
   );
