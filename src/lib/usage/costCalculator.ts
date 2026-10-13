@@ -323,7 +323,7 @@ export async function calculateCostWithEvidence(
     }
     if (!resolvedPricing) return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
 
-    const pricingRecord =
+    let pricingRecord =
       resolvedPricing.pricing &&
       typeof resolvedPricing.pricing === "object" &&
       !Array.isArray(resolvedPricing.pricing)
@@ -343,16 +343,25 @@ export async function calculateCostWithEvidence(
       const status = getSyncStatus();
       retrievedAt = status.lastSync;
       ttlMs = status.intervalMs;
-    } else if (
-      resolvedPricing.source === "default" &&
-      normalizeServiceTier(provider) === "deepseek"
-    ) {
+    }
+    if (resolvedPricing.source !== "user" && normalizeServiceTier(provider) === "deepseek") {
       const deepseekEvidence = getDeepseekPricingEvidence(normalizeModelName(model));
       if (deepseekEvidence) {
         evidenceSource = "deepseek";
         retrievedAt = deepseekEvidence.source.retrievedAt;
         ttlMs = deepseekEvidence.source.cacheTtlMs;
         pricingCondition = deepseekEvidence.pricingCondition;
+        const rates = deepseekEvidence.rates;
+        // DeepSeek publishes time-dependent rates. Use the peak tier as a
+        // conservative estimate bound; the exact tier depends on provider time.
+        pricingRecord = {
+          ...pricingRecord,
+          input: Number(rates.inputCacheMiss.peak),
+          cached: Number(rates.inputCacheHit.peak),
+          output: Number(rates.output.peak),
+          reasoning: Number(rates.output.peak),
+          cache_creation: Number(rates.inputCacheMiss.peak),
+        };
       }
     }
     const inputTokens = Math.max(
@@ -430,7 +439,7 @@ export async function calculateCostWithEvidence(
 
     const evidenceForRate = (field: string) => {
       const source =
-        resolvedPricing.source === "default" && evidenceSource === "deepseek"
+        resolvedPricing.source !== "user" && evidenceSource === "deepseek"
           ? "deepseek"
           : (rateSources[field] ?? resolvedPricing.source);
       if (source === "default" || source === "user" || source === "deepseek") {

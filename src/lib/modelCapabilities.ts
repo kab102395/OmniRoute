@@ -495,7 +495,6 @@ const KNOWN_TEXT_ONLY_DESPITE_SYNC: readonly RegExp[] = [
   /(?:^|\/)mimo-v2\.5-pro$/i,
   /(?:^|\/)mimo-v2-pro$/i,
   /^(?:cmd|command-code)\/gpt-5\.3-codex(?:-|$)/i,
-  /^deepseek\/deepseek-v4-pro$/i,
 ];
 
 function isKnownTextOnlyDespiteSync(modelId: string | null | undefined): boolean {
@@ -898,11 +897,12 @@ export function getResolvedModelCapabilities(
 
   const nativeDeepseekV41FlashRoute =
     resolved.provider === "deepseek" &&
-    ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(
-      resolved.model || ""
-    );
-  const nativeDeepseekV4ProRoute =
-    resolved.provider === "deepseek" && resolved.model === "deepseek-v4-pro";
+    [
+      "deepseek-flash",
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
+      "deepseek-v4-pro",
+    ].includes(resolved.model || "");
   const supportsVision =
     nativeDeepseekV41FlashRoute && customVisionOverride === null
       ? true
@@ -948,10 +948,7 @@ export function getResolvedModelCapabilities(
     supportsVideo,
     supportsMaxTokens: heuristicMaxTokens(lookupKey),
     attachment,
-    structuredOutput:
-      nativeDeepseekV41FlashRoute || nativeDeepseekV4ProRoute
-        ? true
-        : (synced?.structured_output ?? null),
+    structuredOutput: nativeDeepseekV41FlashRoute ? true : (synced?.structured_output ?? null),
     temperature: synced?.temperature ?? null,
     contextWindow,
     maxInputTokens: (() => {

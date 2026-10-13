@@ -79,6 +79,13 @@ test("#8032 leaf fallback: cline-pass/kimi-k3 resolves MODEL_SPECS kimi-k3 visio
   assert.equal(caps.supportsVision, true);
 });
 
+test("DeepSeek legacy v4-pro route resolves to V4.1-Flash multimodal capabilities", () => {
+  const caps = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-v4-pro");
+  assert.equal(caps.supportsVision, true);
+  assert.ok(caps.modalitiesInput.includes("image"));
+  assert.equal(caps.toolCalling, true);
+});
+
 test("#8032 leaf fallback is vision-only: aihorde/deepseek/deepseek-v4-flash keeps tools=false", () => {
   // Regression guard from PR review (#8495 / #8212): shared getStaticSpec leaf
   // lookup previously promoted this live-discovered AI Horde id to the real

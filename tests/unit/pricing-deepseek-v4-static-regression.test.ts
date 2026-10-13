@@ -4,16 +4,26 @@ import assert from "node:assert/strict";
 
 const { DEFAULT_PRICING_FRONTIER } =
   await import("../../src/shared/constants/pricing/frontier-labs.ts");
+const { getDeepseekPricingEvidence } = await import("../../src/lib/catalog/deepseekPricing.ts");
 
-test("deepseek-v4-pro uses DeepSeek V4-Pro peak rates", () => {
+test("deepseek-v4-pro legacy route uses current V4.1-Flash peak rates", () => {
   const entry = (DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>)
     .deepseek["deepseek-v4-pro"];
   assert.ok(entry, "deepseek-v4-pro entry must exist under DEFAULT_PRICING_FRONTIER.deepseek");
-  assert.equal(entry.input, 1.32);
-  assert.equal(entry.output, 3.96);
-  assert.equal(entry.cached, 0.044);
-  assert.equal(entry.reasoning, 3.96);
-  assert.equal(entry.cache_creation, 1.32);
+  assert.equal(entry.input, 0.3);
+  assert.equal(entry.output, 1.2);
+  assert.equal(entry.cached, 0.006);
+  assert.equal(entry.reasoning, 1.2);
+  assert.equal(entry.cache_creation, 0.3);
+
+  const evidence = getDeepseekPricingEvidence(
+    "deepseek-v4-pro",
+    Date.parse("2026-10-13T12:00:00Z")
+  );
+  assert.equal(evidence?.resolvedModelId, "deepseek-flash");
+  assert.equal(evidence?.servedModelVersion, "DeepSeek-V4.1-Flash");
+  assert.equal(evidence?.source.id, "deepseek.api_pricing");
+  assert.equal(evidence?.routeResolution?.source.id, "deepseek.api_model_routing");
 });
 
 test("DeepSeek Flash route aliases use their current peak rates", () => {
@@ -40,7 +50,7 @@ test("DeepSeek route estimates retain their published rates and input/output rat
     DEFAULT_PRICING_FRONTIER as Record<string, Record<string, Record<string, number>>>
   ).deepseek;
   for (const [model, input, output, outputRatio] of [
-    ["deepseek-v4-pro", 1.32, 3.96, 3],
+    ["deepseek-v4-pro", 0.3, 1.2, 4],
     ["deepseek-v4-flash", 0.3, 1.2, 4],
     ["deepseek-v4-flash-vision-exp", 0.3, 1.2, 4],
     ["deepseek-flash", 0.3, 1.2, 4],

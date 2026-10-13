@@ -10,6 +10,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const { updatePricing } = await import("@/lib/db/settings");
 const localDb = { updatePricing };
+const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const usageHistory = await import("../../src/lib/usage/usageHistory.ts");
@@ -428,6 +429,9 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
   const originalNow = Date.now;
   Date.now = () => Date.parse("2026-10-13T12:00:00.000Z");
   try {
+    modelsDevSync.saveModelsDevPricing({
+      deepseek: { "deepseek-v4-pro": { input: 9, output: 99, cached: 8 } },
+    });
     const estimate = await calculateCostWithEvidence("deepseek", "deepseek-v4-pro", {
       input: 1000,
       output: 1000,
@@ -452,7 +456,13 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
     assert.equal(accounting.source, "deepseek.api_pricing");
     assert.equal(accounting.pricingRetrievedAt, "2026-10-13T06:56:49.000Z");
     assert.equal(accounting.pricingStale, false);
-    assert.match(accounting.pricingCondition ?? "", /peak is 01:00-04:00/);
+    assert.match(
+      accounting.pricingCondition ?? "",
+      /peak rates as the conservative schedule bound/
+    );
+    assert.match(accounting.pricingCondition ?? "", /V4.1-Flash at Flash rates/);
+
+    modelsDevSync.clearModelsDevPricing();
 
     Date.now = () => Date.parse("2026-10-21T12:00:00.000Z");
     const staleEstimate = await calculateCostWithEvidence("deepseek", "deepseek-v4-pro", {
@@ -463,6 +473,7 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
     assert.equal(staleEstimate.costKnown, false);
     assert.equal(staleEstimate.pricingEvidence.stale, true);
   } finally {
+    modelsDevSync.clearModelsDevPricing();
     Date.now = originalNow;
   }
 });
