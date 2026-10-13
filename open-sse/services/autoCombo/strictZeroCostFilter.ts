@@ -228,6 +228,20 @@ export function classifyStrictZeroCostCandidate(
     "minRemainingAllowance" | "maxStateAgeMs" | "now" | "verifiedOpenRouterFreeRoutes"
   >
 ): StrictZeroCostVerdict {
+  // OpenRouter's `free` selector is a dynamic router over its current free
+  // variants. It is eligible only when this build has a fresh, non-empty
+  // authoritative variant set; a stale/unavailable catalog must not authorize it.
+  if (
+    candidate.provider === "openrouter" &&
+    candidate.model === "free" &&
+    (options.verifiedOpenRouterFreeRoutes?.size ?? 0) > 0
+  ) {
+    const currentConnections = candidate.connectionId
+      ? [candidate.connectionId]
+      : (candidate.allowedConnectionIds ?? []);
+    if (currentConnections.length === 0) return { outcome: "no-connection" };
+    return { outcome: "safe", safeConnectionIds: currentConnections };
+  }
   if (
     candidate.provider === "openrouter" &&
     options.verifiedOpenRouterFreeRoutes?.has(candidate.model)

@@ -111,6 +111,31 @@ test("paid candidate (no free-model documentation at all) is excluded", () => {
   );
 });
 
+test("OpenRouter free router requires a fresh non-empty exact-route catalog", () => {
+  const freeRouter = { provider: "openrouter", model: "free", connectionId: REAL_CONN };
+  assert.deepEqual(
+    evaluateCandidateConnections(freeRouter, undefined, () => undefined, {
+      ...BASE_OPTIONS,
+      verifiedOpenRouterFreeRoutes: new Set(["vendor/model-a:free", "vendor/model-b:free"]),
+    }),
+    [REAL_CONN],
+    "the optional dynamic selector is safe while OpenRouter confirms free routes exist"
+  );
+  assert.deepEqual(
+    evaluateCandidateConnections(freeRouter, undefined, () => undefined, {
+      ...BASE_OPTIONS,
+      verifiedOpenRouterFreeRoutes: new Set(),
+    }),
+    [],
+    "an empty catalog cannot establish dynamic free-router eligibility"
+  );
+  assert.deepEqual(
+    evaluateCandidateConnections(freeRouter, undefined, () => undefined, BASE_OPTIONS),
+    [],
+    "missing or stale catalog evidence cannot establish dynamic free-router eligibility"
+  );
+});
+
 // 3 & 4. unknown model / unknown provider → EXCLUDE
 test("model absent from the free catalog is excluded even under a known provider", () => {
   assert.deepEqual(
