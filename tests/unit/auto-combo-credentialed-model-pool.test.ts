@@ -12,6 +12,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
+const settingsDb = await import("../../src/lib/db/settings.ts");
 const virtualFactory = await import("../../open-sse/services/autoCombo/virtualFactory.ts");
 const candidateHandler = await import("../../open-sse/handlers/autoComboCandidates.ts");
 
@@ -156,4 +157,56 @@ test("hiding the first registry model does not drop the credentialed provider", 
   ]) {
     assert.ok(modelStrings.includes(model), `${model} should remain after Sonnet is hidden`);
   }
+});
+
+test("hidePaidModels narrows a dynamic free route to accounts whose fresh catalog says free", async () => {
+  const freeAccount = await providersDb.createProviderConnection({
+    provider: "groq",
+    authType: "api_key",
+    apiKey: "test-free-account-key",
+  });
+  const paidAccount = await providersDb.createProviderConnection({
+    provider: "groq",
+    authType: "api_key",
+    apiKey: "test-paid-account-key",
+  });
+  const staleAccount = await providersDb.createProviderConnection({
+    provider: "groq",
+    authType: "api_key",
+    apiKey: "test-stale-account-key",
+  });
+  const catalogRetrievedAt = new Date().toISOString();
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", freeAccount.id, [
+    {
+      id: "vendor/currently-free-coder",
+      name: "Currently free coder",
+      isFree: true,
+      catalogRetrievedAt,
+    },
+  ]);
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", paidAccount.id, [
+    {
+      id: "vendor/currently-free-coder",
+      name: "Paid account route",
+      isFree: false,
+      catalogRetrievedAt,
+    },
+  ]);
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", staleAccount.id, [
+    {
+      id: "vendor/currently-free-coder",
+      name: "Stale free catalog route",
+      isFree: true,
+      catalogRetrievedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
+  await settingsDb.updateSettings({ hidePaidModels: true });
+
+  const combo = await virtualFactory.createVirtualAutoCombo(undefined);
+  const candidate = (combo.models as unknown as LogicalCandidate[]).find(
+    (entry) => entry.model === "groq/vendor/currently-free-coder"
+  );
+
+  assert.ok(candidate, "a route currently classified free should enter the automatic pool");
+  assert.deepEqual(candidate.allowedConnectionIds, [freeAccount.id]);
 });

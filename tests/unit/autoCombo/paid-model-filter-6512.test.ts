@@ -6,7 +6,7 @@
  * `open-sse/services/autoCombo/virtualFactory.ts::createVirtualAutoCombo`.
  */
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import test from "node:test";
 
 import { filterPaidOnlyCandidates } from "../../../open-sse/services/autoCombo/paidModelFilter.ts";
 
@@ -65,5 +65,22 @@ test("OpenRouter free eligibility requires the exact route in the current catalo
     filterPaidOnlyCandidates([freeRouter], true, new Set(["vendor/model:free"])),
     [freeRouter],
     "the optional OpenRouter free router stays eligible when the catalog has free variants"
+  );
+});
+
+test("fresh provider free metadata admits only the accounts verified for that exact route", () => {
+  const route = {
+    provider: "groq",
+    model: "vendor/coder",
+    connectionId: null,
+    allowedConnectionIds: ["free-account", "paid-account"],
+    freeRouteEligibleConnectionIds: ["free-account"],
+  };
+  const [selected] = filterPaidOnlyCandidates([route], true);
+  assert.deepEqual(selected?.allowedConnectionIds, ["free-account"]);
+  assert.deepEqual(
+    filterPaidOnlyCandidates([{ ...route, freeRouteEligibleConnectionIds: [] }], true),
+    [],
+    "a paid or stale provider verdict must override any older curated free classification"
   );
 });

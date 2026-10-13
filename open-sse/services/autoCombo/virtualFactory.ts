@@ -30,6 +30,7 @@ import type { AutoVariant } from "./autoPrefix";
 import { buildFamilyCandidateFilter, type ModelFamily } from "./modelFamily";
 import { getHiddenModelsByProvider } from "@/models";
 import { getSyncedAvailableModelsByConnection, getCustomModels } from "@/lib/db/models";
+import { isFreshCatalogTimestamp } from "@/lib/catalog/metadataFreshness";
 import { filterPaidOnlyCandidates } from "./paidModelFilter";
 import { getCurrentOpenRouterFreeRouteMetadata } from "@/lib/catalog/openrouterCatalog";
 import { isFreeModel } from "@/shared/utils/freeModels";
@@ -109,6 +110,8 @@ export interface VirtualAutoComboCandidate {
   costPer1MTokens: number; // from providerRegistry
   /** Current free classification attached during server-side pool preparation. */
   isFree?: boolean;
+  /** Exact account ids whose fresh provider catalog confirms this route is free. */
+  freeRouteEligibleConnectionIds?: string[];
   /** Exact current OpenRouter catalog tool-support fact for a free variant. */
   resolvedSupportsTools?: boolean | null;
   /** Build-local capability snapshot. Runtime calls rebuild it; catalog entries reuse it. */
@@ -754,6 +757,21 @@ export async function prepareVirtualAutoComboInputs(
         .map((conn) => conn.id);
       if (allowedConnectionIds.length === 0) continue;
 
+      // Provider model catalogs can carry account-specific free promotions.
+      // Keep the exact qualifying connections with the candidate so hidePaidModels
+      // cannot route the same model through a paid sibling account.
+      const freeRouteEligibleConnectionIds = allowedConnectionIds.filter((id) => {
+        const syncedRoute = (syncedByConnection[id] ?? []).find(
+          (entry) => entry.id === modelId && typeof entry.isFree === "boolean"
+        );
+        if (syncedRoute) {
+          return (
+            syncedRoute.isFree === true && isFreshCatalogTimestamp(syncedRoute.catalogRetrievedAt)
+          );
+        }
+        return isFreeModel(providerId, { id: modelId });
+      });
+
       candidatePool.push({
         provider: providerId,
         connectionId: null,
@@ -761,6 +779,7 @@ export async function prepareVirtualAutoComboInputs(
         model: modelId,
         modelStr: `${providerId}/${modelId}`,
         costPer1MTokens: 0, // Not used in virtual auto-combo (LKGP uses session stickiness)
+        ...(providerId !== "openrouter" ? { freeRouteEligibleConnectionIds } : {}),
         ...(providerId === "openrouter" && currentOpenRouterFreeRouteMetadata?.has(modelId)
           ? {
               resolvedSupportsTools:
@@ -797,7 +816,9 @@ export async function prepareVirtualAutoComboInputs(
           ? candidate.model === "free"
             ? (currentOpenRouterFreeRoutes?.size ?? 0) > 0
             : currentOpenRouterFreeRoutes?.has(candidate.model) === true
-          : isFreeModel(candidate.provider, { id: candidate.model }),
+          : candidate.freeRouteEligibleConnectionIds !== undefined
+            ? candidate.freeRouteEligibleConnectionIds.length > 0
+            : isFreeModel(candidate.provider, { id: candidate.model }),
     }));
 
     const resilienceFilteredPool = filterResilienceBlockedCandidates(pool, connectionsById, skip);

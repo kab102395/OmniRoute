@@ -16,6 +16,10 @@ import { isFreeModel, providerHasFreeModels } from "@/shared/utils/freeModels";
 interface PaidFilterCandidate {
   provider: string;
   model: string;
+  /** Connections whose fresh exact provider catalog classifies this route as free. */
+  freeRouteEligibleConnectionIds?: readonly string[];
+  connectionId?: string | null;
+  allowedConnectionIds?: string[];
 }
 
 /** A candidate is kept only when its provider has documented free models AND the
@@ -48,5 +52,28 @@ export function filterPaidOnlyCandidates<T extends PaidFilterCandidate>(
   currentOpenRouterFreeRoutes?: ReadonlySet<string>
 ): T[] {
   if (!hidePaidModels) return pool;
-  return pool.filter((candidate) => isFreeCandidate(candidate, currentOpenRouterFreeRoutes));
+  const filtered: T[] = [];
+  for (const candidate of pool) {
+    if (candidate.freeRouteEligibleConnectionIds === undefined) {
+      if (isFreeCandidate(candidate, currentOpenRouterFreeRoutes)) filtered.push(candidate);
+      continue;
+    }
+
+    const eligible = new Set(candidate.freeRouteEligibleConnectionIds);
+    if (candidate.connectionId != null) {
+      if (eligible.has(candidate.connectionId)) filtered.push(candidate);
+      continue;
+    }
+
+    const allowedConnectionIds = candidate.allowedConnectionIds ?? [];
+    const freeConnectionIds = allowedConnectionIds.filter((id) => eligible.has(id));
+    if (freeConnectionIds.length === 0) continue;
+    const unchanged =
+      freeConnectionIds.length === allowedConnectionIds.length &&
+      freeConnectionIds.every((id) => allowedConnectionIds.includes(id));
+    filtered.push(
+      unchanged ? candidate : ({ ...candidate, allowedConnectionIds: freeConnectionIds } as T)
+    );
+  }
+  return filtered;
 }
