@@ -137,6 +137,14 @@ describe("catalog pricing surface (#8018)", () => {
         .routeResolution?.source?.stale,
       false
     );
+    assert.equal(
+      (
+        pro.pricing_provenance as {
+          routeResolution?: { source?: { url?: string; id?: string } };
+        }
+      ).routeResolution?.source?.url,
+      "https://api-docs.deepseek.com/quick_start/pricing/"
+    );
     assert.deepEqual(
       (
         pro.pricing_provenance as {
@@ -163,7 +171,7 @@ describe("catalog pricing surface (#8018)", () => {
     assert.equal((pro.capabilities as Record<string, unknown>).tool_calling, true);
     assert.match(
       (pro.pricing_provenance as { pricingCondition?: string }).pricingCondition || "",
-      /peak\/off-peak schedule/
+      /peak is 01:00-04:00 and 06:00-10:00 UTC Monday through Friday/
     );
   });
 

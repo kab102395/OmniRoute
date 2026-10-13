@@ -2,9 +2,10 @@ import type { ModelPricingProvenance } from "@/domain/modelCatalogContract";
 
 const DEEPSEEK_PRICING_URL = "https://api-docs.deepseek.com/quick_start/pricing/";
 const DEEPSEEK_FLASH_RELEASE_URL = "https://api-docs.deepseek.com/news/news260910/";
-const DEEPSEEK_PRO_RELEASE_URL = "https://api-docs.deepseek.com/news/news260813/";
 const SOURCE_RETRIEVED_AT = "2026-10-13T06:56:49.000Z";
 const SOURCE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PEAK_OFFPEAK_PRICING_CONDITION =
+  "input-cache-miss, input-cache-hit, and output rates vary by the provider's schedule: peak is 01:00-04:00 and 06:00-10:00 UTC Monday through Friday, excluding Chinese public holidays; all other times are off-peak";
 
 const FLASH_RATES = {
   inputCacheMiss: { offPeak: 0.15, peak: 0.3 },
@@ -46,8 +47,7 @@ export function getDeepseekPricingEvidence(modelId: string, now = Date.now()) {
       rateUnit: "USD / 1M tokens",
       rates: FLASH_RATES,
       source: source(now),
-      pricingCondition:
-        "input-cache-miss, input-cache-hit, and output rates vary by the provider's UTC peak/off-peak schedule",
+      pricingCondition: PEAK_OFFPEAK_PRICING_CONDITION,
       routeResolution: {
         modelVersion: "DeepSeek-V4.1-Flash",
         source: source(now, DEEPSEEK_FLASH_RELEASE_URL, "deepseek.api_model_routing"),
@@ -65,12 +65,11 @@ export function getDeepseekPricingEvidence(modelId: string, now = Date.now()) {
       currency: "USD",
       rateUnit: "USD / 1M tokens",
       rates: PRO_RATES,
-      pricingCondition:
-        "input-cache-miss, input-cache-hit, and output rates vary by the provider's UTC peak/off-peak schedule",
+      pricingCondition: PEAK_OFFPEAK_PRICING_CONDITION,
       source: source(now),
       routeResolution: {
         modelVersion: "DeepSeek-V4-Pro-0813",
-        source: source(now, DEEPSEEK_PRO_RELEASE_URL, "deepseek.api_model_routing"),
+        source: source(now, DEEPSEEK_PRICING_URL, "deepseek.api_model_pricing_and_routes"),
       },
       zeroCostEligibility: "no",
     } satisfies ModelPricingProvenance;
