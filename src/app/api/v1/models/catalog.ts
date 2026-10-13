@@ -136,7 +136,7 @@ import { isModelExposureAllowed } from "@/shared/utils/modelExposureList";
 import type { ModelCatalogEntry } from "@/domain/modelCatalogContract";
 import {
   isFreshCatalogTimestamp,
-  SYNCED_PROVIDER_CATALOG_MAX_AGE_MS,
+  SYNCED_MODEL_CATALOG_MAX_AGE_MS,
 } from "@/lib/catalog/metadataFreshness";
 import { isCodexDiscoveryModelExcluded } from "@/shared/services/codexDiscoveryPolicy";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
@@ -1322,7 +1322,7 @@ async function buildUnifiedModelsResponseCore(
           const providerCatalogIsStale = !isFreshCatalogTimestamp(
             sm.catalogRetrievedAt,
             Date.now(),
-            SYNCED_PROVIDER_CATALOG_MAX_AGE_MS
+            SYNCED_MODEL_CATALOG_MAX_AGE_MS
           );
           const syncedFields = {
             ...(modelType ? { type: modelType } : {}),

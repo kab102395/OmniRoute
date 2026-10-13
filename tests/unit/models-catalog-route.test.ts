@@ -2267,6 +2267,20 @@ test("v1 models catalog applies exact Amazon Bedrock metadata without pricing al
     modelsDevSync.saveModelsDevCapabilities(
       modelsDevSync.transformModelsDevToCapabilities(raw as never)
     );
+    const staleRetrievedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    core
+      .getDbInstance()
+      .prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+      .run(
+        "models_dev_sync_status",
+        "last_sync",
+        JSON.stringify({
+          lastSync: staleRetrievedAt,
+          sourceRetrievedAt: staleRetrievedAt,
+          modelCount: 2,
+          capabilityCount: 2,
+        })
+      );
 
     const response = await v1ModelsCatalog.getUnifiedModelsResponse(
       new Request("http://localhost/api/v1/models")
@@ -2276,7 +2290,14 @@ test("v1 models catalog applies exact Amazon Bedrock metadata without pricing al
         id: string;
         pricing?: { input?: number; output?: number };
         pricing_provenance?: { state?: string; source?: { id?: string } };
-        capability_status?: { tool_calling?: { status?: string; source?: string } };
+        capability_status?: {
+          tool_calling?: {
+            status?: string;
+            source?: string;
+            retrievedAt?: string | null;
+            stale?: boolean;
+          };
+        };
         context_length?: number;
         max_output_tokens?: number;
       }>;
@@ -2294,7 +2315,20 @@ test("v1 models catalog applies exact Amazon Bedrock metadata without pricing al
     assert.deepEqual(exactRoute.capability_status?.tool_calling, {
       status: "supported",
       source: "synced_capability_catalog",
+      retrievedAt: staleRetrievedAt,
+      stale: true,
     });
+    const constrainedResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/api/v1/models?require_tool_calling=true")
+    );
+    const constrainedBody = (await constrainedResponse.json()) as {
+      data: Array<{ id: string }>;
+    };
+    assert.equal(
+      constrainedBody.data.some((model) => model.id === "bedrock/anthropic.claude-opus-4-7"),
+      false,
+      "stale model.dev capability evidence cannot qualify a tool-required route"
+    );
     assert.equal(exactRoute.context_length, 750_000);
     assert.equal(exactRoute.max_output_tokens, 100_000);
 

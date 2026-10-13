@@ -68,6 +68,9 @@ function hasVerifiedToolCalling(model: Record<string, unknown>): boolean {
   if (capabilitySource === "provider_model_catalog") {
     return capabilityStatus.tool_calling.stale === false;
   }
+  if (capabilitySource === "synced_capability_catalog") {
+    return capabilityStatus.tool_calling.stale === false;
+  }
   if (
     capabilitySource === "openrouter.models_api" ||
     capabilitySource === "huggingface.router_models_api"

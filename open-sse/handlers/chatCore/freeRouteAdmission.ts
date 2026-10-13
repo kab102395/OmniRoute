@@ -7,6 +7,7 @@ import {
   getSyncedAvailableModelsForConnection,
 } from "@/lib/db/models";
 import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
+import { getSyncStatus as getModelsDevSyncStatus } from "@/lib/modelsDevSync";
 import { resolveProviderId } from "@/shared/constants/providers";
 import { isFreeModel } from "@/shared/utils/freeModels";
 import { isFreshCatalogTimestamp } from "@/lib/catalog/metadataFreshness";
@@ -115,6 +116,12 @@ export async function checkToolCallingRouteAdmission(
 
   const capability = getResolvedModelCapabilities({ provider: canonicalProvider, model });
   if (capability.supportsTools === true) {
+    if (capability.supportsToolsSource === "synced_capability_catalog") {
+      const sourceStatus = getModelsDevSyncStatus();
+      if (!isFreshCatalogTimestamp(sourceStatus.sourceRetrievedAt)) {
+        return { kind: "ineligible", reason: "catalog_unverified" };
+      }
+    }
     return { kind: "eligible", source: capability.supportsToolsSource };
   }
   return {

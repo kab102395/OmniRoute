@@ -15,6 +15,7 @@ const { getCurrentOpenRouterFreeRouteIds } =
 const { FREE_MODEL_BUDGETS } = await import("../../open-sse/config/freeModelCatalog.data.ts");
 const coreDb = await import("../../src/lib/db/core.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
+const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
 const realFetch = globalThis.fetch;
 
 test.after(() => {
@@ -211,4 +212,54 @@ test("tool admission uses the exact selected connection's synced capability verd
     { kind: "eligible", source: "provider_model_catalog" },
     "one account's discovery must not qualify the same route on another account"
   );
+});
+
+test("tool admission rejects stale models.dev capability evidence", async () => {
+  await coreDb.ensureDbInitialized();
+  modelsDevSync.saveModelsDevCapabilities({
+    openai: {
+      "omni-stale-capability-fixture": {
+        tool_call: true,
+        reasoning: null,
+        attachment: null,
+        structured_output: null,
+        temperature: null,
+        modalities_input: "[]",
+        modalities_output: "[]",
+        knowledge_cutoff: null,
+        release_date: null,
+        last_updated: null,
+        status: null,
+        family: null,
+        open_weights: null,
+        limit_context: null,
+        limit_input: null,
+        limit_output: null,
+        interleaved_field: null,
+      },
+    },
+  });
+  const staleRetrievedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  coreDb
+    .getDbInstance()
+    .prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run(
+      "models_dev_sync_status",
+      "last_sync",
+      JSON.stringify({
+        lastSync: staleRetrievedAt,
+        sourceRetrievedAt: staleRetrievedAt,
+        modelCount: 1,
+        capabilityCount: 1,
+      })
+    );
+
+  const admission = await checkToolCallingRouteAdmission("openai", "omni-stale-capability-fixture");
+
+  assert.deepEqual(admission, { kind: "ineligible", reason: "catalog_unverified" });
+  modelsDevSync.saveModelsDevCapabilities({});
+  coreDb
+    .getDbInstance()
+    .prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?")
+    .run("models_dev_sync_status", "last_sync");
 });

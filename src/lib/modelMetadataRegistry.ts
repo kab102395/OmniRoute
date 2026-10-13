@@ -24,6 +24,10 @@ import {
   getModelsDevPricing,
   type PricingByProvider,
 } from "@/lib/modelsDevSync";
+import {
+  isFreshCatalogTimestamp,
+  SYNCED_MODEL_CATALOG_MAX_AGE_MS,
+} from "@/lib/catalog/metadataFreshness";
 import { getSyncedPricing, getSyncStatus as getLiteLlmPricingSyncStatus } from "@/lib/pricingSync";
 import { getPricingForModel as getDefaultPricingForModel } from "@/shared/constants/pricing";
 import { getDeepseekPricingEvidence } from "@/lib/catalog/deepseekPricing";
@@ -796,6 +800,21 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
           stale: (syncedToolCallingStatus as JsonRecord).stale === true,
         }
       : {};
+  const modelsDevCapabilityEvidence =
+    !hasCurrentOpenRouterCapabilities &&
+    metadata.capabilities.supportsToolsSource === "synced_capability_catalog"
+      ? (() => {
+          const retrievedAt = getSyncStatus().sourceRetrievedAt;
+          return {
+            retrievedAt,
+            stale: !isFreshCatalogTimestamp(
+              retrievedAt,
+              Date.now(),
+              SYNCED_MODEL_CATALOG_MAX_AGE_MS
+            ),
+          };
+        })()
+      : {};
   const syncedStructuredOutput =
     typeof existingCapabilities.structured_output === "boolean"
       ? existingCapabilities.structured_output
@@ -976,6 +995,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
             ? "provider_model_catalog"
             : metadata.capabilities.supportsToolsSource,
       ...providerCatalogCapabilityEvidence,
+      ...modelsDevCapabilityEvidence,
     },
     structured_output: preserveProviderRouteStructuredOutputStatus
       ? existingStructuredOutputStatus
