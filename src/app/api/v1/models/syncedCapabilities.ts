@@ -42,6 +42,8 @@ interface SyncedCapabilityFlags {
   id?: string;
   supportsThinking?: boolean;
   supportsVision?: boolean;
+  supportsTools?: boolean;
+  supportsStructuredOutput?: boolean;
   supportedThinkingEfforts?: string[];
 }
 
@@ -95,9 +97,19 @@ export function buildSyncedCapabilities(
   ownedBy: string
 ): Record<string, boolean | string[]> | undefined {
   const tiers = effectiveEffortTiers(sm, ownedBy);
-  if (!sm.supportsVision && !tiers) return undefined;
+  if (
+    !sm.supportsVision &&
+    !tiers &&
+    typeof sm.supportsTools !== "boolean" &&
+    typeof sm.supportsStructuredOutput !== "boolean"
+  )
+    return undefined;
   return {
     ...(sm.supportsVision ? { vision: true } : {}),
+    ...(typeof sm.supportsTools === "boolean" ? { tool_calling: sm.supportsTools } : {}),
+    ...(typeof sm.supportsStructuredOutput === "boolean"
+      ? { structured_output: sm.supportsStructuredOutput }
+      : {}),
     ...(tiers ? { effort_tiers: tiers } : {}),
   };
 }
@@ -113,10 +125,21 @@ export function mergeSyncedCapabilities(
   ownedBy: string
 ): Record<string, unknown> | undefined {
   const tiers = effectiveEffortTiers(sm, ownedBy);
-  if (!sm.supportsVision && !tiers && !existing) return undefined;
+  if (
+    !sm.supportsVision &&
+    !tiers &&
+    typeof sm.supportsTools !== "boolean" &&
+    typeof sm.supportsStructuredOutput !== "boolean" &&
+    !existing
+  )
+    return undefined;
   return {
     ...(existing || {}),
     ...(sm.supportsVision ? { vision: true } : {}),
+    ...(typeof sm.supportsTools === "boolean" ? { tool_calling: sm.supportsTools } : {}),
+    ...(typeof sm.supportsStructuredOutput === "boolean"
+      ? { structured_output: sm.supportsStructuredOutput }
+      : {}),
     ...(tiers ? { effort_tiers: tiers } : {}),
   };
 }

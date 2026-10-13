@@ -570,6 +570,20 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     entry.capabilities && typeof entry.capabilities === "object"
       ? (entry.capabilities as JsonRecord)
       : {};
+  const syncedToolCallingStatus =
+    entry.capability_status && typeof entry.capability_status === "object"
+      ? (entry.capability_status as JsonRecord).tool_calling
+      : undefined;
+  const syncedToolCalling =
+    syncedToolCallingStatus &&
+    typeof syncedToolCallingStatus === "object" &&
+    (syncedToolCallingStatus as JsonRecord).source === "synced_capability_catalog"
+      ? (syncedToolCallingStatus as JsonRecord).status === "supported"
+      : undefined;
+  const syncedStructuredOutput =
+    typeof existingCapabilities.structured_output === "boolean"
+      ? existingCapabilities.structured_output
+      : undefined;
   const declaredEffortTiers = Array.isArray(existingCapabilities.effort_tiers)
     ? existingCapabilities.effort_tiers.filter(
         (effort): effort is string => typeof effort === "string" && effort.length > 0
@@ -637,11 +651,12 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       ? {}
       : {
           tool_calling: specialtySurface
-            ? metadata.capabilities.supportsTools === true ||
+            ? (syncedToolCalling ??
+              (metadata.capabilities.supportsTools === true ||
               metadata.capabilities.toolCalling === true
-              ? true
-              : false
-            : metadata.capabilities.toolCalling,
+                ? true
+                : false))
+            : (syncedToolCalling ?? metadata.capabilities.toolCalling),
         }),
     ...(publicProvider === "openrouter"
       ? {}
@@ -674,7 +689,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
       : {}),
     ...(publicProvider !== "openrouter" &&
     typeof metadata.capabilities.structuredOutput === "boolean"
-      ? { structured_output: metadata.capabilities.structuredOutput }
+      ? { structured_output: syncedStructuredOutput ?? metadata.capabilities.structuredOutput }
       : {}),
     ...(publicProvider !== "openrouter" && typeof metadata.capabilities.temperature === "boolean"
       ? { temperature: metadata.capabilities.temperature }
@@ -708,7 +723,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     ? entry.supported_parameters.includes("tools")
     : publicProvider === "openrouter"
       ? null
-      : metadata.capabilities.supportsTools;
+      : (syncedToolCalling ?? metadata.capabilities.supportsTools);
   nextEntry.capability_status = {
     ...(entry.capability_status && typeof entry.capability_status === "object"
       ? (entry.capability_status as JsonRecord)
@@ -724,7 +739,9 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
         ? "openrouter.models_api"
         : publicProvider === "openrouter"
           ? "unknown"
-          : metadata.capabilities.supportsToolsSource,
+          : syncedToolCalling !== undefined
+            ? "synced_capability_catalog"
+            : metadata.capabilities.supportsToolsSource,
     },
   };
 

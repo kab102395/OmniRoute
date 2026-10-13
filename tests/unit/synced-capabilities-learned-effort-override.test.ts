@@ -15,6 +15,7 @@ import {
   buildSyncedCapabilities,
   mergeSyncedCapabilities,
 } from "../../src/app/api/v1/models/syncedCapabilities.ts";
+import { enrichCatalogModelEntry } from "../../src/lib/modelMetadataRegistry.ts";
 
 beforeEach(() => __test_resetLearnedReasoningEffortCaps());
 after(() => __test_resetLearnedReasoningEffortCaps());
@@ -98,4 +99,36 @@ test("merge path also excludes codex/glm/kimi from effort_tiers", () => {
   );
   assert.equal(merged?.vision, true);
   assert.equal(merged?.effort_tiers, undefined);
+});
+
+test("explicit synced tool capability survives catalog enrichment with its source", () => {
+  for (const [supportsTools, expected] of [
+    [true, "supported"],
+    [false, "unsupported"],
+  ] as const) {
+    const syncedCapabilities = buildSyncedCapabilities(
+      { id: "fixture-model", supportsTools },
+      "huggingface"
+    );
+    const enriched = enrichCatalogModelEntry(
+      {
+        id: "huggingface/fixture-model",
+        owned_by: "huggingface",
+        capabilities: syncedCapabilities,
+        capability_status: {
+          tool_calling: {
+            status: expected,
+            source: "synced_capability_catalog",
+          },
+        },
+      },
+      "huggingface"
+    );
+
+    assert.equal(enriched.capabilities?.tool_calling, supportsTools);
+    assert.deepEqual(enriched.capability_status?.tool_calling, {
+      status: expected,
+      source: "synced_capability_catalog",
+    });
+  }
 });

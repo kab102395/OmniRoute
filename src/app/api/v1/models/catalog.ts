@@ -1334,6 +1334,16 @@ async function buildUnifiedModelsResponseCore(
             ...(buildSyncedCapabilities(sm, syncedOwnedBy)
               ? { capabilities: buildSyncedCapabilities(sm, syncedOwnedBy) }
               : {}),
+            ...(typeof sm.supportsTools === "boolean"
+              ? {
+                  capability_status: {
+                    tool_calling: {
+                      status: sm.supportsTools ? "supported" : "unsupported",
+                      source: "synced_capability_catalog",
+                    },
+                  },
+                }
+              : {}),
             ...(canonicalProviderId === "huggingface" && sm.providerRoutes?.length
               ? {
                   provider_routes: sm.providerRoutes.map((route) => ({
