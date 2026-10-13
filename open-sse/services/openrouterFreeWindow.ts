@@ -50,6 +50,7 @@ export interface FreeWindowStatus {
   rpmLimit: number;
   rpmUsed: number;
   rpmRemaining: number;
+  rpmResetAt: string | null;
 }
 
 const accountWindows = new Map<string, AccountWindowState>();
@@ -257,6 +258,10 @@ export function getFreeWindowStatus(
       : nextUtcMidnightIso(now);
 
   const rpmUsed = state.requestTimestamps.length;
+  const rpmResetAt =
+    state.requestTimestamps.length > 0
+      ? new Date(state.requestTimestamps[0] + RPM_WINDOW_MS).toISOString()
+      : null;
 
   return {
     dailyLimit,
@@ -266,6 +271,7 @@ export function getFreeWindowStatus(
     rpmLimit: RPM_LIMIT,
     rpmUsed,
     rpmRemaining: Math.max(0, RPM_LIMIT - rpmUsed),
+    rpmResetAt,
   };
 }
 

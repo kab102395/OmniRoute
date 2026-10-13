@@ -260,9 +260,20 @@ function buildFreeWindowExhaustedQuota(status: FreeWindowStatus): QuotaInfo {
   };
 }
 
+function buildFreeRpmWindowExhaustedQuota(status: FreeWindowStatus): QuotaInfo {
+  const percentUsed = status.rpmLimit > 0 ? status.rpmUsed / status.rpmLimit : 1;
+  return {
+    used: status.rpmUsed,
+    total: status.rpmLimit,
+    percentUsed: Math.min(1, Math.max(0, percentUsed)),
+    resetAt: status.rpmResetAt,
+    limitReached: true,
+  };
+}
+
 /**
- * When the requested model is a `:free` variant and the locally-tracked
- * daily window is already exhausted, short-circuit before any network call:
+ * When the requested model is a `:free` variant or the dynamic free router
+ * and either locally-tracked window is exhausted, short-circuit before any network call:
  * the upstream `/key` + `/credits` fetch below only reports USD spend, never
  * the `:free` request count, so it cannot see this exhaustion on its own —
  * and dispatching the chat request itself would just spend a guaranteed 429.
@@ -277,7 +288,18 @@ function checkFreeWindowExhausted(
   }
   const accountKey = resolveAccountKey(connectionId, connection);
   const status = getFreeWindowStatus(accountKey);
-  return status.dailyRemaining <= 0 ? buildFreeWindowExhaustedQuota(status) : null;
+  const dailyResetMs = Date.parse(status.dailyResetAt);
+  const rpmResetMs = status.rpmResetAt ? Date.parse(status.rpmResetAt) : Number.NaN;
+  const dailyExhausted = status.dailyRemaining <= 0;
+  const rpmExhausted = status.rpmRemaining <= 0;
+
+  if (!dailyExhausted && !rpmExhausted) return null;
+  if (dailyExhausted && rpmExhausted && rpmResetMs > dailyResetMs) {
+    return buildFreeRpmWindowExhaustedQuota(status);
+  }
+  return dailyExhausted
+    ? buildFreeWindowExhaustedQuota(status)
+    : buildFreeRpmWindowExhaustedQuota(status);
 }
 
 // ─── Core Fetcher ────────────────────────────────────────────────────────────

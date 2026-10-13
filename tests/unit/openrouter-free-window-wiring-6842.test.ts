@@ -221,6 +221,30 @@ test("fetchOpenrouterQuotaWithFreeWindowPreflight blocks an exhausted dynamic fr
   assert.equal(quota?.limitReached, true);
 });
 
+test("fetchOpenrouterQuotaWithFreeWindowPreflight blocks an exhausted rolling RPM window", async () => {
+  const connectionId = `openrouter-enforce-rpm-${Date.now()}`;
+  const accountKey = resolveAccountKey(connectionId, {});
+  const { recordFreeWindowAttempt } =
+    await import("../../open-sse/services/openrouterFreeWindow.ts");
+  const now = Date.now();
+  for (let i = 0; i < 20; i++) recordFreeWindowAttempt(accountKey, now + i);
+
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ data: {} }), { status: 200 });
+  };
+
+  const quota = await fetchOpenrouterQuotaWithFreeWindowPreflight(connectionId, {
+    apiKey: "or-test-key",
+    requestedModel: "x-ai/grok-4-fast:free",
+  });
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(quota?.limitReached, true);
+  assert.ok(Date.parse(quota?.resetAt ?? "") > now);
+});
+
 test("fetchOpenrouterQuotaWithFreeWindowPreflight proceeds to the normal /key+/credits fetch when the free window is NOT exhausted", async () => {
   const connectionId = `openrouter-enforce-ok-${Date.now()}`;
 
