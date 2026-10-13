@@ -237,6 +237,12 @@ export async function getUnifiedModelsResponse(
         hideAutoCombos:
           settingsForAuth?.hideAutoCombos === true || settingsForAuth?.autoRoutingEnabled === false,
         hideNoThinkVariants: settingsForAuth?.hideNoThinkVariants === true,
+        // Free-only catalogs are used as routing eligibility input. Do not replay
+        // a recently expired snapshot while the refreshed route membership is unknown.
+        getStaleWhileRevalidateMs: () =>
+          new URL(request.url).searchParams.get("free_only") === "true"
+            ? 0
+            : CATALOG_STALE_WHILE_REVALIDATE_MS,
         scheduleBackgroundRefresh: options.scheduleBackgroundRefresh,
       }
     );

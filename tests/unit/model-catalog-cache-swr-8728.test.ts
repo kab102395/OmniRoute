@@ -31,6 +31,10 @@ function request() {
   return new Request("http://localhost/v1/models");
 }
 
+function freeOnlyRequest() {
+  return new Request("http://localhost/v1/models?free_only=true");
+}
+
 function payload(body: string, status = 200): catalogCache.CatalogPayload {
   return {
     body,
@@ -85,6 +89,27 @@ test("an expired successful entry is served immediately while a refresh runs beh
 
   const refreshed = await resolve(async () => payload("SHOULD NOT BUILD"));
   assert.equal(await refreshed.text(), "new", "the background refresh must replace the snapshot");
+});
+
+test("a free-only catalog waits for refresh instead of replaying stale eligibility", async () => {
+  const req = freeOnlyRequest();
+  const first = await catalogCache.resolveCachedCatalogResponse(
+    req,
+    { corsHeaders: {}, diagnosticHeaders: {} },
+    async () => payload("old-free-route"),
+    { getStaleWhileRevalidateMs: () => 0 }
+  );
+  assert.equal(await first.text(), "old-free-route");
+  catalogCache.__expireCatalogCacheForTest();
+
+  const refreshed = await catalogCache.resolveCachedCatalogResponse(
+    req,
+    { corsHeaders: {}, diagnosticHeaders: {} },
+    async () => payload("current-free-route"),
+    { getStaleWhileRevalidateMs: () => 0 }
+  );
+  assert.equal(await refreshed.text(), "current-free-route");
+  assert.equal(catalogCache.__getCatalogBuilderRunsForTest(), 2);
 });
 
 test("an entry aged past the SWR window is not served stale", async () => {

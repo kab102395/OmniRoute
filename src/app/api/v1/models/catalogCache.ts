@@ -151,8 +151,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(label)), ms);
     promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); }
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
     );
   });
 }
@@ -377,7 +383,12 @@ export async function resolveCachedCatalogResponse(
   // cold-path wait instead of pinning ancient data.
   const staleWindowMs =
     catalogSettings?.getStaleWhileRevalidateMs?.() ?? CATALOG_STALE_WHILE_REVALIDATE_MS;
-  if (cached && cached.status === 200 && now - cached.expiresAt <= staleWindowMs) {
+  if (
+    cached &&
+    cached.status === 200 &&
+    staleWindowMs > 0 &&
+    now - cached.expiresAt <= staleWindowMs
+  ) {
     startBackgroundRefresh(
       cacheKey,
       request,
