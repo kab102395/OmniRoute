@@ -34,6 +34,17 @@ test("normalizeUsage preserves separately metered audio token counts", () => {
   );
 });
 
+test("normalizeUsage checks both OpenAI input detail containers for audio usage", () => {
+  assert.deepEqual(
+    normalizeUsage({
+      prompt_tokens: 10,
+      prompt_tokens_details: { cached_tokens: 2 },
+      input_tokens_details: { audio_tokens: 6 },
+    }),
+    { prompt_tokens: 10, input_audio_tokens: 6 }
+  );
+});
+
 test("audio-only usage counts as valid and non-empty token usage", () => {
   const usage = { input_audio_tokens: 12 };
   assert.equal(hasValidUsage(usage), true);
