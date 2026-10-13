@@ -654,6 +654,17 @@ export async function prepareVirtualAutoComboInputs(
     connectionsByProvider.set(conn.provider, providerConnections);
   }
 
+  // OpenRouter's free variants rotate independently of per-account model sync.
+  // Fetch the bounded-TTL catalog once before building model ids so a newly
+  // free exact route can enter the candidate set even when the connection has
+  // an older/partial synced model list. Other catalog-only routes remain
+  // governed by the user's visible-model selection below.
+  const connectedProviders = new Set(validConnections.map((conn) => conn.provider));
+  let currentOpenRouterFreeRoutes: Set<string> | undefined;
+  if (connectedProviders.has("openrouter")) {
+    currentOpenRouterFreeRoutes = (await getCurrentOpenRouterFreeRouteIds()) ?? undefined;
+  }
+
   // Build one logical candidate per provider/model and keep account fallback as an
   // allowlist on that candidate. This avoids both the old "first registry model per
   // connection" blind spot and a connections × models Cartesian candidate pool.
@@ -686,9 +697,12 @@ export async function prepareVirtualAutoComboInputs(
     }
     for (const m of customModels) if (m.id && !hiddenModels?.has(m.id)) userVisibleIds.add(m.id);
     const hasUserModels = userVisibleIds.size > 0;
-    const modelIds = hasUserModels
-      ? Array.from(userVisibleIds)
-      : Array.from(new Set([...registryModelIds, ...defaultModelIds]));
+    const modelIds = new Set(
+      hasUserModels ? userVisibleIds : [...registryModelIds, ...defaultModelIds]
+    );
+    if (providerId === "openrouter" && currentOpenRouterFreeRoutes) {
+      for (const modelId of currentOpenRouterFreeRoutes) modelIds.add(modelId);
+    }
 
     for (const modelId of modelIds) {
       candidateModelsSinceYield++;
@@ -703,11 +717,20 @@ export async function prepareVirtualAutoComboInputs(
           if (isModelExcludedByConnection(modelId, conn.providerSpecificData)) return false;
           if (hasUserModels) {
             // User-synced models are scoped to the connections that carry them;
-            // custom models are provider-wide like registry models.
+            // custom models are provider-wide like registry models. A current
+            // exact OpenRouter free route is also provider-catalog-backed and
+            // intentionally participates without waiting for a sync cycle.
             const connSynced = syncedByConnection[conn.id] ?? [];
             const isSyncedForConn = connSynced.some((m) => m.id === modelId);
             const isCustomForProvider = customModels.some((m) => m.id === modelId);
-            return isSyncedForConn || isCustomForProvider || conn.defaultModel?.trim() === modelId;
+            const isCurrentOpenRouterFreeRoute =
+              providerId === "openrouter" && currentOpenRouterFreeRoutes?.has(modelId) === true;
+            return (
+              isSyncedForConn ||
+              isCustomForProvider ||
+              conn.defaultModel?.trim() === modelId ||
+              isCurrentOpenRouterFreeRoute
+            );
           }
           // Registry models are provider-wide. A non-registry default (for a custom
           // or passthrough model) is scoped only to connections that selected it.
@@ -734,15 +757,6 @@ export async function prepareVirtualAutoComboInputs(
     ...disabledNoAuthConnections,
   ]);
 
-  const connectedProviders = new Set(validConnections.map((conn) => conn.provider));
-  // OpenRouter's free route set rotates independently of the static free-model
-  // budget catalog. Resolve it once per preparation from the shared TTL cache;
-  // stale-if-error snapshots remain useful for display, but cannot authorize a
-  // hide-paid candidate.
-  let currentOpenRouterFreeRoutes: Set<string> | undefined;
-  if (connectedProviders.has("openrouter")) {
-    currentOpenRouterFreeRoutes = (await getCurrentOpenRouterFreeRouteIds()) ?? undefined;
-  }
   const buildPreparedPool = (bypassNoAuthAllowlist: boolean) => {
     let pool = [
       ...candidatePool,

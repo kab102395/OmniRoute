@@ -19,8 +19,10 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
+const settingsDb = await import("../../src/lib/db/settings.ts");
 const virtualFactory = await import("../../open-sse/services/autoCombo/virtualFactory.ts");
 const combo = await import("../../open-sse/services/combo.ts");
+const REAL_FETCH = globalThis.fetch;
 
 function resetStorage() {
   core.resetDbInstance();
@@ -35,6 +37,7 @@ test.after(() => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   if (ORIGINAL_DATA_DIR === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = ORIGINAL_DATA_DIR;
+  globalThis.fetch = REAL_FETCH;
 });
 
 async function createOpenRouterConnectionWithFreeSync() {
@@ -83,6 +86,45 @@ test("virtual auto-combo pool excludes catalog-only models (openrouter/auto) whe
       (c) => c.provider === "openrouter" && c.model === "nvidia/nemotron-3.5-lightning:free"
     ),
     "the second synced free model must remain a candidate"
+  );
+});
+
+test("strict free-only pool adds newly rotated exact OpenRouter free routes without admitting paid routes", async () => {
+  await createOpenRouterConnectionWithFreeSync();
+  await settingsDb.updateSettings({ freeAccessPolicy: "strict" });
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          { id: "vendor/newly-free-coder:free", supported_parameters: ["tools"] },
+          { id: "vendor/paid-coder", pricing: { prompt: "0.000001", completion: "0.000002" } },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  const prepared = await virtualFactory.prepareVirtualAutoComboInputs();
+  const openRouterPool = prepared.regularCandidates.filter(
+    (candidate) => candidate.provider === "openrouter"
+  );
+
+  assert.ok(
+    openRouterPool.some(
+      (candidate) => candidate.model === "vendor/newly-free-coder:free" && candidate.isFree === true
+    ),
+    "a fresh exact free route must enter the strict auto pool without waiting for model sync"
+  );
+  assert.ok(
+    !openRouterPool.some((candidate) => candidate.model === "vendor/paid-coder"),
+    "the live catalog must not add paid siblings to a partial-sync candidate pool"
+  );
+  assert.ok(
+    !openRouterPool.some((candidate) => candidate.model === "liquid/lfm-2.5-2.6b:free"),
+    "a previously synced free variant must lose strict eligibility after it leaves the current catalog"
+  );
+  assert.ok(
+    !openRouterPool.some((candidate) => candidate.model === "auto"),
+    "adding exact free routes must not make the dynamic OpenRouter router a candidate"
   );
 });
 
