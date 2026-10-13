@@ -2183,6 +2183,22 @@ test("v1 models catalog includes noAuth provider models when no DB connections e
   );
 });
 
+test("configuredOnly does not treat an unrelated connection as backing a noAuth route", async () => {
+  await seedConnection("openai");
+
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/api/v1/models?configuredOnly=true")
+  );
+  const body = (await response.json()) as { data: Array<{ id?: string }> };
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    body.data.some((model) => model.id?.startsWith("oc/")),
+    false,
+    "an OpenAI credential cannot make an OpenCode noAuth model configured"
+  );
+});
+
 test("v1 models catalog hides disabled noAuth provider models", async () => {
   await settingsDb.updateSettings({ blockedProviders: ["opencode", "duckduckgo-web"] });
 

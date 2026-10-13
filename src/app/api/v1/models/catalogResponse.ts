@@ -69,9 +69,10 @@ export async function applyCatalogPostFilters(
   request: Request,
   models: Array<Record<string, any>>,
   ctx: {
-    connections: any;
+    connections: Array<{ provider: string; providerSpecificData: unknown }>;
     prefixMode: string;
     aliasToProviderId: Record<string, string>;
+    providerNodeIdByPrefix?: Record<string, string>;
     hideNoThinkVariants?: boolean;
   }
 ): Promise<Array<Record<string, any>>> {
@@ -82,7 +83,16 @@ export async function applyCatalogPostFilters(
   if (new URL(request.url).searchParams.get("configuredOnly") === "true") {
     finalModels = finalModels.filter((m) => {
       if (!m.root) return true;
-      return hasEligibleConnectionForModel(ctx.connections, m.root);
+      if (m.owned_by === "combo") return hasEligibleConnectionForModel(ctx.connections, m.root);
+      const owner = typeof m.owned_by === "string" ? m.owned_by : "";
+      const providerId =
+        ctx.aliasToProviderId[owner] || ctx.providerNodeIdByPrefix?.[owner] || owner;
+      const providerConnections = ctx.connections.filter((connection) => {
+        const connectionProviderId =
+          ctx.aliasToProviderId[connection.provider] || connection.provider;
+        return connection.provider === owner || connectionProviderId === providerId;
+      });
+      return hasEligibleConnectionForModel(providerConnections, m.root);
     });
   }
 

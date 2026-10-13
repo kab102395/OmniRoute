@@ -36,6 +36,31 @@ test("catalog post-filters do not add mirrors when gate off (default)", async ()
   assert.deepEqual(out, models);
 });
 
+test("configuredOnly checks only connections that serve the route owner", async () => {
+  const models = [
+    { id: "openai/gpt-4o", owned_by: "openai", root: "gpt-4o" },
+    { id: "claude/claude-sonnet-4", owned_by: "claude", root: "claude-sonnet-4" },
+    { id: "private-gateway/model-a", owned_by: "private-gateway", root: "model-a" },
+    { id: "shared-combo", owned_by: "combo", root: "shared-combo" },
+  ];
+
+  const out = await applyCatalogPostFilters(makeRequest("?configuredOnly=true"), models, {
+    connections: [
+      { provider: "openai", providerSpecificData: {} },
+      { provider: "node-123", providerSpecificData: {} },
+    ],
+    prefixMode: "dual",
+    aliasToProviderId: { claude: "anthropic" },
+    providerNodeIdByPrefix: { "private-gateway": "node-123" },
+  });
+
+  assert.deepEqual(
+    out.map((model) => model.id),
+    ["openai/gpt-4o", "private-gateway/model-a", "shared-combo"],
+    "a configured provider must not make an unrelated provider model appear configured"
+  );
+});
+
 test("final catalog permission filtering does not let a mirror inherit base access", async () => {
   setFeatureFlagOverride(FLAG_KEY, "true");
   setFunctionalGatewayProviderSetting("agentrouter", "on");

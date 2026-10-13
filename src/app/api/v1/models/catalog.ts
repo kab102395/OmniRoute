@@ -846,6 +846,7 @@ async function buildUnifiedModelsResponseCore(
           connections,
           prefixMode,
           aliasToProviderId,
+          providerNodeIdByPrefix,
           hideNoThinkVariants: settings.hideNoThinkVariants === true,
         });
         return finalizeCatalogResponse(request, quotaFinal, () => undefined, {
@@ -2177,6 +2178,7 @@ async function buildUnifiedModelsResponseCore(
       connections,
       prefixMode,
       aliasToProviderId,
+      providerNodeIdByPrefix,
       hideNoThinkVariants: settings.hideNoThinkVariants === true,
     });
     if (freeOnlyCatalog) {
