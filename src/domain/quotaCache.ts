@@ -223,14 +223,17 @@ function earliestResetAt(quotas: Record<string, QuotaInfo>): string | null {
  * The background refresh ticks every 60s for ALL connections, so idle accounts
  * (whose quota never changes) were generating 400K+ identical snapshot rows/day.
  * Returns true only when this window has no prior cached observation, or when its
- * `remaining_percentage` / `is_exhausted` / reported-state differs from the last cached entry — so
- * the first observation and every real change persist, but idle no-op refreshes
+ * remaining percentage, own exhaustion state, reset time, or reported-state differs
+ * from the last cached entry — so real changes persist while idle no-op refreshes
  * stop writing. Pure (no I/O) for trivial unit testing.
  */
 export function quotaSnapshotChanged(
   prior:
     | {
-        quotas?: Record<string, { remainingPercentage: number; fractionReported?: boolean }>;
+        quotas?: Record<
+          string,
+          { remainingPercentage: number; fractionReported?: boolean; resetAt?: string | null }
+        >;
         exhausted?: boolean;
       }
     | null
@@ -238,7 +241,8 @@ export function quotaSnapshotChanged(
   windowKey: string,
   remainingPercentage: number,
   exhausted: boolean,
-  fractionReported = true
+  fractionReported = true,
+  resetAt?: string | null
 ): boolean {
   if (!prior) return true;
   const priorWindow = prior.quotas?.[windowKey];
@@ -246,7 +250,9 @@ export function quotaSnapshotChanged(
   return (
     priorWindow.remainingPercentage !== remainingPercentage ||
     (priorWindow.fractionReported !== false) !== fractionReported ||
-    (prior.exhausted ?? false) !== exhausted
+    (priorWindow.fractionReported !== false && priorWindow.remainingPercentage <= 0) !==
+      exhausted ||
+    (resetAt !== undefined && (priorWindow.resetAt ?? null) !== resetAt)
   );
 }
 
@@ -467,16 +473,20 @@ export function setQuotaCache(
         (quotaInfo.total > 0
           ? Math.round(((quotaInfo.total - (quotaInfo.used || 0)) / quotaInfo.total) * 100)
           : 0);
+      const fractionReported = quotaInfo.fractionReported !== false;
       recordProviderQuotaResetEventIfChanged({
         provider,
         connectionId,
         windowKey,
         currentResetAt: quotaInfo.resetAt ?? null,
-        currentRemainingPercentage: remainingPercentage,
+        currentRemainingPercentage: fractionReported ? remainingPercentage : null,
         previousObservation: prior?.quotas?.[windowKey]
           ? {
               resetAt: prior.quotas[windowKey].resetAt,
-              remainingPercentage: prior.quotas[windowKey].remainingPercentage,
+              remainingPercentage:
+                prior.quotas[windowKey].fractionReported === false
+                  ? null
+                  : prior.quotas[windowKey].remainingPercentage,
             }
           : null,
       });
@@ -484,7 +494,6 @@ export function setQuotaCache(
       // percentage, not the connection-wide AND-across-all-windows aggregate
       // (`entry.exhausted`). A connection with one 0% window and other non-zero
       // windows previously never flagged that window's row as exhausted.
-      const fractionReported = quotaInfo.fractionReported !== false;
       const windowExhausted = fractionReported && remainingPercentage <= 0;
       // #4438 — only persist on the first observation or a real change.
       if (
@@ -493,7 +502,8 @@ export function setQuotaCache(
           windowKey,
           remainingPercentage,
           windowExhausted,
-          fractionReported
+          fractionReported,
+          quotaInfo.resetAt ?? null
         )
       )
         continue;

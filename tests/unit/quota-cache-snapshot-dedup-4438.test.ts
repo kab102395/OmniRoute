@@ -29,7 +29,34 @@ test("#4438 writes when remaining_percentage changed", () => {
   assert.equal(quotaSnapshotChanged(prior, "daily", 72, false), true);
 });
 
-test("#4438 writes when is_exhausted flipped even if percentage matches", () => {
-  const prior = { quotas: { daily: { remainingPercentage: 0 } }, exhausted: false };
+test("writes when an unknown percentage becomes a reported exhausted percentage", () => {
+  const prior = {
+    quotas: { daily: { remainingPercentage: 0, fractionReported: false } },
+    exhausted: false,
+  };
   assert.equal(quotaSnapshotChanged(prior, "daily", 0, true), true);
+});
+
+test("compares exhaustion per window rather than the connection-wide aggregate", () => {
+  const prior = {
+    quotas: {
+      daily: { remainingPercentage: 0 },
+      weekly: { remainingPercentage: 80 },
+    },
+    exhausted: false,
+  };
+  assert.equal(quotaSnapshotChanged(prior, "daily", 0, true), false);
+});
+
+test("writes when the quota window reset time changes without a percentage change", () => {
+  const prior = {
+    quotas: {
+      weekly: { remainingPercentage: 40, resetAt: "2026-01-08T00:00:00.000Z" },
+    },
+    exhausted: false,
+  };
+  assert.equal(
+    quotaSnapshotChanged(prior, "weekly", 40, false, true, "2026-01-15T00:00:00.000Z"),
+    true
+  );
 });
