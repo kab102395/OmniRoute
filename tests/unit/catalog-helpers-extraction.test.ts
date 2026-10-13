@@ -259,10 +259,10 @@ test("catalogOpenrouter: source pricing evidence preserves exact rates and host 
     { retrievedAt: "2026-10-12T00:00:00.000Z", stale: false, ttlMs: 86_400_000 }
   );
 
-  assert.equal(evidence.state, "reported");
+  assert.equal(evidence.state, "free_variant");
   assert.equal(evidence.rates.inputPerTokenUsd, "0");
   assert.equal(evidence.source.retrievedAt, "2026-10-12T00:00:00.000Z");
-  assert.equal(evidence.zeroCostEligibility, "no");
+  assert.equal(evidence.zeroCostEligibility, "verified_free_variant");
   assert.deepEqual(evidence.downstreamHost, {
     selection: "aggregator_selected",
     provider: null,
