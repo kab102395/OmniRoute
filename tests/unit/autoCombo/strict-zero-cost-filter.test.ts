@@ -12,7 +12,7 @@
  * `strict-zero-cost-connection-safety.test.ts` — this file covers the
  * single-connection / no-connection-ambiguity cases only.
  */
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import {
