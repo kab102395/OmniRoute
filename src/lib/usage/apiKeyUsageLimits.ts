@@ -65,6 +65,62 @@ function normalizeLimitUsd(value: unknown): number | null {
   return numeric > 0 ? numeric : null;
 }
 
+function expandDecimal(value: string): string | null {
+  if (!/^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value)) return null;
+  const [coefficient, exponentText] = value.toLowerCase().split("e");
+  const exponent = Number(exponentText ?? 0);
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 100) return null;
+  const negative = coefficient.startsWith("-");
+  const unsigned = negative ? coefficient.slice(1) : coefficient;
+  const point = unsigned.indexOf(".");
+  const digits = unsigned.replace(".", "");
+  const decimalIndex = (point < 0 ? unsigned.length : point) + exponent;
+  const expanded =
+    decimalIndex <= 0
+      ? `0.${"0".repeat(-decimalIndex)}${digits}`
+      : decimalIndex >= digits.length
+        ? `${digits}${"0".repeat(decimalIndex - digits.length)}`
+        : `${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
+  return `${negative ? "-" : ""}${expanded}`;
+}
+
+function addUsdDecimals(values: readonly string[]): string {
+  const normalized = values.map((value) => expandDecimal(value) ?? "0");
+  const scale = normalized.reduce(
+    (maximum, value) => Math.max(maximum, value.split(".")[1]?.length ?? 0),
+    0
+  );
+  const total = normalized.reduce((sum, value) => {
+    const [whole, fraction = ""] = value.split(".");
+    const sign = whole.startsWith("-") ? -1n : 1n;
+    const digits = `${whole.replace("-", "")}${fraction.padEnd(scale, "0")}`;
+    return sum + sign * BigInt(digits || "0");
+  }, 0n);
+  const negative = total < 0n;
+  const digits = (negative ? -total : total).toString().padStart(scale + 1, "0");
+  const whole = scale === 0 ? digits : digits.slice(0, -scale);
+  const fraction = scale === 0 ? "" : digits.slice(-scale).replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+}
+
+function compareUsdDecimals(left: string, right: string): number {
+  const normalizedLeft = expandDecimal(left);
+  const normalizedRight = expandDecimal(right);
+  if (normalizedLeft === null || normalizedRight === null) return 0;
+  const scale = Math.max(
+    normalizedLeft.split(".")[1]?.length ?? 0,
+    normalizedRight.split(".")[1]?.length ?? 0
+  );
+  const toUnits = (value: string) => {
+    const [whole, fraction = ""] = value.split(".");
+    const sign = whole.startsWith("-") ? -1n : 1n;
+    return sign * BigInt(`${whole.replace("-", "")}${fraction.padEnd(scale, "0")}` || "0");
+  };
+  const leftUnits = toUnits(normalizedLeft);
+  const rightUnits = toUnits(normalizedRight);
+  return leftUnits < rightUnits ? -1 : leftUnits > rightUnits ? 1 : 0;
+}
+
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
@@ -354,8 +410,8 @@ async function getProviderWeeklyWindow(
 async function getApiKeyUsdSpendSince(
   apiKeyId: string,
   sinceIso: string
-): Promise<{ spentUsd: number; pricingUnknown: boolean }> {
-  if (!apiKeyId) return { spentUsd: 0, pricingUnknown: false };
+): Promise<{ spentUsd: number; spentUsdExact: string; pricingUnknown: boolean }> {
+  if (!apiKeyId) return { spentUsd: 0, spentUsdExact: "0", pricingUnknown: false };
   const db = getDbInstance();
   const rows = db
     .prepare(
@@ -368,7 +424,7 @@ async function getApiKeyUsdSpendSince(
     )
     .all({ apiKeyId, sinceIso }) as Array<{ accountingJson: string | null; success: number }>;
 
-  let total = 0;
+  const knownAmounts: string[] = [];
   let pricingUnknown = false;
   for (const row of rows) {
     let accounting: Record<string, unknown> | null = null;
@@ -384,17 +440,21 @@ async function getApiKeyUsdSpendSince(
     // a provider receipt confirms that charge; failures without a billable
     // receipt are not treated as either spend or unknown priced usage.
     if (row.success !== 1 && kind !== "provider_reported_billed_cost") continue;
+    if (kind === "zero_cost") continue;
     const amount = accounting?.amountUsd;
+    const exactAmount =
+      typeof accounting?.amountUsdExact === "string"
+        ? expandDecimal(accounting.amountUsdExact)
+        : typeof amount === "number" && Number.isFinite(amount) && amount >= 0
+          ? expandDecimal(String(amount))
+          : null;
     if (
-      (kind === "estimated_cost" ||
-        kind === "provider_reported_billed_cost" ||
-        kind === "zero_cost") &&
+      (kind === "estimated_cost" || kind === "provider_reported_billed_cost") &&
       accounting?.currency === "USD" &&
-      typeof amount === "number" &&
-      Number.isFinite(amount) &&
-      amount >= 0
+      exactAmount !== null &&
+      compareUsdDecimals(exactAmount, "0") >= 0
     ) {
-      total += amount;
+      knownAmounts.push(exactAmount);
     } else {
       // Legacy records and usage without a persisted pricing snapshot cannot
       // safely be repriced using a catalog that may have changed since then.
@@ -402,7 +462,12 @@ async function getApiKeyUsdSpendSince(
     }
   }
 
-  return { spentUsd: total, pricingUnknown };
+  const spentUsdExact = addUsdDecimals(knownAmounts);
+  return {
+    spentUsd: Number(spentUsdExact),
+    spentUsdExact,
+    pricingUnknown,
+  };
 }
 
 export async function getApiKeyUsageLimitStatus(
@@ -442,11 +507,15 @@ export async function getApiKeyUsageLimitStatus(
     weeklyWindowStartIso,
     weeklyResetAtIso,
     dailyExceeded:
-      enabled && dailyLimitUsd !== null && (dailyPricingUnknown || dailySpentUsd >= dailyLimitUsd),
+      enabled &&
+      dailyLimitUsd !== null &&
+      (dailyPricingUnknown ||
+        compareUsdDecimals(dailySpend.spentUsdExact, String(dailyLimitUsd)) >= 0),
     weeklyExceeded:
       enabled &&
       weeklyLimitUsd !== null &&
-      (weeklyPricingUnknown || weeklySpentUsd >= weeklyLimitUsd),
+      (weeklyPricingUnknown ||
+        compareUsdDecimals(weeklySpend.spentUsdExact, String(weeklyLimitUsd)) >= 0),
     dailyPricingUnknown,
     weeklyPricingUnknown,
   };
