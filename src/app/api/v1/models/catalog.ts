@@ -1334,6 +1334,17 @@ async function buildUnifiedModelsResponseCore(
               : {}),
             ...(sm.inputModalities?.length ? { input_modalities: sm.inputModalities } : {}),
             ...(sm.outputModalities?.length ? { output_modalities: sm.outputModalities } : {}),
+            route_availability: {
+              catalogListed: providerCatalogIsStale ? null : true,
+              accountEligibility: "unknown",
+              source: {
+                id: "provider_model_catalog",
+                modelId: sm.id,
+                retrievedAt: sm.catalogRetrievedAt ?? null,
+                stale: providerCatalogIsStale,
+                cacheTtlMs: SYNCED_MODEL_CATALOG_MAX_AGE_MS,
+              },
+            },
             ...(endpoints.length > 1 || !endpoints.includes("chat")
               ? { supported_endpoints: endpoints }
               : {}),

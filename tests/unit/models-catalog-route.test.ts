@@ -952,6 +952,17 @@ test("synced provider tool and free metadata preserve source freshness", async (
         classification?: string;
         source?: { id?: string; stale?: boolean };
       };
+      route_availability?: {
+        catalogListed?: boolean | null;
+        accountEligibility?: string;
+        source?: {
+          id?: string;
+          modelId?: string;
+          retrievedAt?: string | null;
+          stale?: boolean;
+          cacheTtlMs?: number;
+        };
+      };
     }>;
   };
   const current = body.data.find((model) => model.id === "groq/llama/current-tool-model");
@@ -959,6 +970,12 @@ test("synced provider tool and free metadata preserve source freshness", async (
 
   assert.equal(response.status, 200);
   assert.equal(current?.free, true);
+  assert.equal(current?.route_availability?.catalogListed, true);
+  assert.equal(current?.route_availability?.accountEligibility, "unknown");
+  assert.equal(current?.route_availability?.source?.id, "provider_model_catalog");
+  assert.equal(current?.route_availability?.source?.modelId, "llama/current-tool-model");
+  assert.equal(current?.route_availability?.source?.stale, false);
+  assert.equal(current?.route_availability?.source?.cacheTtlMs, 86_400_000);
   assert.deepEqual(current?.free_route_provenance, {
     classification: "free",
     source: {
@@ -970,6 +987,9 @@ test("synced provider tool and free metadata preserve source freshness", async (
     },
   });
   assert.equal(stale?.free, undefined);
+  assert.equal(stale?.route_availability?.catalogListed, null);
+  assert.equal(stale?.route_availability?.accountEligibility, "unknown");
+  assert.equal(stale?.route_availability?.source?.stale, true);
   assert.equal(stale?.free_route_provenance?.classification, "unknown_stale_catalog");
   assert.ok(current, "a recently synced exact tool-capable route remains selectable");
   assert.deepEqual(current.capability_status?.tool_calling?.status, "supported");
