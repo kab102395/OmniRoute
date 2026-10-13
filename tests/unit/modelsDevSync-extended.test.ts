@@ -215,12 +215,7 @@ test.describe("modelsDevSync-extended", { concurrency: 1 }, async () => {
     };
 
     const pricing = modelsDev.transformModelsDevToPricing(raw);
-    assert.deepEqual(pricing.sparse, {
-      complete: {
-        input: 1.5,
-        output: 0,
-      },
-    });
+    assert.equal(pricing.sparse, undefined, "missing output rate must remain unknown");
     assert.equal(pricing.nomodels, undefined);
 
     const capabilities = modelsDev.transformModelsDevToCapabilities(raw);

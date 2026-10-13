@@ -183,7 +183,7 @@ test("catalogOpenrouter: free-model detection + display name", () => {
   assert.equal(isZeroPrice("0"), true);
   assert.equal(isZeroPrice("0.5"), false);
   assert.equal(isZeroPrice("x"), false);
-  assert.equal(isOpenRouterFreeModel({ id: "z/model:free" }), true);
+  assert.equal(isOpenRouterFreeModel({ id: "z/model:free" }), false);
   assert.equal(
     isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0", completion: "0" } }),
     true
@@ -193,8 +193,13 @@ test("catalogOpenrouter: free-model detection + display name", () => {
     false
   );
   assert.equal(getOpenRouterDisplayName({ id: "z/m", name: "Some Model" }), "Some Model");
+  assert.equal(getOpenRouterDisplayName({ id: "z/m:free", name: "Free Model" }), "Free Model");
   assert.equal(
-    getOpenRouterDisplayName({ id: "z/m:free", name: "Free Model" }),
+    getOpenRouterDisplayName({
+      id: "z/m:free",
+      name: "Free Model",
+      pricing: { prompt: "0", completion: "0" },
+    }),
     "Free Model (Grátis)"
   );
   // Already labelled "grátis" is not double-tagged.

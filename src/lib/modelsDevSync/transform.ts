@@ -200,12 +200,25 @@ export function transformModelsDevToPricing(raw: ModelsDevData): PricingByProvid
     for (const [modelId, model] of Object.entries(providerData.models || {})) {
       if (!model.cost) continue;
 
-      // Must have at least input pricing
-      if (model.cost.input == null) continue;
+      // An absent billable dimension is unknown, not a zero rate. Do not persist
+      // partial token prices as if the missing side were free; consumers use a
+      // complete input/output pair for cost estimates and catalog eligibility.
+      const input = model.cost.input;
+      const output = model.cost.output;
+      if (
+        typeof input !== "number" ||
+        !Number.isFinite(input) ||
+        input < 0 ||
+        typeof output !== "number" ||
+        !Number.isFinite(output) ||
+        output < 0
+      ) {
+        continue;
+      }
 
       const entry: PricingEntry = {
-        input: model.cost.input,
-        output: model.cost.output ?? 0,
+        input,
+        output,
       };
 
       if (model.cost.cache_read != null) {

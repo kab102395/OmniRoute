@@ -32,8 +32,14 @@ export function isOpenRouterFreeModel(model: {
   id?: string;
   pricing?: { prompt?: string; completion?: string };
 }) {
-  if (typeof model.id === "string" && model.id.endsWith(":free")) return true;
-  return isZeroPrice(model.pricing?.prompt) && isZeroPrice(model.pricing?.completion);
+  // Model identifiers are labels, not billing evidence. Require both token
+  // dimensions to be explicitly reported as zero by OpenRouter.
+  return (
+    model.pricing?.prompt !== undefined &&
+    model.pricing?.completion !== undefined &&
+    isZeroPrice(model.pricing.prompt) &&
+    isZeroPrice(model.pricing.completion)
+  );
 }
 
 export function getOpenRouterDisplayName(model: {

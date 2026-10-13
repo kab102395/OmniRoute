@@ -24,8 +24,10 @@ function isZero(value: string | undefined): boolean {
 
 function isFree(entry: OpenRouterCatalogEntry): boolean {
   return (
-    entry.id.endsWith(":free") ||
-    (isZero(entry.pricing?.prompt) && isZero(entry.pricing?.completion))
+    entry.pricing?.prompt !== undefined &&
+    entry.pricing?.completion !== undefined &&
+    isZero(entry.pricing.prompt) &&
+    isZero(entry.pricing.completion)
   );
 }
 

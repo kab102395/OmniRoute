@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { discoverOpenRouterFreeModels } from "../../src/lib/catalog/openrouterFreeModels.ts";
 
-test("discoverOpenRouterFreeModels keeps zero-priced and :free models", () => {
+test("discoverOpenRouterFreeModels requires explicit zero prices, regardless of model suffix", () => {
   const models = discoverOpenRouterFreeModels(
     [
       {
@@ -17,6 +17,7 @@ test("discoverOpenRouterFreeModels keeps zero-priced and :free models", () => {
         id: "provider/suffix:free",
         pricing: { prompt: "0.000001", completion: "0.000002" },
       },
+      { id: "provider/unpriced:free" },
       {
         id: "provider/paid",
         pricing: { prompt: "0.000001", completion: "0.000002" },
@@ -27,12 +28,12 @@ test("discoverOpenRouterFreeModels keeps zero-priced and :free models", () => {
 
   assert.deepEqual(
     models.map((model) => model.modelId),
-    ["provider/suffix:free", "provider/zero-priced"]
+    ["provider/zero-priced"]
   );
-  assert.equal(models[1]?.poolKey, "openrouter-free");
-  assert.equal(models[1]?.supportsTools, true);
-  assert.equal(models[1]?.supportsReasoning, true);
-  assert.equal(models[1]?.lastSeenAt, "2026-09-11T00:00:00.000Z");
+  assert.equal(models[0]?.poolKey, "openrouter-free");
+  assert.equal(models[0]?.supportsTools, true);
+  assert.equal(models[0]?.supportsReasoning, true);
+  assert.equal(models[0]?.lastSeenAt, "2026-09-11T00:00:00.000Z");
 });
 
 test("discoverOpenRouterFreeModels deduplicates ids and supplies safe defaults", () => {
