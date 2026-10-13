@@ -1331,7 +1331,11 @@ test("BaseExecutor.execute returns response metadata and merges headers", async 
     captured = { url, options };
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-OpenRouter-Generation-Id": "gen-test-123",
+        "Set-Cookie": "session-secret=do-not-copy",
+      },
     });
   };
 
@@ -1364,6 +1368,8 @@ test("BaseExecutor.execute returns response metadata and merges headers", async 
     const executionAttempts = "executionAttempts" in result ? result.executionAttempts : undefined;
     assert.equal(executionAttempts?.length, 1);
     assert.equal(executionAttempts?.[0].statusCode, 200);
+    assert.equal(executionAttempts?.[0].providerRequestId, "gen-test-123");
+    assert.equal(JSON.stringify(executionAttempts).includes("session-secret"), false);
     assert.equal("url" in (executionAttempts?.[0] ?? {}), false);
   } finally {
     globalThis.fetch = originalFetch;
@@ -1380,7 +1386,10 @@ test("BaseExecutor.execute records each retry without persisting its URL", async
   BaseExecutor.RETRY_CONFIG.delayMs = 0;
   globalThis.fetch = async () => {
     calls += 1;
-    return new Response("{}", { status: calls === 1 ? 429 : 200 });
+    return new Response("{}", {
+      status: calls === 1 ? 429 : 200,
+      headers: calls === 1 ? { "x-request-id": "provider-failed-attempt" } : {},
+    });
   };
 
   try {
@@ -1393,15 +1402,21 @@ test("BaseExecutor.execute records each retry without persisting its URL", async
     assert.equal(calls, 2);
     assert.deepEqual(
       ("executionAttempts" in result ? result.executionAttempts : undefined)?.map(
-        ({ index, statusCode, outcome }) => ({
+        ({ index, statusCode, outcome, providerRequestId }) => ({
           index,
           statusCode,
           outcome,
+          providerRequestId,
         })
       ),
       [
-        { index: 1, statusCode: 429, outcome: "response" },
-        { index: 2, statusCode: 200, outcome: "response" },
+        {
+          index: 1,
+          statusCode: 429,
+          outcome: "response",
+          providerRequestId: "provider-failed-attempt",
+        },
+        { index: 2, statusCode: 200, outcome: "response", providerRequestId: undefined },
       ]
     );
     const executionAttempts = "executionAttempts" in result ? result.executionAttempts : [];

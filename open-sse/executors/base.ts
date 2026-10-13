@@ -327,11 +327,29 @@ export type ExecutorAttemptSummary = {
   startedAt?: string;
   durationMs?: number;
   statusCode: number | null;
+  providerRequestId?: string;
   outcome: "response" | "network_error";
   costAttribution: "unknown";
   attemptSource: "executor_reported" | "wrapper_observed";
   routeLeg?: "native" | "proxy_fallback";
 };
+
+const PROVIDER_REQUEST_ID_HEADERS = [
+  "x-openrouter-generation-id",
+  "x-request-id",
+  "request-id",
+  "x-amzn-requestid",
+  "x-goog-request-id",
+  "x-ms-request-id",
+] as const;
+
+function readProviderRequestId(headers: Headers): string | undefined {
+  for (const name of PROVIDER_REQUEST_ID_HEADERS) {
+    const value = headers.get(name)?.trim();
+    if (value && value.length <= 256 && !/[\u0000-\u001f\u007f]/.test(value)) return value;
+  }
+  return undefined;
+}
 
 export class BaseExecutor {
   provider: string;
@@ -989,6 +1007,7 @@ export class BaseExecutor {
             attempt.durationMs = Math.max(0, Date.now() - startedMs);
             attempt.statusCode = response.status;
             attempt.outcome = "response";
+            attempt.providerRequestId = readProviderRequestId(response.headers);
             return response;
           } finally {
             attempt.durationMs = Math.max(0, Date.now() - startedMs);
