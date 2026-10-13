@@ -27,6 +27,7 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
     schemas: {
       Model: {
         properties: {
+          [name: string]: unknown;
           pricing_provenance: {
             properties: { state: { enum: string[] } };
           };
@@ -68,4 +69,37 @@ test("completion pricing freshness header uses its runtime string representation
     type: "string",
     enum: ["true", "false"],
   });
+});
+
+test("OmniRoute keeps catalog and execution facts needed by external routers", () => {
+  const modelProperties = spec.components.schemas.Model.properties;
+  for (const field of [
+    "pricing_provenance",
+    "capability_status",
+    "free_access",
+    "route_selection",
+    "route_availability",
+    "supported_parameters",
+    "provider_routes",
+    "provider_routes_provenance",
+  ]) {
+    assert.ok(field in modelProperties, `Model schema must preserve ${field}`);
+  }
+
+  const headers = spec.paths["/api/v1/chat/completions"]?.post?.responses?.["200"]?.headers;
+  for (const header of [
+    "X-OmniRoute-Request-Id",
+    "X-OmniRoute-Served-Provider",
+    "X-OmniRoute-Served-Model",
+    "X-OmniRoute-Accounting-Kind",
+    "X-OmniRoute-Response-Cost",
+    "X-OmniRoute-Cost-Source",
+    "X-OmniRoute-Cost-Currency",
+    "X-OmniRoute-Usage-Kind",
+    "X-OmniRoute-Pricing-Retrieved-At",
+    "X-OmniRoute-Pricing-Stale",
+    "X-OmniRoute-Fallback-Attempts",
+  ]) {
+    assert.ok(headers && header in headers, `completion response must document ${header}`);
+  }
 });
