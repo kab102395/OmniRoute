@@ -2605,6 +2605,40 @@ test("chatCore rechecks current OpenRouter tool support before strict dispatch",
   assert.equal(calls[0].body.model, "acme/tool-model:free");
 });
 
+test("chatCore dispatches a current exact OpenRouter free variant when tools are required", async () => {
+  const cachePath = path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json");
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  fs.writeFileSync(
+    cachePath,
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      data: [{ id: "acme/tool-model:free", supported_parameters: ["tools"] }],
+    })
+  );
+
+  const { calls, result } = await invokeChatCore({
+    provider: "openrouter",
+    model: "acme/tool-model:free",
+    body: {
+      model: "openrouter/acme/tool-model:free",
+      stream: false,
+      messages: [{ role: "user", content: "run the requested engineering tool" }],
+      tools: [{ type: "function", function: { name: "inspect" } }],
+      provider: { allow_fallbacks: false },
+    },
+    requestHeaders: {
+      "X-OmniRoute-Require-Zero-Cost": "true",
+      "X-OmniRoute-Require-Tool-Calling": "true",
+      "X-OmniRoute-Strict-Model": "true",
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.model, "acme/tool-model:free");
+  assert.equal(calls[0].body.provider.allow_fallbacks, false);
+});
+
 test("chatCore rejects unknown tool capability before dispatch when required", async () => {
   const { calls, result } = await invokeChatCore({
     provider: "unknown-provider-xyz",
