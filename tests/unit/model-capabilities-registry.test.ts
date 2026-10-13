@@ -217,15 +217,30 @@ test("GPT OSS and DeepSeek Reasoner models support tool calling", () => {
   assert.equal(deepseek.toolCalling, true);
 });
 
-test("native DeepSeek's legacy V4 Pro alias resolves to current multimodal V4.1 Flash", () => {
+test("native DeepSeek V4 Pro stays text-only while V4.1 Flash remains multimodal", () => {
   const registeredPro = deepseekProvider.models?.find((model) => model.id === "deepseek-v4-pro");
   assert.ok(registeredPro);
-  assert.equal(registeredPro.supportsVision, true);
+  assert.equal(registeredPro.name, "DeepSeek V4 Pro");
+  assert.equal(registeredPro.supportsVision, false);
 
   const pro = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-v4-pro");
-  assert.equal(pro.supportsVision, true);
-  assert.ok(pro.modalitiesInput.includes("image"));
+  assert.equal(pro.supportsVision, false);
+  assert.equal(pro.modalitiesInput.includes("image"), false);
   assert.equal(pro.structuredOutput, true);
+
+  modelsDevSync.saveModelsDevCapabilities({
+    deepseek: {
+      "deepseek-v4-pro": buildCapability({
+        attachment: true,
+        modalities_input: JSON.stringify(["text", "image"]),
+      }),
+    },
+  });
+  const proWithStaleVisionMetadata = modelCapabilities.getResolvedModelCapabilities(
+    "deepseek/deepseek-v4-pro"
+  );
+  assert.equal(proWithStaleVisionMetadata.supportsVision, false);
+  assert.equal(proWithStaleVisionMetadata.modalitiesInput.includes("image"), false);
 
   const flash = modelCapabilities.getResolvedModelCapabilities("deepseek/deepseek-flash");
   assert.equal(flash.supportsVision, true);

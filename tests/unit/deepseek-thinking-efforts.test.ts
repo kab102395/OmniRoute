@@ -46,7 +46,7 @@ test("DeepSeek registries declare none/low/high/max on both V4 models", () => {
   }
 });
 
-test("native DeepSeek registry includes current V4.1 Flash alias with documented vision support", () => {
+test("native DeepSeek registry keeps V4 Pro distinct from multimodal V4.1 Flash", () => {
   const models = new Map((REGISTRY.deepseek?.models || []).map((model) => [model.id, model]));
   const current = models.get("deepseek-flash");
   assert.equal(current?.name, "DeepSeek V4.1 Flash");
@@ -54,8 +54,8 @@ test("native DeepSeek registry includes current V4.1 Flash alias with documented
   assert.equal(current?.toolCalling, true);
   assert.equal(models.get("deepseek-v4-flash")?.supportsVision, true);
   assert.equal(models.get("deepseek-v4-pro")?.contextLength, 1_000_000);
-  assert.equal(models.get("deepseek-v4-pro")?.supportsVision, true);
-  assert.match(models.get("deepseek-v4-pro")?.name ?? "", /V4\.1-Flash/);
+  assert.equal(models.get("deepseek-v4-pro")?.supportsVision, false);
+  assert.equal(models.get("deepseek-v4-pro")?.name, "DeepSeek V4 Pro");
 });
 
 test("DeepSeek catalog exposes only the declared effort aliases", async () => {
