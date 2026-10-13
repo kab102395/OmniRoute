@@ -544,6 +544,10 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     pricingProvenance?.source && typeof pricingProvenance.source === "object"
       ? (pricingProvenance.source as JsonRecord)
       : null;
+  const hasCurrentOpenRouterCapabilities =
+    publicProvider === "openrouter" &&
+    pricingSource?.id === "openrouter.models_api" &&
+    pricingSource.stale !== true;
   const hasCurrentOpenRouterContext =
     publicProvider === "openrouter" &&
     pricingSource?.id === "openrouter.models_api" &&
@@ -584,17 +588,38 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
               );
   const openRouterParametersKnown =
     publicProvider === "openrouter" && Array.isArray(entry.supported_parameters);
+  const openRouterModalitiesKnown =
+    publicProvider === "openrouter" && Array.isArray(entry.input_modalities);
+  const openRouterRouteCapabilities =
+    publicProvider === "openrouter"
+      ? {
+          ...(openRouterModalitiesKnown
+            ? { vision: entry.input_modalities.includes("image") }
+            : {}),
+          ...(openRouterParametersKnown
+            ? {
+                tool_calling: entry.supported_parameters.includes("tools"),
+                reasoning:
+                  entry.supported_parameters.includes("reasoning") ||
+                  entry.supported_parameters.includes("include_reasoning"),
+                structured_output:
+                  entry.supported_parameters.includes("structured_outputs") ||
+                  entry.supported_parameters.includes("response_format"),
+              }
+            : {}),
+        }
+      : {};
   const capabilityFields = {
-    ...(typeof metadata.capabilities.vision === "boolean"
-      ? { vision: metadata.capabilities.vision }
-      : {}),
+    ...(publicProvider === "openrouter"
+      ? openRouterRouteCapabilities
+      : typeof metadata.capabilities.vision === "boolean"
+        ? { vision: metadata.capabilities.vision }
+        : {}),
     // #8016: never invent chat tool/reasoning defaults onto specialty surfaces.
     // Only copy boolean true when authoritative metadata says so; specialty rows
     // default to false instead of optimistic chat heuristics.
     ...(publicProvider === "openrouter"
-      ? openRouterParametersKnown
-        ? { tool_calling: entry.supported_parameters.includes("tools") }
-        : {}
+      ? {}
       : {
           tool_calling: specialtySurface
             ? metadata.capabilities.supportsTools === true ||
@@ -603,18 +628,24 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
               : false
             : metadata.capabilities.toolCalling,
         }),
-    reasoning: specialtySurface
-      ? metadata.capabilities.supportsThinking === true || metadata.capabilities.reasoning === true
-        ? true
-        : false
-      : metadata.capabilities.reasoning,
+    ...(publicProvider === "openrouter"
+      ? {}
+      : {
+          reasoning: specialtySurface
+            ? metadata.capabilities.supportsThinking === true ||
+              metadata.capabilities.reasoning === true
+              ? true
+              : false
+            : metadata.capabilities.reasoning,
+        }),
     // #6241: surface thinking support + the canonical effort tiers so the frontend can
     // render the effort/thinking toggles. `thinking` is kept for back-compat; `supportsThinking`
     // is the explicit flag and `effort_tiers` lists the selectable reasoning levels
     // (only when the model actually supports thinking). An explicit empty registry list
     // is authoritative; GLM models also require a provider-declared contract instead of
     // inheriting generic OpenAI effort tiers.
-    ...(typeof metadata.capabilities.supportsThinking === "boolean"
+    ...(publicProvider !== "openrouter" &&
+    typeof metadata.capabilities.supportsThinking === "boolean"
       ? {
           thinking: metadata.capabilities.supportsThinking,
           supportsThinking: metadata.capabilities.supportsThinking,
@@ -623,22 +654,35 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
             : {}),
         }
       : {}),
-    ...(typeof metadata.capabilities.attachment === "boolean"
+    ...(publicProvider !== "openrouter" && typeof metadata.capabilities.attachment === "boolean"
       ? { attachment: metadata.capabilities.attachment }
       : {}),
-    ...(typeof metadata.capabilities.structuredOutput === "boolean"
+    ...(publicProvider !== "openrouter" &&
+    typeof metadata.capabilities.structuredOutput === "boolean"
       ? { structured_output: metadata.capabilities.structuredOutput }
       : {}),
-    ...(typeof metadata.capabilities.temperature === "boolean"
+    ...(publicProvider !== "openrouter" && typeof metadata.capabilities.temperature === "boolean"
       ? { temperature: metadata.capabilities.temperature }
       : {}),
   };
 
   const existingCapabilitiesForMerge = { ...existingCapabilities };
-  if (publicProvider === "openrouter" && !openRouterParametersKnown) {
-    // A canonical model's generic tool support does not prove that this exact
-    // OpenRouter route exposes tools. Drop any stale/synchronized boolean too.
-    delete existingCapabilitiesForMerge.tool_calling;
+  if (hasCurrentOpenRouterCapabilities) {
+    // Canonical and previously synchronized capabilities do not prove that this
+    // exact OpenRouter route exposes them. Rebuild from current route metadata.
+    for (const key of [
+      "vision",
+      "tool_calling",
+      "reasoning",
+      "structured_output",
+      "temperature",
+      "thinking",
+      "supportsThinking",
+      "effort_tiers",
+      "attachment",
+    ]) {
+      delete existingCapabilitiesForMerge[key];
+    }
   }
   nextEntry.capabilities = {
     ...existingCapabilitiesForMerge,
@@ -669,12 +713,25 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     },
   };
 
-  if (!Array.isArray(entry.input_modalities) && metadata.modalities.input.length > 0) {
+  if (
+    publicProvider !== "openrouter" &&
+    !Array.isArray(entry.input_modalities) &&
+    metadata.modalities.input.length > 0
+  ) {
     nextEntry.input_modalities = metadata.modalities.input;
   }
 
-  if (!Array.isArray(entry.output_modalities) && metadata.modalities.output.length > 0) {
+  if (
+    publicProvider !== "openrouter" &&
+    !Array.isArray(entry.output_modalities) &&
+    metadata.modalities.output.length > 0
+  ) {
     nextEntry.output_modalities = metadata.modalities.output;
+  }
+
+  if (hasCurrentOpenRouterCapabilities) {
+    if (!Array.isArray(entry.input_modalities)) delete nextEntry.input_modalities;
+    if (!Array.isArray(entry.output_modalities)) delete nextEntry.output_modalities;
   }
 
   if (

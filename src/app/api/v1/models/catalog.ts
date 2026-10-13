@@ -1479,7 +1479,7 @@ async function buildUnifiedModelsResponseCore(
           const legacyPricing = toOpenRouterLegacyTokenPricing(pricingEvidence);
           const capabilities = getOpenRouterModelCapabilities(openRouterModel);
 
-          const liveModel = {
+          const liveModel: Record<string, unknown> = {
             ...(existingIndex >= 0 ? models[existingIndex] : {}),
             id: qualifiedId,
             object: "model",
@@ -1519,6 +1519,15 @@ async function buildUnifiedModelsResponseCore(
               : {}),
             ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
           };
+          // A synchronized copy is not a source of current route capabilities.
+          // Clear omitted upstream fields so stale values cannot survive the
+          // live metadata merge and appear authoritative in the unified catalog.
+          if (!Array.isArray(openRouterModel.supported_parameters)) {
+            delete liveModel.supported_parameters;
+          }
+          if (Object.keys(capabilities).length === 0) delete liveModel.capabilities;
+          if (inputModalities.length === 0) delete liveModel.input_modalities;
+          if (outputModalities.length === 0) delete liveModel.output_modalities;
           if (existingIndex >= 0) models[existingIndex] = liveModel;
           else models.push(liveModel);
 

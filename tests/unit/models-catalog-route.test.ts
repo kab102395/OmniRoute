@@ -826,6 +826,62 @@ test("current OpenRouter paid metadata refreshes matching synchronized route ide
   }
 });
 
+test("current OpenRouter metadata does not retain capabilities from a synchronized route", async () => {
+  const connection = await seedConnection("openrouter");
+  await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [
+    {
+      id: "anthropic/claude-3.5-sonnet",
+      name: "Synced Claude route",
+      source: "imported",
+      supportsTools: true,
+      supportsVision: true,
+      inputTokenLimit: 200000,
+    },
+  ]);
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "anthropic/claude-3.5-sonnet",
+            name: "Current Claude route",
+            context_length: 200000,
+            pricing: { prompt: "0.000003", completion: "0.000005" },
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        capabilities?: Record<string, boolean>;
+        capability_status?: { tool_calling?: { status?: string; source?: string } };
+        supported_parameters?: string[];
+        input_modalities?: string[];
+      }>;
+    };
+    const route = body.data.find((model) => model.id === "openrouter/anthropic/claude-3.5-sonnet");
+
+    assert.ok(route);
+    assert.equal(route.capabilities?.tool_calling, undefined);
+    assert.deepEqual(route.capability_status?.tool_calling, {
+      status: "unknown",
+      source: "unknown",
+    });
+    assert.equal(route.capabilities?.vision, undefined);
+    assert.equal(route.supported_parameters, undefined);
+    assert.equal(route.input_modalities, undefined);
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
 test("v1 models preserves Hugging Face provider-level capability and pricing facts with freshness", async () => {
   const connection = await seedConnection("huggingface");
   await modelsDb.replaceSyncedAvailableModelsForConnection("huggingface", connection.id as string, [

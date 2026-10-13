@@ -20,6 +20,7 @@ const providersDb = await import("../../src/lib/db/providers.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const modelDiscovery = await import("../../src/lib/providerModels/modelDiscovery.ts");
 const v1ModelsCatalog = await import("../../src/app/api/v1/models/catalog.ts");
+const REAL_FETCH = globalThis.fetch;
 
 async function resetStorage() {
   core.resetDbInstance();
@@ -101,21 +102,30 @@ test("#4264 synced OpenRouter vision model surfaces capabilities.vision in /v1/m
     },
   ]);
 
-  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
-    new Request("http://localhost/api/v1/models")
-  );
-  assert.equal(response.status, 200);
-  const body = (await response.json()) as any;
+  globalThis.fetch = (async () => {
+    throw new Error("OpenRouter catalog unavailable for this synchronized-catalog test");
+  }) as typeof fetch;
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/api/v1/models")
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as any;
 
-  const visionModel = body.data.find((m: any) => String(m.id).endsWith("nex-agi/nex-n2-pro:free"));
-  assert.ok(visionModel, `expected the synced vision model in the catalog`);
-  // RED before the fix: synced models carried no capabilities at all.
-  assert.equal(visionModel.capabilities?.vision, true);
+    const visionModel = body.data.find((m: any) =>
+      String(m.id).endsWith("nex-agi/nex-n2-pro:free")
+    );
+    assert.ok(visionModel, `expected the synced vision model in the catalog`);
+    // RED before the fix: synced models carried no capabilities at all.
+    assert.equal(visionModel.capabilities?.vision, true);
 
-  const textModel = body.data.find((m: any) => String(m.id).endsWith("some/text-only-model"));
-  assert.ok(textModel, `expected the synced text-only model in the catalog`);
-  assert.ok(
-    !textModel.capabilities || textModel.capabilities.vision !== true,
-    `text-only model must not be marked vision-capable`
-  );
+    const textModel = body.data.find((m: any) => String(m.id).endsWith("some/text-only-model"));
+    assert.ok(textModel, `expected the synced text-only model in the catalog`);
+    assert.ok(
+      !textModel.capabilities || textModel.capabilities.vision !== true,
+      `text-only model must not be marked vision-capable`
+    );
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
 });
