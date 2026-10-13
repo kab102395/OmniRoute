@@ -7,6 +7,7 @@ import path from "node:path";
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-stream-utils-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
+const settingsDb = await import("../../src/lib/db/settings.ts");
 
 const { createSSEStream, createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } =
   await import("../../open-sse/utils/stream.ts");
@@ -154,6 +155,53 @@ test.after(() => {
         retryDelay: 100,
       });
     }
+  }
+});
+
+test("final SSE accounting includes pricing metadata and retry-scaled request charges", async () => {
+  const previousCommentsSetting = process.env.OMNIROUTE_SSE_COMMENTS;
+  process.env.OMNIROUTE_SSE_COMMENTS = "on";
+  await settingsDb.updatePricing({
+    stream_receipt_test: { "receipt-model": { input: 0, output: 0, request: 0.25 } },
+  });
+
+  try {
+    const text = await readTransformed(
+      [
+        `data: ${JSON.stringify({
+          id: "chatcmpl-stream-receipt",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: "receipt-model",
+          choices: [{ index: 0, delta: { content: "done" } }],
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          id: "chatcmpl-stream-receipt",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: "receipt-model",
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 5, completion_tokens: 1 },
+        })}\n\n`,
+        "data: [DONE]\n\n",
+      ],
+      {
+        mode: "passthrough",
+        sourceFormat: FORMATS.OPENAI,
+        provider: "stream_receipt_test",
+        model: "receipt-model",
+        requestCount: 3,
+        serviceTier: "standard",
+      }
+    );
+
+    assert.match(text, /: x-omniroute-response-cost=0\.7500000000/);
+    assert.match(text, /: x-omniroute-accounting-kind=estimated_cost/);
+    assert.match(text, /: x-omniroute-cost-source=omniroute\.user_pricing/);
+  } finally {
+    await settingsDb.resetPricing("stream_receipt_test");
+    if (previousCommentsSetting === undefined) delete process.env.OMNIROUTE_SSE_COMMENTS;
+    else process.env.OMNIROUTE_SSE_COMMENTS = previousCommentsSetting;
   }
 });
 

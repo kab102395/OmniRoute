@@ -27,7 +27,7 @@ import {
   injectThinkingSignature,
 } from "./streamHelpers.ts";
 import { rejectEmptyChoicesStream, buildEmptyChoicesStreamError } from "./streamEmptyChoices.ts";
-import { calculateCost } from "@/lib/usage/costCalculator";
+import { calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import { classifyCostAccounting } from "@/lib/usage/costAccounting";
 import { buildOmniRouteSseMetadataComment } from "@/domain/omnirouteResponseMeta";
 import { sseCommentsEnabled } from "./sseHeartbeat.ts";
@@ -170,6 +170,10 @@ type StreamOptions = {
   connectionId?: string | null;
   apiKeyInfo?: unknown;
   body?: unknown;
+  /** Pricing context for the final SSE accounting comment. */
+  serviceTier?: string | null;
+  /** Upstream dispatches represented by the completed response, including retries. */
+  requestCount?: number;
   onComplete?: ((payload: StreamCompletePayload) => void) | null;
   onFailure?: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null;
   /**
@@ -663,6 +667,8 @@ export function createSSEStream(options: StreamOptions = {}) {
     connectionId = null,
     apiKeyInfo = null,
     body = null,
+    serviceTier,
+    requestCount = 1,
     onComplete = null,
     onFailure = null,
     dropResponsesCommentary,
@@ -1082,10 +1088,14 @@ export function createSSEStream(options: StreamOptions = {}) {
     // JSON.parse every SSE line will crash on `: x-omniroute-*` comment lines.
     if (!sseCommentsEnabled()) return;
 
-    const costUsd = finalUsage
-      ? await calculateCost(provider, model, normalizeTokenUsage(finalUsage))
-      : 0;
     const normalizedUsage = normalizeTokenUsage(finalUsage);
+    const costAssessment = finalUsage
+      ? await calculateCostWithEvidence(provider, model, normalizedUsage, {
+          serviceTier,
+          requestCount,
+        })
+      : { costUsd: 0, costKnown: false, pricingEvidence: null };
+    const costUsd = costAssessment.costUsd;
     const usageForAccounting =
       normalizedUsage &&
       typeof finalUsage === "object" &&
@@ -1098,6 +1108,8 @@ export function createSSEStream(options: StreamOptions = {}) {
       model,
       usage: usageForAccounting,
       calculatedCostUsd: costUsd,
+      calculatedCostKnown: costAssessment.costKnown,
+      pricingEvidence: costAssessment.pricingEvidence ?? undefined,
     });
     const comment = buildOmniRouteSseMetadataComment({
       provider,
@@ -3046,7 +3058,8 @@ export function createSSETransformStreamWithLogger(
   copilotCompatibleReasoning = false,
   suppressThinkClose = false,
   customToolNames: ReadonlySet<string> = new Set(),
-  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null
+  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
+  costContext: { serviceTier?: string | null; requestCount?: number } = {}
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -3059,6 +3072,7 @@ export function createSSETransformStreamWithLogger(
     connectionId,
     apiKeyInfo,
     body,
+    ...costContext,
     onComplete,
     onFailure,
     copilotCompatibleReasoning,
@@ -3079,7 +3093,8 @@ export function createPassthroughStreamWithLogger(
   apiKeyInfo: unknown = null,
   onFailure: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null = null,
   clientResponseFormat: string | null = null,
-  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null
+  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
+  costContext: { serviceTier?: string | null; requestCount?: number } = {}
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
@@ -3090,6 +3105,7 @@ export function createPassthroughStreamWithLogger(
     connectionId,
     apiKeyInfo,
     body,
+    ...costContext,
     onComplete,
     onFailure,
     clientResponseFormat,
