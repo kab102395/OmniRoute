@@ -45,9 +45,19 @@ test("normalizeExecutorResult wraps bare Response and passes through rich result
   const wrapped = normalizeExecutorResult(r);
   assert.equal(wrapped.response, r);
   assert.equal(wrapped.url, "");
+  assert.deepEqual(wrapped.executionAttempts, [
+    {
+      index: 1,
+      statusCode: r.status,
+      outcome: "response",
+      costAttribution: "unknown",
+      attemptSource: "wrapper_observed",
+    },
+  ]);
   const rich = normalizeExecutorResult({ response: r, url: "u", headers: { a: "b" } });
   assert.equal(rich.url, "u");
   assert.equal(rich.headers.a, "b");
+  assert.equal(rich.executionAttempts[0]?.attemptSource, "wrapper_observed");
   const attempts = normalizeExecutorResult({
     response: r,
     executionAttempts: [

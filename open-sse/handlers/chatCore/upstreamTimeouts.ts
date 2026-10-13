@@ -204,8 +204,23 @@ export function normalizeExecutorResult(result: unknown): {
     routeLeg?: "native" | "proxy_fallback";
   }>;
 } {
+  const observedResponseAttempt = (response: Response) => [
+    {
+      index: 1,
+      statusCode: response.status,
+      outcome: "response" as const,
+      costAttribution: "unknown" as const,
+      attemptSource: "wrapper_observed" as const,
+    },
+  ];
   if (isResponseLike(result)) {
-    return { response: result, url: "", headers: {}, transformedBody: null, executionAttempts: [] };
+    return {
+      response: result,
+      url: "",
+      headers: {},
+      transformedBody: null,
+      executionAttempts: observedResponseAttempt(result),
+    };
   }
   if (
     !result ||
@@ -239,9 +254,10 @@ export function normalizeExecutorResult(result: unknown): {
     headers: normalized.headers || {},
     transformedBody: normalized.transformedBody ?? null,
     transport: normalized.transport,
-    executionAttempts: Array.isArray(normalized.executionAttempts)
-      ? normalized.executionAttempts
-      : [],
+    executionAttempts:
+      Array.isArray(normalized.executionAttempts) && normalized.executionAttempts.length > 0
+        ? normalized.executionAttempts
+        : observedResponseAttempt(normalized.response),
   };
 }
 
