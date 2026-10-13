@@ -331,6 +331,7 @@ test("catalogOpenrouter: pricing evidence retains cache, reasoning, modality, an
         internal_reasoning: "0.000002",
         audio: "0.00001",
         audio_output: "0.00002",
+        video: "0.00003",
         web_search: "0.01",
         discount: 0.1,
         overrides: [{ min_prompt_tokens: 100000, prompt: "0.000003" }],
@@ -345,6 +346,7 @@ test("catalogOpenrouter: pricing evidence retains cache, reasoning, modality, an
   assert.equal(evidence.rates.internalReasoningPerTokenUsd, "0.000002");
   assert.equal(evidence.rates.audioInputPerTokenUsd, "0.00001");
   assert.equal(evidence.rates.audioOutputPerTokenUsd, "0.00002");
+  assert.equal(evidence.rates.videoReportedUsd, "0.00003");
   assert.equal(evidence.rates.webSearchReportedUsd, "0.01");
   assert.equal(evidence.discountReported, 0.1);
   assert.deepEqual(evidence.overrides, [{ min_prompt_tokens: 100000, prompt: "0.000003" }]);
@@ -356,6 +358,7 @@ test("catalogOpenrouter: pricing evidence retains cache, reasoning, modality, an
     internal_reasoning: "0.000002",
     audio: "0.00001",
     audio_output: "0.00002",
+    video: "0.00003",
     web_search: "0.01",
     discount: 0.1,
     overrides: [{ min_prompt_tokens: 100000, prompt: "0.000003" }],

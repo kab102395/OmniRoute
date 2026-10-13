@@ -15282,6 +15282,9 @@ components:
                 requestReportedUsd:
                   type: string
                   nullable: true
+                videoReportedUsd:
+                  type: string
+                  nullable: true
                 audioInputPerTokenUsd:
                   type: string
                   nullable: true

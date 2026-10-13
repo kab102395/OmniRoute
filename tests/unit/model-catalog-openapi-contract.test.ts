@@ -29,7 +29,10 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
         properties: {
           [name: string]: unknown;
           pricing_provenance: {
-            properties: { state: { enum: string[] } };
+            properties: {
+              state: { enum: string[] };
+              rates: { properties: { videoReportedUsd?: { type: string; nullable?: boolean } } };
+            };
           };
           route_selection: {
             description: string;
@@ -69,6 +72,12 @@ test("model catalog OpenAPI covers every pricing provenance state emitted by Omn
     new Set(MODEL_PRICING_PROVENANCE_STATES),
     "OpenAPI and the runtime pricing provenance contract must contain the same states"
   );
+});
+
+test("model catalog OpenAPI includes every emitted OpenRouter modality price dimension", () => {
+  const rates =
+    spec.components.schemas.Model.properties.pricing_provenance.properties.rates.properties;
+  assert.deepEqual(rates.videoReportedUsd, { type: "string", nullable: true });
 });
 
 test("model catalog OpenAPI documents the implemented routing filters", () => {
