@@ -82,8 +82,7 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
   for (const model of models) {
     const id = typeof model.id === "string" ? model.id : "";
     const sourceModelId = id.replace(/^openrouter\//, "");
-    const isOpenRouterFreeRow =
-      model.owned_by === "openrouter" && model.free === true && isOpenRouterFreeModel({ id });
+    const isOpenRouterFreeRow = model.owned_by === "openrouter" && isOpenRouterFreeModel({ id });
     const isCurrentFreeRoute = currentRouteIds.has(id) || currentRouteIds.has(sourceModelId);
     if (!isOpenRouterFreeRow || (!options.stale && isCurrentFreeRoute)) {
       result.push(model);
@@ -92,10 +91,18 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
     if (options.hidePaid) continue;
 
     const oldPricing = model.pricing_provenance;
+    const oldLegacyPricing = model.pricing;
+    const hadZeroLegacyPricing =
+      oldLegacyPricing !== null &&
+      typeof oldLegacyPricing === "object" &&
+      (oldLegacyPricing as { input?: unknown }).input === 0 &&
+      (oldLegacyPricing as { output?: unknown }).output === 0;
     const wasCatalogFree =
       oldPricing !== null &&
       typeof oldPricing === "object" &&
-      (oldPricing as { state?: unknown }).state === "free_variant";
+      ((oldPricing as { state?: unknown }).state === "free_variant" ||
+        (oldPricing as { zeroCostEligibility?: unknown }).zeroCostEligibility ===
+          "verified_free_variant");
     const reconciled = {
       ...model,
       free: options.stale ? undefined : false,
@@ -113,7 +120,9 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
         zeroCostEligibility: options.stale ? "unknown_stale_catalog" : "no",
       },
     } as T;
-    if (wasCatalogFree) delete (reconciled as Record<string, unknown>).pricing;
+    if (wasCatalogFree || hadZeroLegacyPricing || model.free === true) {
+      delete (reconciled as Record<string, unknown>).pricing;
+    }
     result.push(reconciled);
   }
   return result;

@@ -323,6 +323,28 @@ test("catalogOpenrouter: synchronized free routes lose eligibility when absent f
     reconcileOpenRouterFreeRoutes([oldRoute], new Set(), { ...options, hidePaid: true }),
     []
   );
+
+  const syncedOldRoute = {
+    id: "openrouter/provider/synced-model:free",
+    owned_by: "openrouter",
+    pricing: { input: 0, output: 0 },
+  };
+  const reconciledSyncedRoute = reconcileOpenRouterFreeRoutes(
+    [syncedOldRoute],
+    new Set(),
+    options
+  )[0];
+  assert.equal(reconciledSyncedRoute?.free, false);
+  assert.equal(reconciledSyncedRoute?.pricing, undefined);
+  assert.equal(
+    (reconciledSyncedRoute?.pricing_provenance as { state?: string })?.state,
+    "not_in_current_free_catalog"
+  );
+  assert.deepEqual(
+    reconcileOpenRouterFreeRoutes([syncedOldRoute], new Set(), { ...options, hidePaid: true }),
+    [],
+    "hide-paid mode must not retain an old synced :free route after it leaves the live list"
+  );
 });
 
 test("catalogVision: re-exports isVisionModelId and derives capability fields", () => {

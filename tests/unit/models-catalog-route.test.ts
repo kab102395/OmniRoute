@@ -627,6 +627,37 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
   }
 });
 
+test("v1 models removes a retired synchronized OpenRouter free route in free-only mode", async () => {
+  const connection = await seedConnection("openrouter");
+  await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [
+    { id: "vendor/retired:free", name: "Retired free route", source: "imported" },
+  ]);
+  await settingsDb.updateSettings({ hidePaidModels: true });
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ data: [{ id: "vendor/current:free", supported_parameters: ["tools"] }] }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as { data: Array<{ id: string; free?: boolean }> };
+    assert.equal(response.status, 200);
+    assert.equal(
+      body.data.some((model) => model.id === "openrouter/vendor/retired:free"),
+      false
+    );
+    assert.equal(
+      body.data.find((model) => model.id === "openrouter/vendor/current:free")?.free,
+      true
+    );
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
 test("v1 models catalog does not final-enrich combo names as real models", async () => {
   await combosDb.createCombo({
     name: "gpt-5.5",
