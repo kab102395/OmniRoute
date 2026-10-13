@@ -33,9 +33,9 @@ import { AI_MODELS } from "@/shared/constants/models";
  * considered free when its provider-specific caller attaches an authoritative
  * `isFree` classification, both prompt and completion prices are explicitly
  * zero, or its id is listed in the curated free model catalog. OpenRouter is
- * the exception: its route-level free catalog rotates, so static budget-catalog
- * membership is never sufficient for eligibility. Route naming alone is not
- * pricing evidence.
+ * the exception: its route-level free catalog rotates, so callers must attach
+ * `verifiedFreeRoute` from the current catalog. Persisted flags, prices, static
+ * budget membership, or route naming alone are not current eligibility.
  *
  * The catalog also records the regime of every entry via `freeType`
  * (`FreeModelFreeType`). A regime can retire a free tier behind a paid key
@@ -88,10 +88,22 @@ export interface FreeModelCandidate {
     request?: string | number | null;
   };
   isFree?: boolean;
+  /**
+   * Exact-route free membership from a fresh authoritative provider catalog.
+   * OpenRouter routes rotate; its historical `isFree` flags and prices are not
+   * sufficient to keep a route eligible after it disappears from that catalog.
+   */
+  verifiedFreeRoute?: boolean;
 }
 
 /** Whether a single fetched model qualifies as free for the given provider (id or alias). */
 export function isFreeModel(provider: string, model: FreeModelCandidate): boolean {
+  const canonical = resolveProviderId(provider);
+  // OpenRouter's free offer is an exact, rotating route catalog. Do this check
+  // before generic flags/prices so synchronized or user-provided old metadata
+  // cannot preserve eligibility after the route leaves the current offering.
+  if (canonical === "openrouter") return model.verifiedFreeRoute === true;
+
   if (model.isFree === true) return true;
   if (
     isZeroPrice(model.pricing?.prompt) &&
@@ -102,10 +114,6 @@ export function isFreeModel(provider: string, model: FreeModelCandidate): boolea
     return true;
   }
   if (typeof model.id === "string") {
-    const canonical = resolveProviderId(provider);
-    // OpenRouter free variants rotate upstream. Only a caller with current catalog evidence may
-    // attach isFree=true; a historical budget row must not preserve route eligibility forever.
-    if (canonical === "openrouter") return false;
     if (
       FREE_MODEL_IDS_BY_PROVIDER.get(provider)?.has(model.id) ||
       FREE_MODEL_IDS_BY_PROVIDER.get(canonical)?.has(model.id)
@@ -182,6 +190,9 @@ export function isPaidModelTarget(value: string): PaidModelTargetVerdict {
   const [provider, ...rest] = value.split(separator);
   const model = rest.join(separator);
   if (!provider || !model) return "unknown";
+  // This helper has no live route catalog. OpenRouter membership rotates, so
+  // a shipped route list or exact model string cannot establish current status.
+  if (resolveProviderId(provider) === "openrouter") return model === "free" ? "free" : "unknown";
   if (!providerHasFreeModels(provider)) return "unknown";
   return isFreeModel(provider, { id: model }) ? "free" : "paid";
 }
@@ -206,6 +217,9 @@ export function matchesOnlyPaidModels(pattern: string): boolean {
     const fullId = `${m.provider}/${m.model}`;
     if (!regex.test(fullId)) continue;
     matched = true;
+    // A static OpenRouter budget entry cannot establish that the exact route is
+    // still in the current free catalog. Do not label such a pattern paid-only.
+    if (resolveProviderId(m.provider) === "openrouter") return false;
     if (isFreeModel(m.provider, { id: m.model })) return false;
   }
   return matched;

@@ -35,16 +35,33 @@ test("isFreeModel: OpenRouter needs current classification; route suffix alone i
     "a stale OpenRouter budget-catalog row cannot keep a rotated route eligible"
   );
   assert.equal(
-    isFreeModel("openrouter", { id: "deepseek/deepseek-r1:free", isFree: true }),
+    isFreeModel("openrouter", {
+      id: "deepseek/deepseek-r1:free",
+      verifiedFreeRoute: true,
+    }),
     true,
-    "a fresh provider catalog caller can attach authoritative free classification"
+    "a fresh provider catalog caller can attach authoritative exact-route classification"
   );
 });
 
-test("isFreeModel: zero prompt+completion price is free", () => {
+test("isFreeModel: old OpenRouter flags and zero prices do not survive without current route evidence", () => {
   assert.equal(
     isFreeModel("openrouter", { id: "x/y", pricing: { prompt: "0", completion: "0" } }),
-    true
+    false
+  );
+  assert.equal(
+    isFreeModel("openrouter", { id: "x/y", isFree: true }),
+    false,
+    "a persisted isFree flag is not current OpenRouter catalog evidence"
+  );
+  assert.equal(
+    isFreeModel("openrouter", {
+      id: "x/y",
+      pricing: { prompt: "0", completion: "0" },
+      verifiedFreeRoute: true,
+    }),
+    true,
+    "current exact-route evidence can classify an explicitly zero-priced route"
   );
 });
 
@@ -80,9 +97,9 @@ test("selectModelsForImport: passthrough when importFreeOnly is false", () => {
 
 test("selectModelsForImport: keeps only free models when importFreeOnly is true", () => {
   const models = [
-    { id: "free-one:free", isFree: true },
+    { id: "free-one:free", verifiedFreeRoute: true },
     { id: "paid-one", pricing: { prompt: "0.01", completion: "0.02" } },
-    { id: "free-two", pricing: { prompt: "0", completion: "0" } },
+    { id: "free-two", pricing: { prompt: "0", completion: "0" }, verifiedFreeRoute: true },
   ];
   const result = selectModelsForImport("openrouter", models, true);
   assert.deepEqual(

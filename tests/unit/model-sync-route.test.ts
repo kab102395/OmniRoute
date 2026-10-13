@@ -175,6 +175,11 @@ test("OpenRouter free-only sync imports current exact free routes without redund
       models: [
         { id: "vendor/coder:free", name: "Vendor Coder Free" },
         {
+          id: "vendor/zero-priced-current-route",
+          name: "Vendor Zero-Priced Current Route",
+          pricing: { prompt: "0", completion: "0" },
+        },
+        {
           id: "vendor/coder",
           name: "Vendor Coder Paid",
           pricing: { prompt: "0.000001", completion: "0.000002" },
@@ -195,8 +200,8 @@ test("OpenRouter free-only sync imports current exact free routes without redund
   const synced = await modelsDb.getSyncedAvailableModelsForConnection("openrouter", connection.id);
   assert.deepEqual(
     synced.map((model) => model.id),
-    ["vendor/coder:free"],
-    "fresh OpenRouter free variants must be importable without a numeric-zero pricing field"
+    ["vendor/coder:free", "vendor/zero-priced-current-route"],
+    "fresh OpenRouter free routes must be imported by exact catalog membership or authoritative zero pricing"
   );
 });
 

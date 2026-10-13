@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isPaidModelTarget, matchesOnlyPaidModels } from "@/shared/utils/freeModels";
 
-test("isPaidModelTarget — documented free model → 'free'", () => {
-  assert.equal(isPaidModelTarget("openrouter/auto"), "free");
+test("isPaidModelTarget — OpenRouter route status is unknown without its current catalog", () => {
+  assert.equal(isPaidModelTarget("openrouter/free"), "free");
+  assert.equal(isPaidModelTarget("openrouter/auto"), "unknown");
+  assert.equal(isPaidModelTarget("openrouter/vendor/model:free"), "unknown");
 });
 
 test("isPaidModelTarget — provider in free catalog but model not listed free → 'paid'", () => {

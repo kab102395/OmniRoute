@@ -6,7 +6,7 @@ import {
   getSyncedAvailableModelsForConnection,
 } from "@/lib/db/models";
 import { selectModelsForImport } from "@/shared/utils/freeModels";
-import { isOpenRouterFreeRoute } from "@/lib/catalog/openrouterCatalog";
+import { isOpenRouterFreeModel } from "@/app/api/v1/models/catalogOpenrouter";
 import {
   importManagedModels,
   type ManagedModelImportMode,
@@ -609,15 +609,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const allFetchedModels = modelsData.models || [];
     // `selectModelsForImport` is provider-neutral and deliberately does not
     // infer eligibility from a route-looking id. At this boundary, however,
-    // `source === "api"` follows the forced refresh above, so an exact
-    // OpenRouter `:free` id is current upstream catalog evidence even when
-    // redundant numeric pricing fields are absent.
+    // `source === "api"` follows the forced refresh above, so exact-route free
+    // classification from the OpenRouter catalog is current upstream evidence
+    // even when redundant numeric pricing fields are absent. Carry it explicitly
+    // through the provider-neutral import filter; old `isFree`/price metadata on
+    // synchronized rows cannot establish current OpenRouter eligibility.
     const importCandidates =
       logProvider === "openrouter" && modelSource === "api"
         ? allFetchedModels.map((model: unknown) => {
             const record = asRecord(model);
-            const modelId = toNonEmptyString(record.id);
-            return modelId && isOpenRouterFreeRoute(modelId) ? { ...record, isFree: true } : model;
+            return {
+              ...record,
+              verifiedFreeRoute: isOpenRouterFreeModel(
+                record as Parameters<typeof isOpenRouterFreeModel>[0]
+              ),
+            };
           })
         : allFetchedModels;
     const importFreeOnly = Boolean(
