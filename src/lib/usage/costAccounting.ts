@@ -142,6 +142,8 @@ function accountingSource(
       return "omniroute.static_pricing";
     case "deepseek":
       return "deepseek.api_pricing";
+    case "openrouter":
+      return "openrouter.models_api";
     case "mixed":
       return "omniroute.mixed_pricing_sources";
     default:
@@ -282,9 +284,11 @@ export function classifyCostAccounting(args: {
               ? "omniroute.static_pricing"
               : pricingSource === "deepseek"
                 ? "deepseek.api_pricing"
-                : pricingSource === "mixed"
-                  ? "omniroute.mixed_pricing_sources"
-                  : "omniroute_local_pricing_table";
+                : pricingSource === "openrouter"
+                  ? "openrouter.models_api"
+                  : pricingSource === "mixed"
+                    ? "omniroute.mixed_pricing_sources"
+                    : "omniroute_local_pricing_table";
     return {
       kind: "estimated_cost",
       amountUsd: calculatedCostUsd,

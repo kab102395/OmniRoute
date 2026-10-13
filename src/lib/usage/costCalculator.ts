@@ -43,7 +43,7 @@ export type CostCalculationOptions = {
 };
 
 export type CostPricingEvidence = {
-  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | "mixed" | null;
+  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | "openrouter" | "mixed" | null;
   modelId: string | null;
   retrievedAt: string | null;
   ttlMs: number | null;
@@ -53,7 +53,7 @@ export type CostPricingEvidence = {
   rateSources?: Record<
     string,
     {
-      source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | null;
+      source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | "openrouter" | null;
       retrievedAt: string | null;
       ttlMs: number | null;
       stale: boolean | null;
@@ -262,7 +262,7 @@ export async function calculateCost(
 }
 
 export function buildCostPricingEvidence(
-  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | null,
+  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | "openrouter" | "mixed" | null,
   modelId: string | null,
   retrievedAt: string | null,
   ttlMs: number | null,
@@ -306,8 +306,18 @@ export async function calculateCostWithEvidence(
   try {
     const { getPricingForModelWithSource } = await import("@/lib/db/settings");
 
+    type ResolvedCostPricing = {
+      providerKey: string;
+      modelKey: string;
+      pricing: unknown;
+      source: CostPricingEvidence["source"];
+      rateSources?: Record<string, CostPricingEvidence["source"]>;
+    };
     // Try exact match first, then normalized model name
-    let resolvedPricing = await getPricingForModelWithSource(provider, model);
+    let resolvedPricing: ResolvedCostPricing | null = await getPricingForModelWithSource(
+      provider,
+      model
+    );
     if (!resolvedPricing) {
       const normalized = normalizeModelName(model);
       if (normalized !== model) {
@@ -321,7 +331,103 @@ export async function calculateCostWithEvidence(
         }
       }
     }
-    if (!resolvedPricing) return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
+    let openRouterEvidence:
+      | {
+          modelId: string;
+          pricing: Record<string, unknown>;
+          retrievedAt: string | null;
+          ttlMs: number;
+          stale: boolean;
+          conditional: boolean;
+          freeVariant: boolean;
+        }
+      | undefined;
+    if (normalizeServiceTier(provider) === "openrouter") {
+      const { getOpenRouterCatalog, isOpenRouterFreeRouteModel } =
+        await import("@/lib/catalog/openrouterCatalog");
+      const catalog = await getOpenRouterCatalog();
+      const exactRouteId = model.replace(/^openrouter\//, "");
+      const route = catalog.data.find((entry) => entry.id === exactRouteId);
+      if (route) {
+        const routePricing = route.pricing ?? {};
+        const parseRate = (value: unknown): number | null => {
+          if (typeof value === "number") {
+            return Number.isFinite(value) && value >= 0 ? value : null;
+          }
+          if (typeof value !== "string" || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
+            return null;
+          }
+          const parsed = Number(value);
+          return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+        };
+        const perMillion = (value: unknown): number | undefined => {
+          const rate = parseRate(value);
+          if (rate === null) return undefined;
+          const scaled = rate * 1_000_000;
+          return Number.isFinite(scaled) ? Number(scaled.toPrecision(15)) : undefined;
+        };
+        const pricing: Record<string, unknown> = {};
+        const tokenDimensions: Array<[string, unknown]> = [
+          ["input", routePricing.prompt],
+          ["output", routePricing.completion],
+          ["cached", routePricing.input_cache_read],
+          ["cache_creation", routePricing.input_cache_write],
+          ["reasoning", routePricing.internal_reasoning],
+        ];
+        for (const [key, value] of tokenDimensions) {
+          const rate = perMillion(value);
+          if (rate !== undefined) pricing[key] = rate;
+        }
+        const requestRate = parseRate(routePricing.request);
+        if (requestRate !== null) pricing.request = requestRate;
+        const freeVariant = route.id !== "openrouter/free" && isOpenRouterFreeRouteModel(route);
+        if (freeVariant) {
+          // Current exact OpenRouter free-catalog membership is authoritative
+          // for zero-cost inference even when its redundant price fields are
+          // missing or inconsistent. Never apply this to the dynamic router.
+          for (const key of [
+            "input",
+            "output",
+            "cached",
+            "cache_creation",
+            "reasoning",
+            "request",
+          ]) {
+            pricing[key] = 0;
+          }
+        }
+        openRouterEvidence = {
+          modelId: route.id,
+          pricing,
+          retrievedAt: catalog.cachedAt,
+          ttlMs: catalog.cacheTtlMs,
+          stale: catalog.stale,
+          conditional:
+            !freeVariant &&
+            ((Array.isArray(routePricing.overrides) && routePricing.overrides.length > 0) ||
+              (routePricing.overrides !== undefined && !Array.isArray(routePricing.overrides)) ||
+              routePricing.discount !== undefined),
+          freeVariant,
+        };
+      }
+    }
+    if (!resolvedPricing && !openRouterEvidence) {
+      return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
+    }
+    if (openRouterEvidence && resolvedPricing?.source !== "user") {
+      resolvedPricing = {
+        providerKey: "openrouter",
+        modelKey: openRouterEvidence.modelId,
+        pricing: openRouterEvidence.pricing,
+        source: "openrouter",
+        rateSources: Object.fromEntries(
+          Object.keys(openRouterEvidence.pricing).map((field) => [field, "openrouter"])
+        ),
+      };
+    }
+    if (!resolvedPricing) {
+      return { costUsd: 0, costKnown: false, pricingEvidence: unknownEvidence };
+    }
 
     let pricingRecord =
       resolvedPricing.pricing &&
@@ -333,6 +439,15 @@ export async function calculateCostWithEvidence(
     let ttlMs: number | null = null;
     let pricingCondition: string | null = null;
     let evidenceSource: CostPricingEvidence["source"] = resolvedPricing.source;
+    if (openRouterEvidence && resolvedPricing.source === "openrouter") {
+      retrievedAt = openRouterEvidence.retrievedAt;
+      ttlMs = openRouterEvidence.ttlMs;
+      pricingCondition = openRouterEvidence.conditional
+        ? "OpenRouter reports route-specific pricing conditions; estimate is not an upper bound."
+        : openRouterEvidence.freeVariant
+          ? "OpenRouter currently advertises this exact route as free."
+          : null;
+    }
     if (resolvedPricing.source === "modelsDev") {
       const { getSyncStatus } = await import("@/lib/modelsDevSync");
       const status = getSyncStatus();
@@ -413,7 +528,10 @@ export async function calculateCostWithEvidence(
     if (requestCount > 0 && requestPriceReported) usedRateFields.add("request");
 
     const syncStatusBySource: Partial<
-      Record<"modelsDev" | "litellm", { retrievedAt: string | null; ttlMs: number | null }>
+      Record<
+        "modelsDev" | "litellm" | "openrouter",
+        { retrievedAt: string | null; ttlMs: number | null }
+      >
     > = {};
     if (
       [...usedRateFields].some(
@@ -436,6 +554,12 @@ export async function calculateCostWithEvidence(
       const status = getSyncStatus();
       syncStatusBySource.litellm = { retrievedAt: status.lastSync, ttlMs: status.intervalMs };
     }
+    if (resolvedPricing.source === "openrouter" && openRouterEvidence) {
+      syncStatusBySource.openrouter = {
+        retrievedAt: openRouterEvidence.retrievedAt,
+        ttlMs: openRouterEvidence.ttlMs,
+      };
+    }
 
     const evidenceForRate = (field: string) => {
       const source =
@@ -450,7 +574,7 @@ export async function calculateCostWithEvidence(
           stale: source === "deepseek" ? pricingEvidence.stale : false,
         };
       }
-      if (source !== "modelsDev" && source !== "litellm") {
+      if (source !== "modelsDev" && source !== "litellm" && source !== "openrouter") {
         return { source: null, retrievedAt: null, ttlMs: null, stale: null };
       }
       const status = syncStatusBySource[source];
@@ -487,6 +611,7 @@ export async function calculateCostWithEvidence(
       (field) => perRateEvidence[field]?.stale === false
     );
     const costKnown =
+      !openRouterEvidence?.conditional &&
       pricingFreshnessKnown &&
       (nonCachedInputTokens === 0 || hasRate(pricingRecord.input)) &&
       (cachedTokens === 0 || hasRate(pricingRecord.cached) || hasRate(pricingRecord.input)) &&
