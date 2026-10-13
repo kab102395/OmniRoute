@@ -66,6 +66,11 @@ test("cost metadata preserves explicit zero and omits missing or malformed amoun
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.costSaved], undefined);
 });
 
+test("response metadata exposes additional upstream attempts", () => {
+  const headers = buildOmniRouteResponseMetaHeaders({ fallbackAttempts: 2 });
+  assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.fallbackAttempts], "2");
+});
+
 test("buildOmniRouteResponseMetaHeaders keeps ASCII model header values unchanged", () => {
   const headers = buildOmniRouteResponseMetaHeaders({
     provider: "openai",

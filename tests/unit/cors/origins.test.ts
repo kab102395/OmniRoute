@@ -162,6 +162,7 @@ describe("cors/origins.applyCorsHeaders", () => {
     const exposed = res.headers.get("Access-Control-Expose-Headers") || "";
     assert.match(exposed, /X-OmniRoute-Pricing-Retrieved-At/);
     assert.match(exposed, /X-OmniRoute-Pricing-Stale/);
+    assert.match(exposed, /X-OmniRoute-Fallback-Attempts/);
   });
 
   it("CLIENT_API: does NOT echo the Origin for a credential-less cross-origin request (GHSA-7px7)", () => {

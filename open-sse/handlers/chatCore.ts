@@ -1058,6 +1058,7 @@ export async function handleChatCore({
       settings.call_log_pipeline_enabled === "1" ||
       settings.call_log_pipeline_enabled === "true");
   const executionAttemptReceipts: Array<Record<string, unknown>> = [];
+  let executionAttemptTotal = 0;
   let executionAttemptSequence = 0;
   const recordExecutionAttempts = (
     attempts: Array<Record<string, unknown>>,
@@ -1065,6 +1066,7 @@ export async function handleChatCore({
     routeModel?: string | null
   ) => {
     if (attempts.length === 0) return;
+    executionAttemptTotal += attempts.length;
     executionAttemptReceipts.push(
       ...attempts.map((attempt) => {
         executionAttemptSequence += 1;
@@ -5536,6 +5538,7 @@ export async function handleChatCore({
       servedProviderInstanceId: servedIdentity?.providerInstanceId || null,
       connectionId: credentials?.connectionId ?? null,
       accounting,
+      fallbackAttempts: Math.max(0, executionAttemptTotal - 1),
       compressionResponseMeta,
       comboStrategy,
     });
@@ -5686,6 +5689,7 @@ export async function handleChatCore({
     provider,
     model,
     pendingRequestId,
+    fallbackAttempts: Math.max(0, executionAttemptTotal - 1),
     compressionResponseMeta,
     comboStrategy,
   });

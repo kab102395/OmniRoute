@@ -1561,6 +1561,12 @@ paths:
               schema:
                 type: string
               description: USD amount, fixed 10 decimals. Interpret with Accounting-Kind and Cost-Source; zero alone does not mean free.
+            X-OmniRoute-Fallback-Attempts:
+              schema:
+                type: string
+              description: >-
+                Number of additional upstream dispatch attempts recorded before the final response.
+                Omitted when no additional attempt was recorded.
             X-OmniRoute-Accounting-Kind:
               schema:
                 type: string

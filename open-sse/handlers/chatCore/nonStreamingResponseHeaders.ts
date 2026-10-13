@@ -29,6 +29,8 @@ export function buildNonStreamingResponseHeaders(
       currency?: string | null;
       usageKind?: string | null;
     } | null;
+    /** Number of additional upstream dispatches recorded before this response. */
+    fallbackAttempts?: number;
     compressionResponseMeta?: string | null | undefined;
     comboStrategy?: string | null | undefined;
   },
@@ -54,6 +56,7 @@ export function buildNonStreamingResponseHeaders(
     servedProviderInstanceId: args.servedProviderInstanceId,
     connectionId: args.connectionId,
     accounting: args.accounting,
+    fallbackAttempts: args.fallbackAttempts,
     strategy: args.comboStrategy ?? "single",
   });
   if (args.compressionResponseMeta) {

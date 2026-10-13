@@ -70,6 +70,12 @@ test("meta receives provider/model/cacheHit false/latency/usage/cost/requestId",
   assert.equal(meta.requestId, "req-1");
 });
 
+test("meta receives the recorded additional upstream attempt count", () => {
+  const { deps, metaCalls } = makeDeps();
+  buildNonStreamingResponseHeaders(baseArgs({ fallbackAttempts: 2 }), deps);
+  assert.equal(metaCalls[0].meta.fallbackAttempts, 2);
+});
+
 test("meta preserves public served identity separately from node and connection IDs", () => {
   const { deps, metaCalls } = makeDeps();
   buildNonStreamingResponseHeaders(

@@ -90,6 +90,11 @@ Content-Type: application/json
 
 > **Cache-hit cost semantics:** on a semantic-cache HIT (`X-OmniRoute-Cache-Hit: true`) no upstream call is made, so `X-OmniRoute-Response-Cost` is `0.0000000000` (the **incremental** cost of serving the hit). The original/would-have-been cost is reported separately in `X-OmniRoute-Cost-Saved`. Billing consumers should sum `X-OmniRoute-Response-Cost` (hits cost nothing); cache analytics can aggregate `X-OmniRoute-Cost-Saved`.
 
+`X-OmniRoute-Fallback-Attempts`, when present on chat responses, reports the number of additional
+upstream dispatch attempts recorded before the final response. Attempt-level request IDs and
+outcomes remain in call-log pipeline evidence when that capture is enabled; a count does not imply
+that failed upstream attempts incurred zero cost.
+
 ## Exclusive Managed Session Leases
 
 Exclusive managed session leasing is an opt-in, client-neutral routing contract: one active owner

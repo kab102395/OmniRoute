@@ -19,6 +19,8 @@ export function assembleStreamingResponseHeaders(
     pendingRequestId: string;
     servedProvider?: string | null;
     servedModel?: string | null;
+    /** Number of additional upstream dispatches recorded before this response. */
+    fallbackAttempts?: number;
     compressionResponseMeta?: string | null | undefined;
     comboStrategy?: string | null | undefined;
   },
@@ -32,6 +34,7 @@ export function assembleStreamingResponseHeaders(
       latencyMs: 0,
       usage: null,
       costUsd: 0,
+      fallbackAttempts: args.fallbackAttempts,
       strategy: args.comboStrategy ?? "single",
       servedProvider: args.servedProvider,
       servedModel: args.servedModel,
