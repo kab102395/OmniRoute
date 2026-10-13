@@ -1117,6 +1117,7 @@ test("Hugging Face model modalities survive discovery sync and reach the unified
       input_modalities?: string[];
       output_modalities?: string[];
       capabilities?: { vision?: boolean };
+      capability_status?: { tool_calling?: { status?: string } };
     }>;
   };
   const model = body.data.find((entry) => entry.id === "hf/fixture-org/vision-route");
@@ -1126,6 +1127,8 @@ test("Hugging Face model modalities survive discovery sync and reach the unified
   assert.deepEqual(model.input_modalities, ["text", "image"]);
   assert.deepEqual(model.output_modalities, ["text"]);
   assert.equal(model.capabilities?.vision, true);
+  assert.equal(model.capability_status?.tool_calling?.status, "unknown");
+  assert.equal(model.capabilities?.tool_calling, undefined);
 });
 
 test("v1 models catalog does not final-enrich combo names as real models", async () => {

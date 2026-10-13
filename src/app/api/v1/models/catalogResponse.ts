@@ -42,7 +42,7 @@ import { extractApiKey } from "@/sse/services/auth";
 import { maybeOmitCatalogModelName } from "./catalogHelpers";
 import { isCodexModelCatalogClient } from "./catalogRequest";
 
-type UnknownRecord = { readonly [key: string]: unknown };
+type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -284,6 +284,16 @@ export async function finalizeCatalogResponse(
         ? { ...entry, context_length: fallbackContextLength }
         : entry;
       listedModel = maybeOmitCatalogModelName(listedModel, includeModelNames);
+    }
+    if (
+      isRecord(listedModel.capabilities) &&
+      isRecord(listedModel.capability_status) &&
+      isRecord(listedModel.capability_status.tool_calling) &&
+      listedModel.capability_status.tool_calling.status === "unknown"
+    ) {
+      const capabilities = { ...listedModel.capabilities };
+      delete capabilities.tool_calling;
+      listedModel = { ...listedModel, capabilities };
     }
     if (requireToolCalling && !hasVerifiedToolCalling(listedModel)) continue;
     enriched.push(listedModel);
