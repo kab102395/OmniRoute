@@ -2517,6 +2517,52 @@ test("chatCore rejects an exact paid route when free-route-only is required", as
   assert.equal(calls.length, 0);
 });
 
+test("chatCore dispatches the exact current OpenRouter free variant and rejects its paid sibling", async () => {
+  const cachePath = path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json");
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  fs.writeFileSync(
+    cachePath,
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      data: [{ id: "acme/coder:free", supported_parameters: ["tools"] }],
+    })
+  );
+
+  const { calls, result } = await invokeChatCore({
+    provider: "openrouter",
+    model: "acme/coder:free",
+    body: {
+      model: "openrouter/acme/coder:free",
+      stream: false,
+      messages: [{ role: "user", content: "use this exact free route" }],
+      provider: { allow_fallbacks: false },
+    },
+    requestHeaders: {
+      "X-OmniRoute-Require-Free-Route": "true",
+      "X-OmniRoute-Strict-Model": "true",
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.model, "acme/coder:free");
+  await waitForCallLogSaves(5000);
+
+  const paidSibling = await invokeChatCore({
+    provider: "openrouter",
+    model: "acme/coder",
+    body: {
+      model: "openrouter/acme/coder",
+      stream: false,
+      messages: [{ role: "user", content: "do not treat the paid sibling as free" }],
+    },
+    requestHeaders: { "X-OmniRoute-Require-Free-Route": "true" },
+  });
+
+  assert.equal(paidSibling.result.status, 403);
+  assert.equal(paidSibling.calls.length, 0);
+});
+
 test("chatCore rejects strict identity requests for the dynamic OpenRouter free router", async () => {
   const { calls, result } = await invokeChatCore({
     provider: "openrouter",
