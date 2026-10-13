@@ -312,6 +312,7 @@ test("public identifier vocabulary preserves current internal machine-readable c
     "request_failed",
     "lmarena_error",
     "network_error",
+    "zai_stream_error",
   ];
 
   for (const identifier of identifiers) {

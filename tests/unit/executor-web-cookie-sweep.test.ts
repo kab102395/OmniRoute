@@ -25,7 +25,7 @@
  * If this file ever flags a missing executor, the fix is in the executor
  * — the contract is the executor's responsibility.
  */
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { getExecutor } from "../../open-sse/executors/index.ts";
 import { WEB_COOKIE_PROVIDERS, NOAUTH_PROVIDERS } from "../../src/shared/constants/providers.ts";
@@ -69,6 +69,19 @@ const VALID_BODY = {
   model: "test",
   messages: [{ role: "user", content: "ping" }],
 };
+
+// The sweep checks the executor wrapper contract, not live account eligibility.
+// Some fake cookies pass local shape validation, so fail every outbound call
+// deterministically instead of relying on each provider to reject them first.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async () =>
+  new Response(JSON.stringify({ error: "synthetic unauthenticated test response" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  })) as typeof fetch;
+after(() => {
+  globalThis.fetch = originalFetch;
+});
 
 /**
  * Asserts that `result` has the executor wrapper contract shape:
@@ -119,13 +132,17 @@ describe("web-cookie + noauth executor wrapper contract sweep", () => {
       it(`${providerId} executor returns wrapper shape`, async () => {
         const executor = await getExecutor(providerId);
         assert.ok(executor, `[${providerId}] getExecutor must return an executor`);
+        // Gemini Web uses Playwright rather than fetch; abort before browser
+        // launch so this contract test cannot navigate to a live provider site.
+        const controller = new AbortController();
+        if (providerId === "gemini-web") controller.abort();
 
         const result = await executor.execute({
           model: providerId,
           body: VALID_BODY,
           stream: false,
           credentials: { apiKey: FAKE_CREDS[providerId] ?? "fake" },
-          signal: null,
+          signal: providerId === "gemini-web" ? controller.signal : null,
         } as never);
 
         assertExecutorWrapperShape(result, providerId);

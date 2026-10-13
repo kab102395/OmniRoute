@@ -9,6 +9,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import YAML from "yaml";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -583,7 +584,6 @@ test("report has all required fields with correct types", async () => {
 // ── serializeFrontmatter escaping (js/incomplete-sanitization regression) ──────
 
 test("serializeFrontmatter escapes backslashes before quotes → valid round-trippable YAML", async () => {
-  const { parse } = await import("yaml");
   const fm = {
     name: 'name with "quote"',
     description: 'line1\nline2: path C:\\Users\\x with "q" and trailing \\',
@@ -593,7 +593,7 @@ test("serializeFrontmatter escapes backslashes before quotes → valid round-tri
   // unescaped trailing backslash that escapes the closing quote) would throw or
   // corrupt the value here.
   const inner = block.replace(/^---\n/, "").replace(/---\n?$/, "");
-  const parsed = parse(inner) as { name: string; description: string };
+  const parsed = YAML.parse(inner) as { name: string; description: string };
   assert.equal(parsed.name, fm.name, "name must round-trip through YAML unchanged");
   assert.equal(
     parsed.description,
