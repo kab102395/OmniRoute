@@ -23,6 +23,8 @@ type CatalogPricing = {
   output_cost_per_image?: number;
 };
 
+const recentPricingRetrievedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
 // #9364: resolveCatalogPricing() only consults models_dev_pricing and hardcoded
 // defaults, skipping the LiteLLM `pricing_synced` namespace entirely. A model
 // whose pricing exists ONLY in pricing_synced (the documented Layer 3) gets
@@ -38,9 +40,9 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
       },
     },
     pricingSourceStatus: {
-      modelsDevRetrievedAt: "2026-10-12T10:00:00.000Z",
+      modelsDevRetrievedAt: recentPricingRetrievedAt,
       modelsDevTtlMs: 86_400_000,
-      liteLlmRetrievedAt: "2026-10-12T10:00:00.000Z",
+      liteLlmRetrievedAt: recentPricingRetrievedAt,
       liteLlmTtlMs: 86_400_000,
     },
   };
@@ -104,7 +106,7 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
     };
     assert.equal(provenance.state, "third_party_reported_pricing");
     assert.equal(provenance.source.id, "litellm.model_prices");
-    assert.equal(provenance.source.retrievedAt, "2026-10-12T10:00:00.000Z");
+    assert.equal(provenance.source.retrievedAt, recentPricingRetrievedAt);
     assert.equal(provenance.source.cacheTtlMs, 86_400_000);
     assert.ok(provenance.source.ageMs > 0);
     assert.equal(provenance.source.stale, false);
@@ -131,7 +133,7 @@ describe("catalog pricing LiteLLM gap (#9364)", () => {
     };
     assert.equal(provenance.state, "third_party_reported_pricing");
     assert.equal(provenance.source.id, "models_dev.api_json");
-    assert.equal(provenance.source.retrievedAt, "2026-10-12T10:00:00.000Z");
+    assert.equal(provenance.source.retrievedAt, recentPricingRetrievedAt);
     assert.equal(provenance.source.stale, false);
   });
 
