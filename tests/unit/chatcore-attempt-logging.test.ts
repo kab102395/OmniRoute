@@ -15,7 +15,8 @@ process.env.DATA_DIR = testDataDir;
 
 const coreDb = await import("../../src/lib/db/core.ts");
 const { getCallLogById } = await import("../../src/lib/usage/callLogs.ts");
-const { persistAttemptLogs } = await import("../../open-sse/handlers/chatCore/attemptLogging.ts");
+const { attributeExecutionAttemptAccounting, persistAttemptLogs } =
+  await import("../../open-sse/handlers/chatCore/attemptLogging.ts");
 const { getAuditLog } = await import("../../src/lib/compliance/index.ts");
 
 type CodexRotationEnvelope = {
@@ -90,6 +91,42 @@ test("persists a call log row with the mapped fields (default cacheSource=upstre
   assert.equal(row.requestedModel, "gpt-x-requested");
   assert.equal(row.connectionId, "conn-1");
   assert.equal(row.cacheSource, "upstream");
+});
+
+test("attributes usage and cost only to the final successful upstream attempt", () => {
+  const attempts = [
+    { index: 1, statusCode: 429, outcome: "response", costAttribution: "unknown" },
+    { index: 2, statusCode: 200, outcome: "response", costAttribution: "unknown" },
+  ];
+  const accounting = {
+    kind: "provider_reported_billed_cost",
+    amountUsd: 0.0012,
+    currency: "USD",
+    source: "openrouter_response.usage.cost",
+    pricingProvider: "openrouter",
+    pricingModel: "vendor/model:free",
+    pricingVersion: null,
+    pricingEffectiveAt: null,
+    pricingRetrievedAt: null,
+    pricingStale: null,
+    usageKind: "provider_reported_usage",
+  } as const;
+
+  const attributed = attributeExecutionAttemptAccounting(
+    attempts,
+    { prompt_tokens: 12, completion_tokens: 8, estimated: false, body_bytes: 2048 },
+    accounting
+  );
+
+  assert.equal(attributed[0]?.costAttribution, "unknown");
+  assert.equal("usage" in (attributed[0] ?? {}), false);
+  assert.equal(attributed[1]?.costAttribution, "provider_reported");
+  assert.deepEqual(attributed[1]?.usage, {
+    kind: "provider_reported_usage",
+    dimensions: { prompt_tokens: 12, completion_tokens: 8 },
+  });
+  assert.equal((attributed[1]?.accounting as { amountUsd: number }).amountUsd, 0.0012);
+  assert.equal("accounting" in (attempts[1] ?? {}), false, "source attempts are not mutated");
 });
 
 test("uses final credentials connectionId when Codex failover rotates the account", async () => {

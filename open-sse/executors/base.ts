@@ -329,7 +329,7 @@ export type ExecutorAttemptSummary = {
   statusCode: number | null;
   providerRequestId?: string;
   outcome: "response" | "network_error";
-  costAttribution: "unknown";
+  costAttribution: "unknown" | "provider_reported" | "estimated";
   attemptSource: "executor_reported" | "wrapper_observed";
   routeLeg?: "native" | "proxy_fallback";
 };

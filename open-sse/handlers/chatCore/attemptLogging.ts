@@ -280,6 +280,71 @@ export type PersistAttemptLogsContext = {
   getExecutionAttempts?: () => Array<Record<string, unknown>>;
 };
 
+const ATTEMPT_USAGE_DIMENSIONS = [
+  "prompt_tokens",
+  "completion_tokens",
+  "input_tokens",
+  "output_tokens",
+  "cached_tokens",
+  "cache_read_input_tokens",
+  "cache_creation_input_tokens",
+  "reasoning_tokens",
+] as const;
+
+/** Attach request-level final usage/accounting only to the successful upstream attempt. */
+export function attributeExecutionAttemptAccounting(
+  attempts: Array<Record<string, unknown>>,
+  tokens: unknown,
+  accounting: PersistAttemptLogsArgs["accounting"]
+): Array<Record<string, unknown>> {
+  if (!accounting || attempts.length === 0) return attempts;
+  let successfulIndex = -1;
+  for (let index = attempts.length - 1; index >= 0; index--) {
+    const attempt = attempts[index];
+    const statusCode = attempt?.statusCode;
+    if (
+      attempt?.outcome === "response" &&
+      typeof statusCode === "number" &&
+      statusCode >= 200 &&
+      statusCode < 300
+    ) {
+      successfulIndex = index;
+      break;
+    }
+  }
+  if (successfulIndex < 0) return attempts;
+
+  const usageRecord =
+    tokens && typeof tokens === "object" && !Array.isArray(tokens)
+      ? (tokens as Record<string, unknown>)
+      : null;
+  const dimensions: Record<string, number> = {};
+  for (const key of ATTEMPT_USAGE_DIMENSIONS) {
+    const value = usageRecord?.[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      dimensions[key] = value;
+    }
+  }
+  const usageKind = accounting.usageKind;
+  const costAttribution =
+    accounting.kind === "provider_reported_billed_cost" || accounting.kind === "zero_cost"
+      ? "provider_reported"
+      : accounting.kind === "estimated_cost"
+        ? "estimated"
+        : "unknown";
+
+  return attempts.map((attempt, index) =>
+    index === successfulIndex
+      ? {
+          ...attempt,
+          ...(Object.keys(dimensions).length > 0 ? { usage: { kind: usageKind, dimensions } } : {}),
+          accounting: { ...accounting },
+          costAttribution,
+        }
+      : attempt
+  );
+}
+
 function toConnectionId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -480,7 +545,11 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
     };
   }
 
-  const executionAttempts = ctx.getExecutionAttempts?.() ?? [];
+  const executionAttempts = attributeExecutionAttemptAccounting(
+    ctx.getExecutionAttempts?.() ?? [],
+    tokens,
+    args.accounting
+  );
   if (executionAttempts.length > 0) {
     // Keep compact execution receipts even when detailed request/response logging is off.
     // No URLs, headers, bodies, credential material, or speculative charges are included.

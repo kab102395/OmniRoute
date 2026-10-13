@@ -5347,6 +5347,7 @@ export async function handleChatCore({
       persistAttemptLogs({
         status: HTTP_STATUS.BAD_REQUEST,
         tokens: usage,
+        accounting,
         responseBody,
         providerRequest: finalBody || translatedBody,
         providerResponse: looksLikeSSE
@@ -5420,6 +5421,7 @@ export async function handleChatCore({
       persistAttemptLogs({
         status: HTTP_STATUS.BAD_GATEWAY,
         tokens: usage,
+        accounting,
         responseBody,
         providerRequest: finalBody || translatedBody,
         providerResponse: looksLikeSSE
