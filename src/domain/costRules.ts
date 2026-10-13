@@ -416,6 +416,16 @@ export function recordUnknownCost(apiKeyId: string): void {
   }
 }
 
+/** Record an assessed request cost without promoting an estimate to known spend. */
+export function recordCostAssessment(apiKeyId: string, costUsd: number, costKnown: boolean): void {
+  if (!apiKeyId) return;
+  if (!costKnown) {
+    recordUnknownCost(apiKeyId);
+    return;
+  }
+  if (Number.isFinite(costUsd) && costUsd > 0) recordCost(apiKeyId, costUsd);
+}
+
 /**
  * Sync all budgets against the current clock so overdue resets get persisted.
  */

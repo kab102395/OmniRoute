@@ -28,15 +28,13 @@ export function recordStreamingCost(args: {
   serviceTier?: string;
   requestCount?: number;
   calculateCostWithEvidence: CostResolver;
-  classifyCostAccounting: typeof import("@/lib/usage/costAccounting").classifyCostAccounting;
-  recordCost: (apiKeyId: string, cost: number) => void;
-  recordUnknownCost: (apiKeyId: string) => void;
+  recordCostAssessment: (apiKeyId: string, costUsd: number, costKnown: boolean) => void;
 }): void {
   if (!args.apiKeyId) return;
 
   const apiKeyId = args.apiKeyId;
   if (!args.streamUsage) {
-    args.recordUnknownCost(apiKeyId);
+    args.recordCostAssessment(apiKeyId, 0, false);
     return;
   }
   args
@@ -45,18 +43,7 @@ export function recordStreamingCost(args: {
       requestCount: args.requestCount,
     })
     .then((assessment) => {
-      const accounting = args.classifyCostAccounting({
-        provider: args.provider,
-        model: args.model,
-        usage: args.streamUsage,
-        calculatedCostUsd: assessment.costUsd,
-        calculatedCostKnown: assessment.costKnown,
-        pricingEvidence: assessment.pricingEvidence,
-      });
-      if (assessment.costUsd > 0) args.recordCost(apiKeyId, assessment.costUsd);
-      else if (["unknown", "usage_only"].includes(accounting.kind)) {
-        args.recordUnknownCost(apiKeyId);
-      }
+      args.recordCostAssessment(apiKeyId, assessment.costUsd, assessment.costKnown);
     })
-    .catch(() => {});
+    .catch(() => args.recordCostAssessment(apiKeyId, 0, false));
 }

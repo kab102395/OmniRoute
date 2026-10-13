@@ -323,7 +323,7 @@ import { ensureEngineBreakdown } from "../services/compression/engineBreakdown.t
 import { handleBypassRequest } from "../utils/bypassHandler.ts";
 import { saveRequestUsage, trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import { finalizePendingScope, updatePendingScope } from "@/lib/usage/pendingRequestScope";
-import { recordCost, recordUnknownCost } from "@/domain/costRules";
+import { recordCostAssessment } from "@/domain/costRules";
 import { calculateCostWithEvidence } from "@/lib/usage/costCalculator";
 import { updateRequestUsageAccounting } from "@/lib/usageDb";
 import { scheduleOpenRouterReceiptEnrichment } from "./chatCore/openrouterReceiptEnrichment.ts";
@@ -5545,10 +5545,8 @@ export async function handleChatCore({
         claudeCacheUsageMeta: cacheUsageLogMeta,
         cacheSource: "upstream",
       });
-      if (apiKeyInfo?.id && estimatedCost > 0) {
-        recordCost(apiKeyInfo.id, estimatedCost);
-      } else if (apiKeyInfo?.id && ["unknown", "usage_only"].includes(accounting.kind)) {
-        recordUnknownCost(apiKeyInfo.id);
+      if (apiKeyInfo?.id) {
+        recordCostAssessment(apiKeyInfo.id, estimatedCost, costAssessment.costKnown);
       }
       log?.warn?.(
         "GUARDRAIL",
@@ -5703,10 +5701,8 @@ export async function handleChatCore({
         callLogSaved
       );
     }
-    if (apiKeyInfo?.id && estimatedCost > 0) {
-      recordCost(apiKeyInfo.id, estimatedCost);
-    } else if (apiKeyInfo?.id && ["unknown", "usage_only"].includes(accounting.kind)) {
-      recordUnknownCost(apiKeyInfo.id);
+    if (apiKeyInfo?.id) {
+      recordCostAssessment(apiKeyInfo.id, estimatedCost, costAssessment.costKnown);
     }
 
     // === Quota Share POST-hook (B/F7) — fire-and-forget, fail-open ===
@@ -6181,9 +6177,7 @@ export async function handleChatCore({
       serviceTier: effectiveServiceTier,
       requestCount: Math.max(1, executionAttemptTotal),
       calculateCostWithEvidence,
-      classifyCostAccounting,
-      recordCost,
-      recordUnknownCost,
+      recordCostAssessment,
     });
 
     // === Quota Share POST-hook streaming (B/F7) — fire-and-forget, fail-open ===

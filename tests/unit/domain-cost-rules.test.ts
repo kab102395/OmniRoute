@@ -103,6 +103,16 @@ test("checkBudget fails closed after a request with unknown monetary cost", () =
   assert.equal(costRules.checkBudget("key-unknown-cost").allowed, true);
 });
 
+test("nonzero stale estimates remain unknown to finite spend budgets", () => {
+  costRules.setBudget("key-stale-estimate", { dailyLimitUsd: 10 });
+  costRules.recordCostAssessment("key-stale-estimate", 0.25, false);
+
+  const denied = costRules.checkBudget("key-stale-estimate");
+  assert.equal(denied.allowed, false);
+  assert.match(denied.reason, /unknown cost/);
+  assert.equal(denied.dailyUsed, 0, "an unverified estimate is not represented as billed spend");
+});
+
 test("getDailyTotal and getCostSummary split daily and monthly totals correctly", () => {
   const OriginalDate = global.Date;
   const mockNow = Date.UTC(2026, 4, 15, 12, 0, 0); // May 15, 2026
