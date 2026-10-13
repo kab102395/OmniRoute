@@ -5,8 +5,8 @@
  * Tests the pure `filterPaidOnlyCandidates` helper wired into
  * `open-sse/services/autoCombo/virtualFactory.ts::createVirtualAutoCombo`.
  */
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "vitest";
 
 import { filterPaidOnlyCandidates } from "../../../open-sse/services/autoCombo/paidModelFilter.ts";
 
