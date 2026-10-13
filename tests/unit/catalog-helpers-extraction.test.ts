@@ -302,6 +302,7 @@ test("catalogOpenrouter: synchronized free routes lose eligibility when absent f
   const removed = reconcileOpenRouterFreeRoutes([oldRoute], new Set(), options)[0];
   assert.equal(removed?.free, false);
   assert.equal(removed?.pricing, undefined);
+  assert.equal((removed?.route_availability as { catalogListed?: unknown }).catalogListed, false);
   assert.equal(
     (removed?.pricing_provenance as { zeroCostEligibility?: string }).zeroCostEligibility,
     "no"
@@ -312,6 +313,8 @@ test("catalogOpenrouter: synchronized free routes lose eligibility when absent f
     stale: true,
   })[0];
   assert.equal(stale?.free, undefined);
+  assert.equal((stale?.route_availability as { catalogListed?: unknown }).catalogListed, null);
+  assert.equal((stale?.route_availability as { source?: { stale?: unknown } }).source?.stale, true);
   assert.equal(
     (stale?.pricing_provenance as { zeroCostEligibility?: string }).zeroCostEligibility,
     "unknown_stale_catalog"

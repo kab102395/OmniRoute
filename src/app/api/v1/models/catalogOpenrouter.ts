@@ -114,6 +114,18 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
     const reconciled = {
       ...model,
       free: options.stale ? undefined : false,
+      route_availability: {
+        catalogListed: options.stale ? null : false,
+        accountEligibility: "unknown",
+        source: {
+          id: "openrouter.models_api",
+          modelId: sourceModelId,
+          retrievedAt: options.retrievedAt || null,
+          stale: options.stale,
+          cacheTtlMs: options.ttlMs,
+        },
+        downstreamHostSelection: "aggregator_selected",
+      },
       pricing_provenance: {
         state: options.stale ? "unknown_stale_catalog" : "not_in_current_free_catalog",
         routeModelId: sourceModelId,

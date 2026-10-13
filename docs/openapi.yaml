@@ -14546,6 +14546,7 @@ components:
           properties:
             catalogListed:
               type: boolean
+              nullable: true
             accountEligibility:
               type: string
               enum: [unknown]
