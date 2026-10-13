@@ -36,6 +36,7 @@ const { clearModelLock, isModelLocked } =
   await import("../../open-sse/services/accountFallback.ts");
 const { saveModelsDevCapabilities, clearModelsDevCapabilities } =
   await import("../../src/lib/modelsDevSync.ts");
+const { getOdysseusApprovalRegistry } = await import("../../src/lib/odysseus/policy.ts");
 // Dynamic import is required after TEST_DATA_DIR is initialized above.
 const { clearReasoningCacheAll } = await import("../../open-sse/services/reasoningCache.ts");
 const {
@@ -2423,6 +2424,57 @@ test("chatCore reports the concrete model that succeeded after model-family fall
   const callLog = await getCallLogById(result.response.headers.get("X-OmniRoute-Request-Id"));
   assert.equal(callLog.servedProvider, "claude");
   assert.equal(callLog.servedModel, "claude-sonnet-4-6");
+});
+test("chatCore keeps an approved free-only exact route after model-unavailable", async () => {
+  const registry = getOdysseusApprovalRegistry();
+  const previousApprovals = registry.snapshot();
+  registry.replace([
+    {
+      provider: "claude",
+      model: "claude-sonnet-5",
+      role: "coder",
+      enabled: true,
+      approvalStatus: "approved",
+      pricing: "free_api_tier",
+      privateSourceApproved: false,
+      dataRetention: "unknown",
+      trainingOnInput: "unknown",
+      riskCategory: "unknown",
+    },
+  ]);
+  try {
+    const { calls, result } = await invokeChatCore({
+      provider: "claude",
+      model: "claude-sonnet-5",
+      body: {
+        model: "claude-sonnet-5",
+        stream: false,
+        messages: [{ role: "user", content: "preserve exact free route" }],
+      },
+      requestHeaders: {
+        "x-odysseus-task-id": "task-exact-free-route",
+        "x-odysseus-role": "coder",
+        "x-odysseus-privacy-class": "public",
+        "x-odysseus-free-only": "true",
+        "x-odysseus-allowed-routes": "claude/claude-sonnet-5",
+        "x-odysseus-policy-version": "test-v1",
+      },
+      responseFormat: "claude",
+      responseFactory() {
+        return new Response(JSON.stringify({ error: { message: "model not found" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 404);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].body.model, "claude-sonnet-5");
+  } finally {
+    registry.replace(previousApprovals);
+  }
 });
 test("chatCore preserves an OpenRouter usage.cost receipt without token counts", async () => {
   const { result } = await invokeChatCore({

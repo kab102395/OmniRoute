@@ -588,7 +588,7 @@ export async function handleChatCore({
     body,
     model
   );
-  const odysseusDecision = resolveOdysseusPolicyDecision(
+  const odysseusDecision = await resolveOdysseusPolicyDecision(
     clientRawRequest?.headers instanceof Headers
       ? clientRawRequest.headers
       : new Headers(clientRawRequest?.headers as HeadersInit | undefined),
