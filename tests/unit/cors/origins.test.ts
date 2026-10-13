@@ -8,6 +8,8 @@ import {
   setRuntimeAllowedOrigins,
   STATIC_CORS_HEADERS,
 } from "../../../src/server/cors/origins";
+import { CORS_HEADERS as APP_CORS_HEADERS } from "../../../src/shared/utils/cors";
+import { CORS_HEADERS as SSE_CORS_HEADERS } from "../../../open-sse/utils/cors";
 
 const ENV_KEYS = ["CORS_ALLOW_ALL", "CORS_ALLOWED_ORIGINS", "CORS_ORIGIN"] as const;
 
@@ -330,9 +332,18 @@ describe("cors/origins.STATIC_CORS_HEADERS", () => {
     assert.match(STATIC_CORS_HEADERS["Access-Control-Allow-Methods"], /OPTIONS/);
   });
 
-  it("allows the generic managed-lease control headers", () => {
-    const allowedHeaders = STATIC_CORS_HEADERS["Access-Control-Allow-Headers"];
-    assert.match(allowedHeaders, /X-OmniRoute-Lease-Owner/i);
-    assert.match(allowedHeaders, /X-OmniRoute-Lease-Generation/i);
+  it("allows routing policy headers across shared and SSE CORS responses", () => {
+    const allowHeaders = [
+      STATIC_CORS_HEADERS["Access-Control-Allow-Headers"],
+      APP_CORS_HEADERS["Access-Control-Allow-Headers"],
+      SSE_CORS_HEADERS["Access-Control-Allow-Headers"],
+    ];
+
+    assert.match(allowHeaders[0], /X-OmniRoute-Lease-Owner/i);
+    assert.match(allowHeaders[0], /X-OmniRoute-Lease-Generation/i);
+    for (const allowedHeaders of allowHeaders) {
+      assert.match(allowedHeaders, /X-OmniRoute-Require-Free-Route/i);
+      assert.match(allowedHeaders, /X-OmniRoute-Strict-Model/i);
+    }
   });
 });
