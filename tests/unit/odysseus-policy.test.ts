@@ -52,21 +52,43 @@ test("disabled metadata preserves normal behavior", () => {
   assert.equal(evaluateOdysseusPolicy(parsed, approvals).result, "disabled");
 });
 
-test("built-in registry approves the current OpenRouter free catalog for every role", () => {
+test("built-in approvals keep direct-provider routes while OpenRouter eligibility stays dynamic", () => {
   const routes = new Set(
     DEFAULT_ODYSSEUS_APPROVALS.map((route) => `${route.provider}/${route.model}`)
   );
-  assert.equal(routes.size, 23);
-  assert.equal(DEFAULT_ODYSSEUS_APPROVALS.length, 23 * 4);
+  assert.equal(routes.size, 4);
+  assert.equal(DEFAULT_ODYSSEUS_APPROVALS.length, 4 * 4);
   assert.ok(DEFAULT_ODYSSEUS_APPROVALS.every((route) => route.pricing === "free_api_tier"));
-  assert.ok(
-    DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.provider === "openrouter").every((route) =>
-      route.model.endsWith(":free")
-    )
-  );
+  assert.ok(DEFAULT_ODYSSEUS_APPROVALS.every((route) => route.provider !== "openrouter"));
   for (const role of ["coder", "scout", "reasoner", "compressor"] as const) {
-    assert.equal(DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.role === role).length, 23);
+    assert.equal(DEFAULT_ODYSSEUS_APPROVALS.filter((route) => route.role === role).length, 4);
   }
+});
+
+test("OpenRouter free eligibility is exact, current-catalog scoped, and variant-specific", () => {
+  const routeApprovals: OdysseusRouteApproval[] = [
+    { ...base, provider: "openrouter", model: "vendor/model:free", role: "scout" },
+    { ...base, provider: "openrouter", model: "vendor/model", role: "scout", pricing: "paid" },
+  ];
+  const policy = parseOdysseusMetadata(
+    headers({ "x-odysseus-allowed-routes": "openrouter/vendor/model:free" })
+  );
+  assert.equal(
+    evaluateOdysseusPolicy(policy, routeApprovals, null, new Set(["vendor/model:free"])).result,
+    "allowed"
+  );
+  assert.equal(
+    evaluateOdysseusPolicy(policy, routeApprovals, null, new Set()).reason,
+    "NO_APPROVED_FREE_ROUTE"
+  );
+  const paidSibling = parseOdysseusMetadata(
+    headers({ "x-odysseus-allowed-routes": "openrouter/vendor/model" })
+  );
+  assert.equal(
+    evaluateOdysseusPolicy(paidSibling, routeApprovals, null, new Set(["vendor/model:free"]))
+      .result,
+    "denied"
+  );
 });
 
 test("built-in registry exposes direct LLM7 and Z.AI free routes to Odysseus", () => {
@@ -254,7 +276,7 @@ test("telemetry usage projection preserves measured cache and reasoning fields",
 
 test("sensitive requests are rejected before a provider adapter can be invoked", async () => {
   let providerCalls = 0;
-  const result = enforceOdysseusPolicy(headers({ "x-odysseus-privacy-class": "sensitive" }), {
+  const result = await enforceOdysseusPolicy(headers({ "x-odysseus-privacy-class": "sensitive" }), {
     model: "test-provider/test-model",
     messages: [{ role: "user", content: "secret" }],
   });
@@ -264,25 +286,25 @@ test("sensitive requests are rejected before a provider adapter can be invoked",
   assert.match(await result.response!.text(), /PRIVACY_DENIED/);
 });
 
-test("structured policy is removed and a role pool is rewritten to an exact approved route", () => {
-  const result = enforceOdysseusPolicy(new Headers(), {
+test("structured policy is removed and a direct-free role pool is rewritten to an exact route", async () => {
+  const result = await enforceOdysseusPolicy(new Headers(), {
     model: "odysseus-free-scout",
     odysseus_policy: {
       task_id: "task-structured",
       role: "scout",
       privacy_class: "public",
       free_only: true,
-      allowed_routes: ["openrouter/nvidia/nemotron-3-super-120b-a12b:free"],
+      allowed_routes: ["llm7/gemini-3.1-flash-lite"],
       policy_version: "v1",
     },
   });
   assert.equal(result.response, null);
-  assert.equal(result.body.model, "openrouter/nvidia/nemotron-3-super-120b-a12b:free");
+  assert.equal(result.body.model, "llm7/gemini-3.1-flash-lite");
   assert.equal("odysseus_policy" in result.body, false);
 });
 
 test("malformed policy is a deterministic machine-readable denial", async () => {
-  const result = enforceOdysseusPolicy(new Headers({ "x-odysseus-role": "scout" }), {
+  const result = await enforceOdysseusPolicy(new Headers({ "x-odysseus-role": "scout" }), {
     model: "test-provider/test-model",
   });
   assert.equal(result.response?.status, 403);

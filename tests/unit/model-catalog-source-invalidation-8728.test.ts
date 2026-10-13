@@ -224,6 +224,7 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
     {
       data: [
         { id: "provider/replacement:free", supported_parameters: ["tools"] },
+        { id: "provider/no-tools:free", supported_parameters: [] },
         {
           id: "provider/explicit-zero",
           pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
@@ -261,8 +262,13 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
   const secondCatalog = await openRouterCatalog.getOpenRouterCatalog();
   assert.deepEqual(
     [...(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds())!],
-    ["provider/replacement:free", "provider/explicit-zero"],
+    ["provider/replacement:free", "provider/no-tools:free", "provider/explicit-zero"],
     "rotation removes the old route and preserves a distinct exact route with authoritative zero rates"
+  );
+  assert.deepEqual(
+    [...(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds({ requireTools: true }))!],
+    ["provider/replacement:free"],
+    "tool-required routing keeps only current free routes whose catalog metadata supports tools"
   );
   assert.deepEqual(
     openRouterFreeModels
@@ -272,7 +278,7 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
         secondCatalog.stale
       )
       .map((model) => model.modelId),
-    ["provider/explicit-zero", "provider/replacement:free"]
+    ["provider/explicit-zero", "provider/no-tools:free", "provider/replacement:free"]
   );
 });
 

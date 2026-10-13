@@ -430,7 +430,7 @@ test("pinned route identity survives the slow streaming keepalive response path"
   );
 });
 
-test("Odysseus policy projection preserves deterministic route identity", () => {
+test("Odysseus policy projection preserves deterministic route identity", async () => {
   const route = resolveDeterministicCodestralRouteFromConnections(
     DETERMINISTIC_CODESRAL_ALIASES.accountB,
     [
@@ -445,7 +445,7 @@ test("Odysseus policy projection preserves deterministic route identity", () => 
   const body: Record<string, unknown> = { model: DETERMINISTIC_CODESRAL_ALIASES.accountB };
   applyDeterministicProviderAlias(body, route);
 
-  const projected = enforceOdysseusPolicy(new Headers(), body);
+  const projected = await enforceOdysseusPolicy(new Headers(), body);
   const projectedRoute = getDeterministicProviderRoute(projected.body);
   assert.equal(projectedRoute?.routeId, "mistral-codestral-account-b");
   assert.equal(projectedRoute?.credentialAlias, "codestral-account-b");

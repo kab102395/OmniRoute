@@ -5,11 +5,13 @@ import {
 } from "@/lib/deterministicProviderRoutes";
 import {
   evaluateOdysseusPolicy,
+  ODYSSEUS_ROLES,
   parseOdysseusMetadata,
   resolveConfiguredOdysseusApprovals,
   type PolicyDecision,
 } from "./policy";
 import { createOdysseusTelemetry, withOdysseusUsage } from "./telemetry";
+import { getCurrentOpenRouterFreeRouteIds } from "@/lib/catalog/openrouterCatalog";
 
 function responseWithTelemetry(
   response: Response,
@@ -42,11 +44,33 @@ export interface OdysseusGuardResult {
 }
 
 /** Resolve the same decision at execution time for durable telemetry attribution. */
-export function resolveOdysseusPolicyDecision(
+function buildCurrentOpenRouterApprovals(
+  routeIds: ReadonlySet<string> | null
+): PolicyDecision["candidates"] {
+  if (!routeIds) return [];
+  return [...routeIds].flatMap((model) =>
+    ODYSSEUS_ROLES.map((role) => ({
+      provider: "openrouter",
+      model,
+      role,
+      enabled: true,
+      approvalStatus: "approved" as const,
+      pricing: "free_api_tier" as const,
+      signupCreditAllowed: false,
+      privateSourceApproved: false,
+      dataRetention: "unknown" as const,
+      trainingOnInput: "unknown" as const,
+      riskCategory: "unknown" as const,
+      notes: "Currently listed as a free route in OpenRouter's authoritative model catalog.",
+    }))
+  );
+}
+
+export async function resolveOdysseusPolicyDecision(
   headers: Headers,
   body: unknown,
   requestedRoute: string | null = null
-): PolicyDecision {
+): Promise<PolicyDecision> {
   const parsed = parseOdysseusMetadata(headers, body);
   if (!parsed.enabled) return evaluateOdysseusPolicy(parsed);
   const registry = resolveConfiguredOdysseusApprovals();
@@ -59,14 +83,35 @@ export function resolveOdysseusPolicyDecision(
       candidates: [],
     };
   }
-  return evaluateOdysseusPolicy(parsed, registry.approvals, requestedRoute);
+  const needsCurrentOpenRouterRoutes =
+    "metadata" in parsed &&
+    parsed.metadata.freeOnly &&
+    parsed.metadata.allowedRoutes.some((route) => route.toLowerCase().startsWith("openrouter/"));
+  const requestRecord =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : null;
+  const requireTools = Array.isArray(requestRecord?.tools) && requestRecord.tools.length > 0;
+  const currentOpenRouterFreeRouteIds = needsCurrentOpenRouterRoutes
+    ? await getCurrentOpenRouterFreeRouteIds({ requireTools })
+    : null;
+  const approvals = [
+    ...registry.approvals,
+    ...(registry.includeCurrentOpenRouterCatalog
+      ? buildCurrentOpenRouterApprovals(currentOpenRouterFreeRouteIds)
+      : []),
+  ];
+  return evaluateOdysseusPolicy(parsed, approvals, requestedRoute, currentOpenRouterFreeRouteIds);
 }
 
 /**
  * Enforce the policy before `handleChat` performs model resolution or provider work.
  * The `odysseus-free-*` aliases are filtered candidate pools, not autonomous routers.
  */
-export function enforceOdysseusPolicy(headers: Headers, body: unknown): OdysseusGuardResult {
+export async function enforceOdysseusPolicy(
+  headers: Headers,
+  body: unknown
+): Promise<OdysseusGuardResult> {
   const parsed = parseOdysseusMetadata(headers, body);
   // Model alias resolution stores deterministic route identity as a non-enumerable
   // symbol on the request body. Preserve that identity across this defensive
@@ -83,7 +128,7 @@ export function enforceOdysseusPolicy(headers: Headers, body: unknown): Odysseus
     const decision = evaluateOdysseusPolicy(parsed);
     return { decision, body: bodyRecord, response: null };
   }
-  const decision = resolveOdysseusPolicyDecision(
+  const decision = await resolveOdysseusPolicyDecision(
     headers,
     body,
     model?.startsWith("odysseus-free-") ? null : model

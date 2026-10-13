@@ -80,13 +80,18 @@ export function isOpenRouterZeroPriceRoute(model: {
 }
 
 /** Exact OpenRouter routes currently advertised as free, or null when unverified. */
-export async function getCurrentOpenRouterFreeRouteIds(): Promise<Set<string> | null> {
+export async function getCurrentOpenRouterFreeRouteIds(options?: {
+  requireTools?: boolean;
+}): Promise<Set<string> | null> {
   const catalog = await getOpenRouterCatalog();
   if (catalog.stale) return null;
   return new Set(
     catalog.data
       .filter((entry) => {
-        return isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
+        const free = isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
+        const tools =
+          options?.requireTools !== true || entry.supported_parameters?.includes("tools") === true;
+        return free && tools;
       })
       .map((entry) => entry.id)
   );

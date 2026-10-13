@@ -135,7 +135,7 @@ async function postHandler(request: any) {
     }
     admission.lease = structuralAdmission.lease;
 
-    const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+    const odysseus = await enforceOdysseusPolicy(request.headers, parsedBody);
     if (odysseus.response) return finishAdmission(odysseus.response);
     parsedBody = odysseus.body;
 

@@ -212,7 +212,7 @@ export async function POST(request) {
             /* swallow — fall through with original model */
           });
 
-          const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+          const odysseus = await enforceOdysseusPolicy(request.headers, parsedBody);
           if (odysseus.response) return finishAdmission(odysseus.response);
           parsedBody = odysseus.body;
         }
@@ -284,7 +284,7 @@ export async function POST(request) {
         },
       });
       const response = withCompressionHeaderEcho(streamedResponse, compressionRequestHeader);
-      const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+      const odysseus = await enforceOdysseusPolicy(request.headers, parsedBody);
       return await addOdysseusTelemetryHeaders(
         response,
         odysseus.decision,
@@ -296,7 +296,7 @@ export async function POST(request) {
       await handleChat(request, null, parsedBody, callerCorrelationId ?? undefined),
       compressionRequestHeader
     );
-    const odysseus = enforceOdysseusPolicy(request.headers, parsedBody);
+    const odysseus = await enforceOdysseusPolicy(request.headers, parsedBody);
     return finishAdmission(
       await addOdysseusTelemetryHeaders(response, odysseus.decision, parsedBody?.model ?? null)
     );

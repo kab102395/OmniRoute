@@ -75,33 +75,6 @@ export const ODYSSEUS_HEADER_NAMES = {
   policyVersion: "x-odysseus-policy-version",
 } as const;
 
-/**
- * Current OpenRouter models advertised as free during the 2026-09-05 catalog
- * verification. Keep this list explicit: a model must be present here and in
- * the request's allowed-routes list before Odysseus can select it.
- */
-const OPENROUTER_FREE_MODELS = [
-  "inclusionai/ling-3.0-flash-sante:free",
-  "inclusionai/ling-3.0-flash-fin:free",
-  "dots-studio/dots-3-note-preview:free",
-  "liquid/lfm-2.5-2.6b:free",
-  "nvidia/nemotron-3.5-lightning:free",
-  "thinkingmachines/inkling-small:free",
-  "poolside/laguna-s-2.1:free",
-  "thinkingmachines/inkling:free",
-  "poolside/laguna-xs-2.1:free",
-  "cohere/north-mini-code:free",
-  "z-ai/glm-5.2:free",
-  "nvidia/nemotron-3.5-content-safety:free",
-  "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "minimax/minimax-m3:free",
-  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-  "google/gemma-4-26b-a4b-it:free",
-  "google/gemma-4-31b-it:free",
-  "minimax/minimax-m2.7:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
-] as const;
-
 /** Exact direct-provider free routes; these providers also expose paid models. */
 const DIRECT_FREE_ROUTES = [
   [
@@ -132,25 +105,8 @@ const DIRECT_FREE_APPROVALS: readonly OdysseusRouteApproval[] = DIRECT_FREE_ROUT
     }))
 );
 
-/** All verified free routes are available to each Odysseus role. */
-export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] =
-  OPENROUTER_FREE_MODELS.flatMap((model) =>
-    ODYSSEUS_ROLES.map((role) => ({
-      provider: "openrouter",
-      model,
-      role,
-      enabled: true,
-      approvalStatus: "approved" as const,
-      pricing: "free_api_tier" as const,
-      signupCreditAllowed: false,
-      privateSourceApproved: false,
-      dataRetention: "unknown" as const,
-      trainingOnInput: "unknown" as const,
-      riskCategory: "unknown" as const,
-      notes:
-        "Catalog-verified free route; revalidate current provider terms before production use.",
-    }))
-  ).concat(DIRECT_FREE_APPROVALS);
+/** Direct-provider policy approvals; OpenRouter routes are added from its current catalog. */
+export const DEFAULT_ODYSSEUS_APPROVALS: readonly OdysseusRouteApproval[] = DIRECT_FREE_APPROVALS;
 
 function isApproval(value: unknown): value is OdysseusRouteApproval {
   const item = record(value);
@@ -220,16 +176,27 @@ export function getOdysseusApprovalRegistry(): OdysseusApprovalRegistry {
  * unavailable, never silently merged with defaults.
  */
 export function resolveConfiguredOdysseusApprovals():
-  { available: true; approvals: readonly OdysseusRouteApproval[] } | { available: false } {
+  | {
+      available: true;
+      approvals: readonly OdysseusRouteApproval[];
+      includeCurrentOpenRouterCatalog: boolean;
+    }
+  | { available: false } {
   const configured =
     typeof process !== "undefined" ? process.env.ODYSSEUS_APPROVALS_JSON : undefined;
-  if (!configured) return { available: true, approvals: ODYSSEUS_APPROVAL_REGISTRY.snapshot() };
+  if (!configured) {
+    return {
+      available: true,
+      approvals: ODYSSEUS_APPROVAL_REGISTRY.snapshot(),
+      includeCurrentOpenRouterCatalog: true,
+    };
+  }
   try {
     const parsed: unknown = JSON.parse(configured);
     if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isApproval)) {
       return { available: false };
     }
-    return { available: true, approvals: parsed };
+    return { available: true, approvals: parsed, includeCurrentOpenRouterCatalog: false };
   } catch {
     return { available: false };
   }
@@ -322,7 +289,8 @@ function routeId(route: Pick<OdysseusRouteApproval, "provider" | "model">): stri
 export function evaluateOdysseusPolicy(
   parsed: ReturnType<typeof parseOdysseusMetadata>,
   approvals: readonly OdysseusRouteApproval[] = DEFAULT_ODYSSEUS_APPROVALS,
-  requestedRoute?: string | null
+  requestedRoute?: string | null,
+  currentOpenRouterFreeRouteIds: ReadonlySet<string> | null = null
 ): PolicyDecision {
   if (!parsed.enabled)
     return {
@@ -367,8 +335,10 @@ export function evaluateOdysseusPolicy(
       route.role === metadata.role && route.enabled && route.approvalStatus === "approved";
     const explicitlyAllowed = metadata.allowedRoutes.includes(routeId(route));
     const free =
-      route.pricing === "free_api_tier" ||
-      (route.pricing === "signup_credit_only" && route.signupCreditAllowed === true);
+      route.provider.toLowerCase() === "openrouter"
+        ? currentOpenRouterFreeRouteIds?.has(route.model) === true
+        : route.pricing === "free_api_tier" ||
+          (route.pricing === "signup_credit_only" && route.signupCreditAllowed === true);
     const available = route.providerAvailable !== false && route.quotaAvailable !== false;
     const privacy = metadata.privacyClass === "public" || route.privateSourceApproved === true;
     return exact && explicitlyAllowed && privacy && available && (!metadata.freeOnly || free);
