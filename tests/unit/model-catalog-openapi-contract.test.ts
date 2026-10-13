@@ -56,7 +56,7 @@ test("model catalog OpenAPI documents the implemented routing filters", () => {
       .map((parameter) => parameter.name)
   );
 
-  for (const name of ["prefix", "configuredOnly", "free_only"]) {
+  for (const name of ["prefix", "configuredOnly", "free_only", "require_tool_calling"]) {
     assert.ok(queryParameters.has(name), `query parameter ${name} must be documented`);
   }
   assert.match(operation?.description ?? "", /fresh upstream catalog/i);

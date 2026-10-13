@@ -410,6 +410,10 @@ Catalog query filters:
   whose `free_access.hardStopGuaranteed` is true, so exhausted quota cannot transition to paid
   overage. Other provider free tiers remain excluded. Catalog inclusion does not establish current
   account quota or successful execution.
+- `require_tool_calling=true` keeps only routes whose exact model metadata confirms tool support;
+  unsupported and unknown routes are omitted. Combine it with `free_only=true` and
+  `configuredOnly=true` to obtain configured candidates for free-only tool assignments. This does
+  not prove live quota or account eligibility.
 
 ### Model id prefixes (`?prefix=`)
 

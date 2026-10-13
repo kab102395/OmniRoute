@@ -693,6 +693,38 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       undefined,
       "unknown route capability must not inherit a canonical-model boolean"
     );
+
+    const configuredFreeResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models?free_only=true&configuredOnly=true")
+    );
+    const configuredFreeBody = (await configuredFreeResponse.json()) as {
+      data: Array<{ id?: string }>;
+    };
+    assert.ok(
+      configuredFreeBody.data.some((model) => model.id === "openrouter/vendor/no-tools:free"),
+      "the unfiltered free-only catalog keeps the exact free route before capability filtering"
+    );
+
+    const toolCapableFreeResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request(
+        "http://localhost/v1/models?free_only=true&require_tool_calling=true&configuredOnly=true"
+      )
+    );
+    const toolCapableFreeBody = (await toolCapableFreeResponse.json()) as {
+      data: Array<{ id?: string; capability_status?: { tool_calling?: { status?: string } } }>;
+    };
+    const toolCapableFreeIds = toolCapableFreeBody.data.map((model) => model.id);
+    assert.ok(toolCapableFreeIds.includes("openrouter/vendor/coder:free"));
+    assert.ok(toolCapableFreeIds.includes("openrouter/vendor/explicit-zero"));
+    assert.equal(toolCapableFreeIds.includes("openrouter/vendor/coder"), false);
+    assert.equal(toolCapableFreeIds.includes("openrouter/vendor/no-tools:free"), false);
+    assert.equal(toolCapableFreeIds.includes("openrouter/vendor/unknown-tools:free"), false);
+    assert.equal(toolCapableFreeIds.includes("openrouter/free"), false);
+    assert.ok(
+      toolCapableFreeBody.data.every(
+        (model) => model.capability_status?.tool_calling?.status === "supported"
+      )
+    );
   } finally {
     globalThis.fetch = REAL_FETCH;
   }

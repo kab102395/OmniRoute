@@ -42,6 +42,21 @@ import { extractApiKey } from "@/sse/services/auth";
 import { maybeOmitCatalogModelName } from "./catalogHelpers";
 import { isCodexModelCatalogClient } from "./catalogRequest";
 
+type UnknownRecord = { readonly [key: string]: unknown };
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasVerifiedToolCalling(model: Record<string, unknown>): boolean {
+  const capabilityStatus = model.capability_status;
+  return (
+    isRecord(capabilityStatus) &&
+    isRecord(capabilityStatus.tool_calling) &&
+    capabilityStatus.tool_calling.status === "supported"
+  );
+}
+
 /**
  * Post-filter chain applied AFTER the API-key filter, so variants and mirrors are
  * only derived from models the caller may actually see.
@@ -229,6 +244,8 @@ export async function finalizeCatalogResponse(
   }
 
   const includeModelNames = isModelCatalogNamesEnabled();
+  const requireToolCalling =
+    new URL(request.url).searchParams.get("require_tool_calling") === "true";
   // #9147: enrichment is the most expensive single stage of the catalog build —
   // per-entry provider/model resolution plus pricing + token/context override
   // lookups. Two fixes so a large catalog cannot pin the Node.js thread here:
@@ -258,6 +275,7 @@ export async function finalizeCatalogResponse(
         : entry;
       listedModel = maybeOmitCatalogModelName(listedModel, includeModelNames);
     }
+    if (requireToolCalling && !hasVerifiedToolCalling(listedModel)) continue;
     enriched.push(listedModel);
     catEnrichCount++;
     if (catEnrichCount % catYIELD_EVERY === 0) {
