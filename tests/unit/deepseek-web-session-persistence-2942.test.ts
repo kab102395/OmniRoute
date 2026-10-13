@@ -72,10 +72,13 @@ function installMock(completionOutcomes = []) {
       });
     }
     if (u.includes("/create_pow_challenge")) {
-      return new Response(JSON.stringify({ code: 0, data: { biz_data: { challenge: POW_CHALLENGE } } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ code: 0, data: { biz_data: { challenge: POW_CHALLENGE } } }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
     if (u.includes("/chat/completion")) {
       calls.completion += 1;
@@ -160,6 +163,11 @@ test("persistSession=true: reused-session failure falls back to a fresh session 
     assert.ok(r1.response.ok, "first call ok");
     const r2 = await run(executor, { persistSession: true, token: "tkn-heal" });
     assert.ok(r2.response.ok, "second call recovers via fresh-session retry");
+    assert.deepEqual(
+      r2.executionAttempts?.map((attempt) => attempt.statusCode),
+      [500, 200],
+      "the failed reused-session completion and successful retry must both be recorded"
+    );
     assert.equal(mock.calls.create, 2, "one initial + one fresh-session retry");
     assert.equal(mock.calls.completion, 3, "1 (call1) + 1 failed reuse + 1 retry");
   } finally {

@@ -1,4 +1,4 @@
-import { BaseExecutor, type ExecuteInput } from "./base.ts";
+import { BaseExecutor, type ExecuteInput, type ExecutorAttemptSummary } from "./base.ts";
 import { solveDeepSeekPowAsync } from "../lib/deepseek-pow.ts";
 import { type OpenAIToolCall } from "../translator/webTools.ts";
 import {
@@ -752,6 +752,7 @@ function buildToolAwareResult(opts: {
   toolCalls: OpenAIToolCall[] | null;
   reqHeaders: Record<string, string>;
   requestPayload: unknown;
+  executionAttempts?: ExecutorAttemptSummary[];
 }) {
   const { stream, clientModel, content, reasoningContent, toolCalls, reqHeaders, requestPayload } =
     opts;
@@ -813,6 +814,7 @@ function buildToolAwareResult(opts: {
       url: COMPLETION_URL,
       headers: reqHeaders,
       transformedBody: requestPayload,
+      executionAttempts: opts.executionAttempts ?? [],
     };
   }
 
@@ -838,6 +840,7 @@ function buildToolAwareResult(opts: {
     url: COMPLETION_URL,
     headers: reqHeaders,
     transformedBody: requestPayload,
+    executionAttempts: opts.executionAttempts ?? [],
   };
 }
 
@@ -863,6 +866,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
   }
 
   async execute({ model, body, stream, credentials, signal, log }: ExecuteInput) {
+    const executionAttempts: ExecutorAttemptSummary[] = [];
     const bodyObj = (body || {}) as Record<string, unknown>;
 
     // chat.deepseek.com's web API only accepts {prompt, ref_file_ids,
@@ -894,6 +898,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         url: COMPLETION_URL,
         headers: {},
         transformedBody: body,
+        executionAttempts,
       };
     }
 
@@ -948,12 +953,42 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           search_enabled: searchEnabled,
           preempt: false,
         };
-        const resp = await fetch(COMPLETION_URL, {
-          method: "POST",
-          headers: reqHeaders,
-          body: JSON.stringify(requestPayload),
-          signal: signal ?? undefined,
-        });
+        const startedAt = new Date().toISOString();
+        const startedMs = Date.now();
+        let resp: Response;
+        try {
+          resp = await fetch(COMPLETION_URL, {
+            method: "POST",
+            headers: reqHeaders,
+            body: JSON.stringify(requestPayload),
+            signal: signal ?? undefined,
+          });
+          const providerRequestId =
+            resp.headers.get("x-request-id")?.trim() ||
+            resp.headers.get("request-id")?.trim() ||
+            undefined;
+          executionAttempts.push({
+            index: executionAttempts.length + 1,
+            startedAt,
+            durationMs: Math.max(0, Date.now() - startedMs),
+            statusCode: resp.status,
+            ...(providerRequestId ? { providerRequestId } : {}),
+            outcome: "response",
+            costAttribution: "unknown",
+            attemptSource: "executor_reported",
+          });
+        } catch (error) {
+          executionAttempts.push({
+            index: executionAttempts.length + 1,
+            startedAt,
+            durationMs: Math.max(0, Date.now() - startedMs),
+            statusCode: null,
+            outcome: "network_error",
+            costAttribution: "unknown",
+            attemptSource: "executor_reported",
+          });
+          throw error;
+        }
         return { resp, reqHeaders, requestPayload };
       };
 
@@ -1027,6 +1062,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           url: COMPLETION_URL,
           headers: reqHeaders,
           transformedBody: requestPayload,
+          executionAttempts,
         };
       }
 
@@ -1050,6 +1086,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
               url: COMPLETION_URL,
               headers: reqHeaders,
               transformedBody: requestPayload,
+              executionAttempts,
             };
           }
           if (!persistSession) deleteSessionOnDeepSeek(accessToken, sessionId).catch(() => {});
@@ -1061,6 +1098,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
             url: COMPLETION_URL,
             headers: reqHeaders,
             transformedBody: requestPayload,
+            executionAttempts,
           };
         } catch {
           /* not JSON, continue */
@@ -1094,6 +1132,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           toolCalls,
           reqHeaders,
           requestPayload,
+          executionAttempts,
         });
       }
 
@@ -1108,6 +1147,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           url: COMPLETION_URL,
           headers: reqHeaders,
           transformedBody: requestPayload,
+          executionAttempts,
         };
       }
 
@@ -1137,6 +1177,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         url: COMPLETION_URL,
         headers: reqHeaders,
         transformedBody: requestPayload,
+        executionAttempts,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1148,6 +1189,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           url: COMPLETION_URL,
           headers: {},
           transformedBody: body,
+          executionAttempts,
         };
       }
 
@@ -1156,6 +1198,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         url: COMPLETION_URL,
         headers: {},
         transformedBody: body,
+        executionAttempts,
       };
     }
   }
