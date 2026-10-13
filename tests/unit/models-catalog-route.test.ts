@@ -857,7 +857,7 @@ test("v1 models exposes other providers' curated free-tier facts without claimin
   assert.equal(freeTierRoute.free_access?.source?.retrievedAt, null);
 });
 
-test("v1 models free-only mode includes exact provider routes with guaranteed free-tier hard stops", async () => {
+test("v1 models free-only mode includes verified free routes and bounded curated offers", async () => {
   await seedConnection("groq");
 
   const response = await v1ModelsCatalog.getUnifiedModelsResponse(
@@ -872,6 +872,10 @@ test("v1 models free-only mode includes exact provider routes with guaranteed fr
         hardStopGuaranteed?: boolean | null;
         zeroCostOnExhaustion?: string;
       };
+      free_route_provenance?: {
+        classification?: string;
+        source?: { stale?: boolean };
+      };
     }>;
   };
   const routeIds = body.data.map((model) => model.id);
@@ -882,10 +886,13 @@ test("v1 models free-only mode includes exact provider routes with guaranteed fr
     body.data.every(
       (model) =>
         (model.owned_by === "openrouter" && model.free === true) ||
+        (model.free === true &&
+          model.free_route_provenance?.classification === "free" &&
+          model.free_route_provenance.source?.stale === false) ||
         (model.free_access?.hardStopGuaranteed === true &&
           model.free_access.zeroCostOnExhaustion === "provider_hard_stop")
     ),
-    "free-only candidates must have current OpenRouter free-route evidence or a guaranteed provider hard stop"
+    "free-only candidates require current route evidence or a curated provider hard stop"
   );
 });
 
@@ -958,6 +965,32 @@ test("synced provider tool and free metadata preserve source freshness", async (
     true
   );
   assert.equal(stale?.capability_status?.tool_calling?.stale, true);
+
+  const freeOnlyResponse = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models?free_only=true")
+  );
+  const freeOnlyBody = (await freeOnlyResponse.json()) as {
+    data: Array<{
+      id?: string;
+      free?: boolean;
+      free_access?: { hardStopGuaranteed?: boolean | null };
+    }>;
+  };
+  const currentFreeRoute = freeOnlyBody.data.find(
+    (model) => model.id === "groq/llama/current-tool-model"
+  );
+  assert.equal(freeOnlyResponse.status, 200);
+  assert.equal(currentFreeRoute?.free, true);
+  assert.equal(
+    currentFreeRoute?.free_access,
+    undefined,
+    "provider free-route classification does not imply quota-exhaustion guarantees"
+  );
+  assert.equal(
+    freeOnlyBody.data.some((model) => model.id === "groq/llama/stale-tool-model"),
+    false,
+    "stale synchronized free routes cannot qualify in free-only discovery"
+  );
 });
 
 test("v1 models removes a retired synchronized OpenRouter free route in free-only mode", async () => {

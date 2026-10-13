@@ -67,3 +67,42 @@ test("free-only catalog accepts exact provider routes with guaranteed hard stops
     false
   );
 });
+
+test("free-only catalog accepts fresh exact provider free-route classifications", () => {
+  const exactRoute = {
+    id: "groq/llama/free-catalog-model",
+    root: "llama/free-catalog-model",
+    owned_by: "groq",
+    free: true,
+    free_route_provenance: {
+      classification: "free",
+      source: {
+        id: "provider_model_catalog",
+        modelId: "llama/free-catalog-model",
+        stale: false,
+      },
+    },
+  };
+  assert.equal(isFreeOnlyCatalogModel(exactRoute), true);
+  assert.equal(
+    isFreeOnlyCatalogModel({
+      ...exactRoute,
+      free_route_provenance: {
+        ...exactRoute.free_route_provenance,
+        source: { ...exactRoute.free_route_provenance.source, stale: true },
+      },
+    }),
+    false
+  );
+  assert.equal(
+    isFreeOnlyCatalogModel({
+      ...exactRoute,
+      free_route_provenance: {
+        ...exactRoute.free_route_provenance,
+        source: { ...exactRoute.free_route_provenance.source, modelId: "different/model" },
+      },
+    }),
+    false
+  );
+  assert.equal(isFreeOnlyCatalogModel({ ...exactRoute, free: false }), false);
+});

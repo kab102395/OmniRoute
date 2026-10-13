@@ -15,11 +15,13 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 /**
- * Keep only routes with a bounded zero-cost offering. Curated provider tiers qualify only
- * when OmniRoute's catalog records a provider hard stop, so exhausted quota cannot become paid.
+ * Keep only exact routes with current free-route evidence. Provider catalog membership is
+ * sufficient for free-route eligibility; quota exhaustion guarantees remain separate facts
+ * in `free_access` and pricing metadata.
  */
 export function isFreeOnlyCatalogModel(model: Record<string, unknown>): boolean {
   if (isExplicitOpenRouterFreeCatalogModel(model)) return true;
+  if (isFreshProviderCatalogFreeRoute(model)) return true;
   if (
     (model.owned_by === "huggingface" || model.owned_by === "hf") &&
     typeof model.id === "string" &&
@@ -48,6 +50,26 @@ export function isFreeOnlyCatalogModel(model: Record<string, unknown>): boolean 
     facts.zeroCostOnExhaustion === "provider_hard_stop" &&
     isRecord(source) &&
     source.id === "omniroute.free_model_catalog"
+  );
+}
+
+function isFreshProviderCatalogFreeRoute(model: Record<string, unknown>): boolean {
+  const provenance = model.free_route_provenance;
+  const provenanceRecord = isRecord(provenance) ? provenance : null;
+  const source =
+    provenanceRecord && isRecord(provenanceRecord.source) ? provenanceRecord.source : null;
+  return (
+    model.free === true &&
+    model.custom !== true &&
+    typeof model.id === "string" &&
+    typeof model.root === "string" &&
+    typeof model.owned_by === "string" &&
+    model.owned_by !== "combo" &&
+    provenanceRecord?.classification === "free" &&
+    source?.id === "provider_model_catalog" &&
+    source.stale === false &&
+    typeof source.modelId === "string" &&
+    source.modelId === model.root
   );
 }
 
