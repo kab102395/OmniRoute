@@ -452,6 +452,7 @@ test("DeepSeek estimates carry provider pricing provenance and freshness", async
     assert.equal(accounting.source, "deepseek.api_pricing");
     assert.equal(accounting.pricingRetrievedAt, "2026-10-13T06:56:49.000Z");
     assert.equal(accounting.pricingStale, false);
+    assert.match(accounting.pricingCondition ?? "", /peak is 01:00-04:00/);
 
     Date.now = () => Date.parse("2026-10-21T12:00:00.000Z");
     const staleEstimate = await calculateCostWithEvidence("deepseek", "deepseek-v4-pro", {

@@ -163,6 +163,7 @@ test("request IDs preserve identical retry attempts and attach each cost snapsho
     pricingEffectiveAt: null,
     pricingRetrievedAt: timestamp,
     pricingStale: false,
+    pricingCondition: null,
     usageKind: "provider_reported_usage",
   });
 
@@ -185,6 +186,7 @@ test("request IDs preserve identical retry attempts and attach each cost snapsho
       pricingEffectiveAt: null,
       pricingRetrievedAt: timestamp,
       pricingStale: false,
+      pricingCondition: null,
       usageKind: "provider_reported_usage",
     })
   );

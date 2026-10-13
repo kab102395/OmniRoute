@@ -163,6 +163,7 @@ describe("cors/origins.applyCorsHeaders", () => {
     assert.match(exposed, /X-OmniRoute-Served-Model-Source/);
     assert.match(exposed, /X-OmniRoute-Provider-Request-Id/);
     assert.match(exposed, /X-OmniRoute-Pricing-Retrieved-At/);
+    assert.match(exposed, /X-OmniRoute-Pricing-Condition/);
     assert.match(exposed, /X-OmniRoute-Pricing-Stale/);
     assert.match(exposed, /X-OmniRoute-Fallback-Attempts/);
   });

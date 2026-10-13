@@ -149,6 +149,7 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
       pricingEffectiveAt: null,
       pricingRetrievedAt: null,
       pricingStale: null,
+      pricingCondition: null,
       usageKind: "provider_reported_usage",
     }
   );
@@ -186,6 +187,7 @@ test("accounting distinguishes provider-reported, estimated, usage-only and unkn
       pricingEffectiveAt: null,
       pricingRetrievedAt: "2026-10-12T12:00:00.000Z",
       pricingStale: false,
+      pricingCondition: null,
       usageKind: "provider_reported_usage",
     }
   );
@@ -269,6 +271,7 @@ test("modal cost accounting distinguishes unknown pricing from a zero-value esti
       pricingEffectiveAt: null,
       pricingRetrievedAt: new Date(pricingEvidence.retrievedAt).toISOString(),
       pricingStale: false,
+      pricingCondition: null,
       usageKind: "estimated_usage",
     }
   );

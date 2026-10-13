@@ -171,6 +171,7 @@ export function buildOmniRouteResponseMetaHeaders({
     currency?: string | null;
     usageKind?: string | null;
     pricingRetrievedAt?: string | null;
+    pricingCondition?: string | null;
     pricingStale?: boolean | null;
   } | null;
   /**
@@ -259,6 +260,11 @@ export function buildOmniRouteResponseMetaHeaders({
     if (typeof accounting.pricingStale === "boolean") {
       headers[OMNIROUTE_RESPONSE_HEADERS.pricingStale] = toHeaderValue(
         String(accounting.pricingStale)
+      );
+    }
+    if (typeof accounting.pricingCondition === "string" && accounting.pricingCondition.trim()) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.pricingCondition] = toHeaderValue(
+        accounting.pricingCondition.slice(0, 256)
       );
     }
   }

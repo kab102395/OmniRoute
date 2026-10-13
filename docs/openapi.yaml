@@ -1609,6 +1609,10 @@ paths:
                 type: string
                 format: date-time
               description: UTC retrieval timestamp for the price metadata, when known.
+            X-OmniRoute-Pricing-Condition:
+              schema:
+                type: string
+              description: Applicable pricing condition for an estimate, when the source defines one.
             X-OmniRoute-Pricing-Stale:
               schema:
                 type: string

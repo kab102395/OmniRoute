@@ -110,6 +110,7 @@ test("attributes usage and cost only to the final successful upstream attempt", 
     pricingEffectiveAt: null,
     pricingRetrievedAt: null,
     pricingStale: null,
+    pricingCondition: null,
     usageKind: "provider_reported_usage",
   } as const;
 
@@ -147,6 +148,7 @@ test("persists per-attempt usage and accounting in the compact execution receipt
         pricingEffectiveAt: null,
         pricingRetrievedAt: "2026-10-12T10:00:00.000Z",
         pricingStale: false,
+        pricingCondition: null,
         usageKind: "provider_reported_usage",
       },
     },
@@ -184,6 +186,7 @@ test("persists per-attempt usage and accounting in the compact execution receipt
         pricingEffectiveAt: null,
         pricingRetrievedAt: "2026-10-12T10:00:00.000Z",
         pricingStale: false,
+        pricingCondition: null,
         usageKind: "provider_reported_usage",
       },
     },

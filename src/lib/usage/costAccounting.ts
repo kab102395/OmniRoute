@@ -18,6 +18,7 @@ export type CostAccountingFacts = {
   pricingEffectiveAt: null;
   pricingRetrievedAt: string | null;
   pricingStale: boolean | null;
+  pricingCondition?: string | null;
   usageKind: "provider_reported_usage" | "estimated_usage" | "unknown";
 };
 
@@ -59,6 +60,7 @@ export function classifyModalCostAccounting(args: {
         ? null
         : new Date(args.pricingEvidence.retrievedAt).toISOString(),
     pricingStale: args.pricingEvidence.stale,
+    pricingCondition: args.pricingEvidence.condition ?? null,
     usageKind: "estimated_usage" as const,
   };
   if (args.costUsd === null) {
@@ -116,6 +118,7 @@ export function classifyCostAccounting(args: {
     pricingEffectiveAt: null as null,
     pricingRetrievedAt: null as string | null,
     pricingStale: null as boolean | null,
+    pricingCondition: null as string | null,
   };
 
   if (typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0) {
@@ -174,6 +177,7 @@ export function classifyCostAccounting(args: {
       ...identity,
       pricingRetrievedAt: args.pricingEvidence?.retrievedAt ?? null,
       pricingStale: args.pricingEvidence?.stale ?? null,
+      pricingCondition: args.pricingEvidence?.condition ?? null,
       usageKind,
     };
   }
@@ -200,6 +204,7 @@ export function classifyCostAccounting(args: {
     pricingEffectiveAt: null,
     pricingRetrievedAt: null,
     pricingStale: null,
+    pricingCondition: null,
     usageKind: "unknown",
   };
 }

@@ -27,6 +27,7 @@ function spies(
           retrievedAt: null,
           ttlMs: null,
           stale: null,
+          condition: null,
         },
       };
     },

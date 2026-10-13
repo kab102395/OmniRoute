@@ -133,6 +133,7 @@ test("OmniRoute keeps catalog and execution facts needed by external routers", (
     "X-OmniRoute-Cost-Currency",
     "X-OmniRoute-Usage-Kind",
     "X-OmniRoute-Pricing-Retrieved-At",
+    "X-OmniRoute-Pricing-Condition",
     "X-OmniRoute-Pricing-Stale",
     "X-OmniRoute-Fallback-Attempts",
   ]) {

@@ -468,6 +468,7 @@ function serializeAccounting(value: unknown): string | null {
     pricingEffectiveAt: null,
     pricingRetrievedAt: optionalString("pricingRetrievedAt"),
     pricingStale: typeof accounting.pricingStale === "boolean" ? accounting.pricingStale : null,
+    pricingCondition: optionalString("pricingCondition"),
     usageKind:
       accounting.usageKind === "provider_reported_usage" ||
       accounting.usageKind === "estimated_usage"

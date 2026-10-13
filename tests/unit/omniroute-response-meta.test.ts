@@ -176,6 +176,7 @@ test("buildOmniRouteResponseMetaHeaders exposes cost pricing provenance and fres
       currency: "USD",
       usageKind: "estimated_usage",
       pricingRetrievedAt: "2026-10-12T00:00:00.000Z",
+      pricingCondition: "peak and off-peak schedule applies",
       pricingStale: false,
     },
   });
@@ -183,6 +184,10 @@ test("buildOmniRouteResponseMetaHeaders exposes cost pricing provenance and fres
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.accountingKind], "estimated_cost");
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.costSource], "models_dev.api_json");
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.pricingRetrievedAt], "2026-10-12T00:00:00.000Z");
+  assert.equal(
+    headers[OMNIROUTE_RESPONSE_HEADERS.pricingCondition],
+    "peak and off-peak schedule applies"
+  );
   assert.equal(headers[OMNIROUTE_RESPONSE_HEADERS.pricingStale], "false");
 });
 

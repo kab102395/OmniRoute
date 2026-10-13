@@ -27,6 +27,7 @@ function estimatedAccounting(amountUsd: number) {
     pricingEffectiveAt: null,
     pricingRetrievedAt: "2026-06-19T12:00:00.000Z",
     pricingStale: false,
+    pricingCondition: null,
     usageKind: "provider_reported_usage" as const,
   };
 }

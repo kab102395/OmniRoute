@@ -45,6 +45,7 @@ export type CostPricingEvidence = {
   retrievedAt: string | null;
   ttlMs: number | null;
   stale: boolean | null;
+  condition?: string | null;
 };
 
 export type CostEstimate = {
@@ -243,7 +244,8 @@ export function buildCostPricingEvidence(
   modelId: string | null,
   retrievedAt: string | null,
   ttlMs: number | null,
-  now = Date.now()
+  now = Date.now(),
+  condition: string | null = null
 ): CostPricingEvidence {
   const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
   const stale =
@@ -260,6 +262,7 @@ export function buildCostPricingEvidence(
     retrievedAt: Number.isFinite(retrievedAtMs) ? retrievedAt : null,
     ttlMs,
     stale,
+    condition,
   };
 }
 
@@ -306,6 +309,7 @@ export async function calculateCostWithEvidence(
         : {};
     let retrievedAt: string | null = null;
     let ttlMs: number | null = null;
+    let pricingCondition: string | null = null;
     let evidenceSource: CostPricingEvidence["source"] = resolvedPricing.source;
     if (resolvedPricing.source === "modelsDev") {
       const { getSyncStatus } = await import("@/lib/modelsDevSync");
@@ -326,6 +330,7 @@ export async function calculateCostWithEvidence(
         evidenceSource = "deepseek";
         retrievedAt = deepseekEvidence.source.retrievedAt;
         ttlMs = deepseekEvidence.source.cacheTtlMs;
+        pricingCondition = deepseekEvidence.pricingCondition;
       }
     }
     const inputTokens = Math.max(
@@ -351,7 +356,9 @@ export async function calculateCostWithEvidence(
       evidenceSource,
       resolvedPricing.modelKey,
       retrievedAt,
-      ttlMs
+      ttlMs,
+      Date.now(),
+      pricingCondition
     );
     const pricingFreshnessKnown =
       (resolvedPricing.source === "default" && evidenceSource !== "deepseek") ||
