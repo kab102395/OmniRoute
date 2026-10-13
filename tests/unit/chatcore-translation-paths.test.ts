@@ -3002,6 +3002,40 @@ test("chatCore does not substitute an OpenAI model after empty content", async (
   assert.equal(result.status, 502);
   assert.equal(calls.length, 1);
 });
+test("chatCore does not substitute a sibling model after empty content in strict mode", async () => {
+  const { calls, result } = await invokeChatCore({
+    provider: "claude",
+    model: "claude-sonnet-4-6",
+    responseFormat: "claude",
+    body: {
+      model: "claude-sonnet-4-6",
+      stream: false,
+      max_tokens: 64,
+      messages: [{ role: "user", content: "preserve exact model after empty response" }],
+    },
+    requestHeaders: { "X-OmniRoute-Strict-Model": "true" },
+    responseFactory() {
+      return new Response(
+        JSON.stringify({
+          id: "msg-empty-strict",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          content: [],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 0 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.status, 502);
+  assert.equal(result.error, "Provider returned empty content");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.model, "claude-sonnet-4-6");
+});
 test("chatCore returns a gateway error without probing another OpenAI model", async () => {
   const { result, calls } = await invokeChatCore({
     provider: "openai",
