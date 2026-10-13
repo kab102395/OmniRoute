@@ -161,6 +161,13 @@ export interface CatalogProviderRoute {
   [key: string]: unknown;
 }
 
+export interface CatalogProviderRoutesProvenance {
+  readonly source: "huggingface.router_models_api";
+  readonly pricing_unit: "USD / 1M tokens";
+  readonly retrieved_at: string | null;
+  readonly stale: boolean;
+}
+
 export interface ModelCatalogEntry extends Record<string, unknown> {
   id: string;
   object?: string;
@@ -185,9 +192,7 @@ export interface ModelCatalogEntry extends Record<string, unknown> {
   route_selection?: CatalogRouteSelection;
   route_availability?: CatalogRouteAvailability;
   provider_routes?: CatalogProviderRoute[];
-  provider_routes_provenance?: CatalogMetadataSource & {
-    pricing_unit?: string;
-  };
+  provider_routes_provenance?: CatalogProviderRoutesProvenance;
 }
 
 export interface ModelCatalogResponse extends Record<string, unknown> {

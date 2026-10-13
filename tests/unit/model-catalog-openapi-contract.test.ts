@@ -5,6 +5,7 @@ import test from "node:test";
 import * as yaml from "js-yaml";
 import {
   MODEL_PRICING_PROVENANCE_STATES,
+  type CatalogProviderRoutesProvenance,
   type ModelCatalogEntry,
 } from "@/domain/modelCatalogContract";
 
@@ -140,6 +141,26 @@ test("model catalog OpenAPI types emitted effort tiers and supported endpoints",
 test("typed model catalog entries expose supported endpoints", () => {
   const model: ModelCatalogEntry = { id: "provider/model", supported_endpoints: ["chat"] };
   assert.deepEqual(model.supported_endpoints, ["chat"]);
+});
+
+test("typed Hugging Face route provenance matches the published API fields", () => {
+  const provenance: CatalogProviderRoutesProvenance = {
+    source: "huggingface.router_models_api",
+    pricing_unit: "USD / 1M tokens",
+    retrieved_at: null,
+    stale: false,
+  };
+  const model: ModelCatalogEntry = {
+    id: "hf/org/model",
+    provider_routes_provenance: provenance,
+  };
+
+  assert.deepEqual(model.provider_routes_provenance, {
+    source: "huggingface.router_models_api",
+    pricing_unit: "USD / 1M tokens",
+    retrieved_at: null,
+    stale: false,
+  });
 });
 
 test("typed model catalog entries expose source-backed structured-output status", () => {
