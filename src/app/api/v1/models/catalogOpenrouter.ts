@@ -64,7 +64,8 @@ export function reconcileOpenRouterFreeRoutes<T extends Record<string, unknown>>
     const sourceModelId = id.replace(/^openrouter\//, "");
     const isOpenRouterFreeRow =
       model.owned_by === "openrouter" && model.free === true && isOpenRouterFreeModel({ id });
-    if (!isOpenRouterFreeRow || currentRouteIds.has(id) || currentRouteIds.has(sourceModelId)) {
+    const isCurrentFreeRoute = currentRouteIds.has(id) || currentRouteIds.has(sourceModelId);
+    if (!isOpenRouterFreeRow || (!options.stale && isCurrentFreeRoute)) {
       result.push(model);
       continue;
     }

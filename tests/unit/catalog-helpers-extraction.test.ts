@@ -296,6 +296,17 @@ test("catalogOpenrouter: synchronized free routes lose eligibility when absent f
     (stale?.pricing_provenance as { zeroCostEligibility?: string }).zeroCostEligibility,
     "unknown_stale_catalog"
   );
+  const staleEvenWhenCachedPresent = reconcileOpenRouterFreeRoutes(
+    [oldRoute],
+    new Set(["provider/model:free"]),
+    { ...options, stale: true }
+  )[0];
+  assert.equal(staleEvenWhenCachedPresent?.free, undefined);
+  assert.equal(
+    (staleEvenWhenCachedPresent?.pricing_provenance as { zeroCostEligibility?: string })
+      .zeroCostEligibility,
+    "unknown_stale_catalog"
+  );
   assert.deepEqual(
     reconcileOpenRouterFreeRoutes([oldRoute], new Set(), { ...options, hidePaid: true }),
     []
