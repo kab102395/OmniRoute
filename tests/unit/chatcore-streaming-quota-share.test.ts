@@ -17,9 +17,14 @@ const { scheduleStreamingQuotaShareConsumption } =
   await import("../../open-sse/handlers/chatCore/streamingQuotaShare.ts");
 
 function makeCostSpy() {
-  const calls: Array<{ provider: string; model: string }> = [];
-  const calculateCost = async (provider: string, model: string) => {
-    calls.push({ provider, model });
+  const calls: Array<{ provider: string; model: string; requestCount?: number }> = [];
+  const calculateCost = async (
+    provider: string,
+    model: string,
+    _usage: unknown,
+    options?: { requestCount?: number }
+  ) => {
+    calls.push({ provider, model, requestCount: options?.requestCount });
     return 0.0042;
   };
   return { calculateCost, calls };
@@ -86,10 +91,12 @@ test("valid 200 stream resolves cost via injected calculateCost", async () => {
     streamUsage: { prompt_tokens: 100, completion_tokens: 50 },
     streamStatus: 200,
     serviceTier: "standard",
+    requestCount: 4,
     calculateCost,
   });
   await waitFor(() => calls.length > 0);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].provider, "deepseek");
   assert.equal(calls[0].model, "deepseek-chat");
+  assert.equal(calls[0].requestCount, 4);
 });

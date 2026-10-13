@@ -32,6 +32,7 @@ export interface ModelPricingRates extends Record<string, unknown> {
   imageReportedUsd?: string | null;
   imageOutputReportedUsd?: string | null;
   imageTokenReportedUsd?: string | null;
+  /** Flat USD charge per request when reported; distinct from tokenRateUnit. */
   requestReportedUsd?: string | null;
   videoReportedUsd?: string | null;
   audioInputPerTokenUsd?: string | null;

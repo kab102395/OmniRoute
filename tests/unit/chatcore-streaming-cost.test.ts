@@ -13,12 +13,17 @@ function spies(
 ) {
   const recorded: Array<{ apiKeyId: string; cost: number }> = [];
   const unknown: string[] = [];
-  const costArgs: Array<{ provider: string; model: string }> = [];
+  const costArgs: Array<{ provider: string; model: string; requestCount?: number }> = [];
   return {
     recorded,
     costArgs,
-    calculateCostWithEvidence: async (provider: string, model: string) => {
-      costArgs.push({ provider, model });
+    calculateCostWithEvidence: async (
+      provider: string,
+      model: string,
+      _usage: unknown,
+      options?: { requestCount?: number }
+    ) => {
+      costArgs.push({ provider, model, requestCount: options?.requestCount });
       return {
         costUsd: costValue,
         pricingEvidence: {
@@ -91,6 +96,7 @@ test("valid input records the resolved cost against the api key", async () => {
     model: "deepseek-chat",
     streamUsage: { prompt_tokens: 100, completion_tokens: 50 },
     serviceTier: "standard",
+    requestCount: 3,
     calculateCostWithEvidence: s.calculateCostWithEvidence,
     classifyCostAccounting: s.classifyCostAccounting,
     recordCost: s.recordCost,
@@ -98,6 +104,7 @@ test("valid input records the resolved cost against the api key", async () => {
   });
   await waitFor(() => s.recorded.length > 0);
   assert.equal(s.costArgs[0].provider, "deepseek");
+  assert.equal(s.costArgs[0].requestCount, 3);
   assert.equal(s.recorded.length, 1);
   assert.equal(s.recorded[0].apiKeyId, "key-1");
   assert.equal(s.recorded[0].cost, 0.0073);

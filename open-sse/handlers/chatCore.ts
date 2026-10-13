@@ -5428,6 +5428,7 @@ export async function handleChatCore({
     const costAssessment = costUsage
       ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
           serviceTier: effectiveServiceTier,
+          requestCount: Math.max(1, executionAttemptTotal),
         })
       : { costUsd: 0, costKnown: false, pricingEvidence: null };
     const estimatedCost = costAssessment.costUsd;
@@ -6041,6 +6042,7 @@ export async function handleChatCore({
           const costAssessment = costUsage
             ? await calculateCostWithEvidence(provider, pricingModel, costUsage, {
                 serviceTier: effectiveServiceTier,
+                requestCount: Math.max(1, executionAttemptTotal),
               })
             : { costUsd: 0, costKnown: false, pricingEvidence: null };
           const accounting = classifyCostAccounting({
@@ -6090,6 +6092,7 @@ export async function handleChatCore({
       model: completedStreamModel,
       streamUsage,
       serviceTier: effectiveServiceTier,
+      requestCount: Math.max(1, executionAttemptTotal),
       calculateCostWithEvidence,
       classifyCostAccounting,
       recordCost,
@@ -6108,6 +6111,7 @@ export async function handleChatCore({
       streamUsage,
       streamStatus: normalizedStreamStatus,
       serviceTier: effectiveServiceTier,
+      requestCount: Math.max(1, executionAttemptTotal),
       calculateCost,
       log,
     });

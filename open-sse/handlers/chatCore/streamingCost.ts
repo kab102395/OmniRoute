@@ -13,7 +13,7 @@ type CostResolver = (
   provider: string,
   model: string,
   usage: Record<string, number | undefined> | null | undefined,
-  options: { serviceTier?: string }
+  options: { serviceTier?: string; requestCount?: number }
 ) => Promise<{
   costUsd: number;
   costKnown: boolean;
@@ -26,6 +26,7 @@ export function recordStreamingCost(args: {
   model: string | null | undefined;
   streamUsage: Record<string, number | undefined> | null | undefined;
   serviceTier?: string;
+  requestCount?: number;
   calculateCostWithEvidence: CostResolver;
   classifyCostAccounting: typeof import("@/lib/usage/costAccounting").classifyCostAccounting;
   recordCost: (apiKeyId: string, cost: number) => void;
@@ -41,6 +42,7 @@ export function recordStreamingCost(args: {
   args
     .calculateCostWithEvidence(args.provider, args.model, args.streamUsage, {
       serviceTier: args.serviceTier,
+      requestCount: args.requestCount,
     })
     .then((assessment) => {
       const accounting = args.classifyCostAccounting({

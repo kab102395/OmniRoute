@@ -11,7 +11,8 @@ process.env.MODELS_DEV_SYNC_INTERVAL = "60";
 const core = await import("../../../src/lib/db/core.ts");
 const db = core.getDbInstance();
 const settings = await import("../../../src/lib/db/settings.ts");
-const { calculateCostWithEvidence } = await import("../../../src/lib/usage/costCalculator.ts");
+const { calculateCostWithEvidence, computeCostFromPricing } =
+  await import("../../../src/lib/usage/costCalculator.ts");
 const { classifyCostAccounting } = await import("../../../src/lib/usage/costAccounting.ts");
 
 test("partial user pricing does not make a stale inherited rate count as known", async () => {
@@ -32,7 +33,7 @@ test("partial user pricing does not make a stale inherited rate count as known",
     })
   );
   await settings.updatePricing({
-    "mixed-source-provider": { "model-a": { input: 0.5 } },
+    "mixed-source-provider": { "model-a": { input: 0.5, request: 0.25 } },
   });
 
   const estimate = await calculateCostWithEvidence("mixed-source-provider", "model-a", {
@@ -40,12 +41,13 @@ test("partial user pricing does not make a stale inherited rate count as known",
     output: 1_000_000,
   });
 
-  assert.equal(estimate.costUsd, 2.5);
+  assert.equal(estimate.costUsd, 2.75);
   assert.equal(estimate.costKnown, false);
   assert.equal(estimate.pricingEvidence.source, "mixed");
   assert.equal(estimate.pricingEvidence.stale, true);
   assert.deepEqual(estimate.pricingEvidence.rateSources, {
     input: { source: "user", retrievedAt: null, ttlMs: null, stale: false },
+    request: { source: "user", retrievedAt: null, ttlMs: null, stale: false },
     output: {
       source: "modelsDev",
       retrievedAt,
@@ -64,10 +66,27 @@ test("partial user pricing does not make a stale inherited rate count as known",
   });
   assert.equal(accounting.kind, "estimated_cost");
   assert.equal(accounting.source, "omniroute.mixed_pricing_sources");
-  assert.equal(accounting.amountUsd, 2.5);
+  assert.equal(accounting.amountUsd, 2.75);
   assert.equal(accounting.pricingRetrievedAt, null);
   assert.equal(accounting.pricingStale, true);
   assert.deepEqual(accounting.pricingRateSources, estimate.pricingEvidence.rateSources);
+
+  await settings.updatePricing({
+    "mixed-source-provider": {
+      "model-b": { input: 0.5, output: 0.75, request: 0.25 },
+    },
+  });
+  const freshEstimate = await calculateCostWithEvidence("mixed-source-provider", "model-b", {
+    input: 1_000_000,
+    output: 1_000_000,
+  });
+  assert.equal(freshEstimate.costUsd, 1.5);
+  assert.equal(freshEstimate.costKnown, true);
+  assert.equal(freshEstimate.pricingEvidence.rateSources?.request?.source, "user");
+});
+
+test("request-level pricing uses USD per request and scales by represented attempts", () => {
+  assert.equal(computeCostFromPricing({ request: 0.25 }, {}, { requestCount: 2 }), 0.5);
 });
 
 test.after(() => {

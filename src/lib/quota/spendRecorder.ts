@@ -67,7 +67,7 @@ type CostResolver = (
   provider: string,
   model: string,
   usage: Record<string, number | undefined> | null | undefined,
-  options: { serviceTier?: string }
+  options: { serviceTier?: string; requestCount?: number }
 ) => Promise<number>;
 
 /**
@@ -89,6 +89,7 @@ export async function recordStreamingConsumption(
     streamUsage: unknown;
     streamStatus: number;
     serviceTier?: string;
+    requestCount?: number;
   },
   deps: {
     calculateCost: CostResolver;
@@ -96,8 +97,16 @@ export async function recordStreamingConsumption(
     log?: MinimalLogger | null;
   }
 ): Promise<void> {
-  const { apiKeyId, connectionId, provider, model, streamUsage, streamStatus, serviceTier } =
-    params;
+  const {
+    apiKeyId,
+    connectionId,
+    provider,
+    model,
+    streamUsage,
+    streamStatus,
+    serviceTier,
+    requestCount,
+  } = params;
   if (!apiKeyId || !connectionId || streamStatus !== 200) return;
 
   const schedule = deps.schedule ?? scheduleRecordConsumption;
@@ -110,7 +119,7 @@ export async function recordStreamingConsumption(
         resolvedProvider,
         model,
         streamUsage as Record<string, number | undefined>,
-        { serviceTier }
+        { serviceTier, requestCount }
       );
     } catch {
       estimatedCost = 0;

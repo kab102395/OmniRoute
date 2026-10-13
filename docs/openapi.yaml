@@ -15385,6 +15385,7 @@ components:
                 requestReportedUsd:
                   type: string
                   nullable: true
+                  description: Flat USD charge per request, distinct from tokenRateUnit.
                 videoReportedUsd:
                   type: string
                   nullable: true

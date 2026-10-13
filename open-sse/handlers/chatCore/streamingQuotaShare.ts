@@ -14,7 +14,7 @@ type CostResolver = (
   provider: string,
   model: string,
   usage: Record<string, number | undefined> | null | undefined,
-  options: { serviceTier?: string }
+  options: { serviceTier?: string; requestCount?: number }
 ) => Promise<number>;
 
 export function scheduleStreamingQuotaShareConsumption(args: {
@@ -25,6 +25,7 @@ export function scheduleStreamingQuotaShareConsumption(args: {
   streamUsage: unknown;
   streamStatus: number;
   serviceTier?: string;
+  requestCount?: number;
   calculateCost: CostResolver;
   log?: LoggerLike;
 }): void {
@@ -44,6 +45,7 @@ export function scheduleStreamingQuotaShareConsumption(args: {
           streamUsage: args.streamUsage,
           streamStatus: args.streamStatus,
           serviceTier: args.serviceTier,
+          requestCount: args.requestCount,
         },
         { calculateCost: args.calculateCost, log: args.log }
       )

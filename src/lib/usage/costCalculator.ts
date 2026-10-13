@@ -38,6 +38,8 @@ export type CostCalculationOptions = {
    * `provider` to be set.
    */
   flatRateAsZero?: boolean;
+  /** Number of upstream requests represented by this usage row (defaults to one). */
+  requestCount?: number;
 };
 
 export type CostPricingEvidence = {
@@ -183,7 +185,7 @@ export function computeCostFromPricing(
   const reasoningPrice = toNonNegativePrice(pricing.reasoning) ?? outputPrice;
   const cacheCreationPrice = toNonNegativePrice(pricing.cache_creation) ?? inputPrice;
 
-  let cost = 0;
+  let tokenCost = 0;
   const inputTokens = Math.max(
     0,
     toNumber(tokens.input ?? tokens.prompt_tokens ?? tokens.input_tokens, 0)
@@ -201,6 +203,9 @@ export function computeCostFromPricing(
     toNumber(tokens.output ?? tokens.completion_tokens ?? tokens.output_tokens, 0)
   );
   const reasoningTokens = Math.max(0, toNumber(tokens.reasoning ?? tokens.reasoning_tokens, 0));
+  const requestCount = Math.max(0, Math.floor(toNumber(options.requestCount, 1)));
+  const requestPriceReported = Object.hasOwn(pricing, "request");
+  const requestPrice = toNonNegativePrice(pricing.request);
 
   // prompt_tokens from extractors already includes cache_read + cache_creation,
   // so we must subtract BOTH cache types to avoid pricing cache at the full
@@ -211,14 +216,15 @@ export function computeCostFromPricing(
     (cachedTokens > 0 && cachedPrice === null) ||
     (cacheCreationTokens > 0 && cacheCreationPrice === null) ||
     (outputTokens > 0 && outputPrice === null) ||
-    (reasoningTokens > 0 && outputPrice === null)
+    (reasoningTokens > 0 && outputPrice === null) ||
+    (requestCount > 0 && requestPriceReported && requestPrice === null)
   ) {
     return 0;
   }
 
-  cost += nonCachedInput * ((inputPrice ?? 0) / 1_000_000);
-  if (cachedTokens > 0) cost += cachedTokens * ((cachedPrice ?? 0) / 1_000_000);
-  cost += outputTokens * ((outputPrice ?? 0) / 1_000_000);
+  tokenCost += nonCachedInput * ((inputPrice ?? 0) / 1_000_000);
+  if (cachedTokens > 0) tokenCost += cachedTokens * ((cachedPrice ?? 0) / 1_000_000);
+  tokenCost += outputTokens * ((outputPrice ?? 0) / 1_000_000);
 
   // completion_tokens is reasoning-inclusive. Reasoning is already billed at
   // the output rate above, so a dedicated price contributes only its premium.
@@ -228,14 +234,22 @@ export function computeCostFromPricing(
     reasoningPrice !== null &&
     outputPrice !== null
   ) {
-    cost += reasoningTokens * ((reasoningPrice - outputPrice) / 1_000_000);
+    tokenCost += reasoningTokens * ((reasoningPrice - outputPrice) / 1_000_000);
   }
 
   if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((cacheCreationPrice ?? 0) / 1_000_000);
+    tokenCost += cacheCreationTokens * ((cacheCreationPrice ?? 0) / 1_000_000);
   }
 
-  return cost * getCodexFastCostMultiplier(options.provider, options.model, options.serviceTier);
+  const adjustedTokenCost =
+    tokenCost * getCodexFastCostMultiplier(options.provider, options.model, options.serviceTier);
+  // Provider catalogs may report a flat USD charge per upstream request in addition
+  // to token rates. It is not a per-million-token price and is not affected by
+  // token-tier discounts such as Codex Fast.
+  return (
+    adjustedTokenCost +
+    (requestCount > 0 && requestPrice !== null ? requestPrice * requestCount : 0)
+  );
 }
 
 export async function calculateCost(
@@ -385,6 +399,9 @@ export async function calculateCostWithEvidence(
     if (reasoningTokens > 0) {
       usedRateFields.add(hasRate(pricingRecord.reasoning) ? "reasoning" : "output");
     }
+    const requestCount = Math.max(0, Math.floor(toNumber(options.requestCount, 1)));
+    const requestPriceReported = Object.hasOwn(pricingRecord, "request");
+    if (requestCount > 0 && requestPriceReported) usedRateFields.add("request");
 
     const syncStatusBySource: Partial<
       Record<"modelsDev" | "litellm", { retrievedAt: string | null; ttlMs: number | null }>
@@ -468,7 +485,10 @@ export async function calculateCostWithEvidence(
         hasRate(pricingRecord.cache_creation) ||
         hasRate(pricingRecord.input)) &&
       (outputTokens === 0 || hasRate(pricingRecord.output)) &&
-      (reasoningTokens === 0 || hasRate(pricingRecord.reasoning) || hasRate(pricingRecord.output));
+      (reasoningTokens === 0 ||
+        hasRate(pricingRecord.reasoning) ||
+        hasRate(pricingRecord.output)) &&
+      (requestCount === 0 || !requestPriceReported || hasRate(pricingRecord.request));
     return {
       costUsd: computeCostFromPricing(pricingRecord, tokens, {
         provider,

@@ -44,6 +44,7 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
               rates: {
                 properties: {
                   videoReportedUsd?: { type: string; nullable?: boolean };
+                  requestReportedUsd?: { type: string; nullable?: boolean; description?: string };
                   inputCacheMiss?: {
                     properties: { offPeak: { type: string }; peak: { type: string } };
                   };
@@ -126,6 +127,7 @@ test("model catalog OpenAPI includes every emitted OpenRouter modality price dim
   const rates =
     spec.components.schemas.Model.properties.pricing_provenance.properties.rates.properties;
   assert.deepEqual(rates.videoReportedUsd, { type: "string", nullable: true });
+  assert.match(rates.requestReportedUsd?.description ?? "", /flat USD charge per request/i);
 });
 
 test("model catalog OpenAPI preserves exact decimal conditional pricing schedules", () => {
