@@ -430,6 +430,13 @@ separate dynamic multi-model router and exposes
 `route_selection: { kind: "dynamic_free_model", exactModelIdentity: false }`; it does not guarantee
 an exact model identity for a request.
 
+Model rows also expose `capability_status.tool_calling` with `status` (`supported`, `unsupported`,
+or `unknown`) and a metadata `source`. Routing that requires tools should require `supported`;
+the older `capabilities.tool_calling` boolean remains for compatibility and may include a model-name
+heuristic when authoritative capability metadata is unavailable. For OpenRouter, a live
+`supported_parameters` list takes precedence for the exact route; `route_availability.source`
+provides its retrieval time and freshness.
+
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.
 

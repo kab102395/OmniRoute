@@ -118,6 +118,12 @@ export interface ResolvedModelCapabilities {
   model: string | null;
   rawModel: string | null;
   toolCalling: boolean;
+  supportsToolsSource:
+    | "synced_capability_catalog"
+    | "provider_registry"
+    | "model_spec"
+    | "provider_parameter_constraint"
+    | "unknown";
   reasoning: boolean;
   supportsThinking: boolean | null;
   supportedThinkingEfforts: readonly string[] | null;
@@ -799,6 +805,16 @@ export function getResolvedModelCapabilities(
     (typeof registryModel?.toolCalling === "boolean" ? registryModel.toolCalling : null) ??
     (typeof spec?.supportsTools === "boolean" ? spec.supportsTools : null) ??
     (providerDeniesTools ? false : null);
+  const supportsToolsSource =
+    typeof synced?.tool_call === "boolean"
+      ? "synced_capability_catalog"
+      : typeof registryModel?.toolCalling === "boolean"
+        ? "provider_registry"
+        : typeof spec?.supportsTools === "boolean"
+          ? "model_spec"
+          : providerDeniesTools
+            ? "provider_parameter_constraint"
+            : "unknown";
 
   const reasoningEffortsOverride = usePersistedOverrides
     ? getReasoningEffortsCapabilityOverride(resolved, snapshot)
@@ -883,6 +899,7 @@ export function getResolvedModelCapabilities(
     model: resolved.model,
     rawModel: resolved.rawModel,
     toolCalling: supportsTools ?? heuristicToolCalling(lookupKey),
+    supportsToolsSource,
     reasoning: supportsThinking ?? heuristicReasoning(lookupKey),
     supportsThinking,
     supportedThinkingEfforts:

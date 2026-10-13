@@ -14547,6 +14547,27 @@ components:
           example: model
         owned_by:
           type: string
+        capability_status:
+          type: object
+          description: >-
+            Evidence-backed capability status. Use this instead of the legacy boolean capability
+            when a routing decision must distinguish supported, unsupported, and unknown.
+          properties:
+            tool_calling:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [supported, unsupported, unknown]
+                source:
+                  type: string
+                  enum:
+                    - openrouter.models_api
+                    - synced_capability_catalog
+                    - provider_registry
+                    - model_spec
+                    - provider_parameter_constraint
+                    - unknown
         free_access:
           type: object
           description: >-

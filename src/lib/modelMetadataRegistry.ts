@@ -69,6 +69,12 @@ export interface CanonicalModelMetadata {
   aliases: string[];
   capabilities: {
     toolCalling: boolean;
+    supportsToolsSource:
+      | "synced_capability_catalog"
+      | "provider_registry"
+      | "model_spec"
+      | "provider_parameter_constraint"
+      | "unknown";
     reasoning: boolean;
     supportsThinking: boolean | null;
     supportedThinkingEfforts: readonly string[] | null;
@@ -261,6 +267,7 @@ export function getCanonicalModelMetadata(input: {
     ]),
     capabilities: {
       toolCalling: resolved.toolCalling,
+      supportsToolsSource: resolved.supportsToolsSource,
       reasoning: resolved.reasoning,
       supportsThinking: resolved.supportsThinking,
       supportedThinkingEfforts: resolved.supportedThinkingEfforts,
@@ -582,11 +589,15 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     // #8016: never invent chat tool/reasoning defaults onto specialty surfaces.
     // Only copy boolean true when authoritative metadata says so; specialty rows
     // default to false instead of optimistic chat heuristics.
-    tool_calling: specialtySurface
-      ? metadata.capabilities.supportsTools === true || metadata.capabilities.toolCalling === true
-        ? true
-        : false
-      : metadata.capabilities.toolCalling,
+    tool_calling:
+      publicProvider === "openrouter" && Array.isArray(entry.supported_parameters)
+        ? entry.supported_parameters.includes("tools")
+        : specialtySurface
+          ? metadata.capabilities.supportsTools === true ||
+            metadata.capabilities.toolCalling === true
+            ? true
+            : false
+          : metadata.capabilities.toolCalling,
     reasoning: specialtySurface
       ? metadata.capabilities.supportsThinking === true || metadata.capabilities.reasoning === true
         ? true
@@ -621,6 +632,28 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   nextEntry.capabilities = {
     ...existingCapabilities,
     ...capabilityFields,
+  };
+
+  const openRouterParametersKnown =
+    publicProvider === "openrouter" && Array.isArray(entry.supported_parameters);
+  const toolCallingSupport = openRouterParametersKnown
+    ? entry.supported_parameters.includes("tools")
+    : metadata.capabilities.supportsTools;
+  nextEntry.capability_status = {
+    ...(entry.capability_status && typeof entry.capability_status === "object"
+      ? (entry.capability_status as JsonRecord)
+      : {}),
+    tool_calling: {
+      status:
+        toolCallingSupport === true
+          ? "supported"
+          : toolCallingSupport === false
+            ? "unsupported"
+            : "unknown",
+      source: openRouterParametersKnown
+        ? "openrouter.models_api"
+        : metadata.capabilities.supportsToolsSource,
+    },
   };
 
   if (!Array.isArray(entry.input_modalities) && metadata.modalities.input.length > 0) {

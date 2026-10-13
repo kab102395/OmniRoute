@@ -598,6 +598,15 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
             pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
             supported_parameters: ["tools"],
           },
+          {
+            id: "vendor/no-tools:free",
+            name: "Vendor No Tools Free",
+            supported_parameters: [],
+          },
+          {
+            id: "vendor/unknown-tools:free",
+            name: "Vendor Unknown Tools Free",
+          },
         ],
       }),
       { status: 200, headers: { "content-type": "application/json" } }
@@ -614,6 +623,9 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
         route_selection?: { kind?: string; exactModelIdentity?: boolean };
         capabilities?: Record<string, boolean>;
         supported_parameters?: string[];
+        capability_status?: {
+          tool_calling?: { status?: string; source?: string };
+        };
         context_length?: number;
         max_output_tokens?: number;
         pricing_provenance?: { zeroCostEligibility?: string };
@@ -630,6 +642,10 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     const paidRoute = body.data.find((model) => model.id === "openrouter/vendor/coder");
     const explicitZeroRoute = body.data.find(
       (model) => model.id === "openrouter/vendor/explicit-zero"
+    );
+    const noToolsRoute = body.data.find((model) => model.id === "openrouter/vendor/no-tools:free");
+    const unknownToolsRoute = body.data.find(
+      (model) => model.id === "openrouter/vendor/unknown-tools:free"
     );
     const freeRouter = body.data.find((model) => model.id === "openrouter/free");
 
@@ -663,6 +679,15 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     assert.ok(paidRoute, "the paid sibling remains a separate selectable route");
     assert.equal(paidRoute.free, false);
     assert.equal(paidRoute.pricing.input, 1);
+    assert.equal(noToolsRoute?.capabilities?.tool_calling, false);
+    assert.deepEqual(noToolsRoute?.capability_status?.tool_calling, {
+      status: "unsupported",
+      source: "openrouter.models_api",
+    });
+    assert.deepEqual(unknownToolsRoute?.capability_status?.tool_calling, {
+      status: "unknown",
+      source: "unknown",
+    });
   } finally {
     globalThis.fetch = REAL_FETCH;
   }
