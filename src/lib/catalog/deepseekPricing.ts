@@ -8,9 +8,9 @@ const PEAK_OFFPEAK_PRICING_CONDITION =
   "input-cache-miss, input-cache-hit, and output rates vary by the provider's schedule: peak is 01:00-04:00 and 06:00-10:00 UTC Monday through Friday, excluding Chinese public holidays; all other times are off-peak";
 
 const FLASH_RATES = {
-  inputCacheMiss: { offPeak: 0.15, peak: 0.3 },
-  inputCacheHit: { offPeak: 0.003, peak: 0.006 },
-  output: { offPeak: 0.6, peak: 1.2 },
+  inputCacheMiss: { offPeak: "0.15", peak: "0.3" },
+  inputCacheHit: { offPeak: "0.003", peak: "0.006" },
+  output: { offPeak: "0.6", peak: "1.2" },
 } as const;
 
 function source(now: number, url = DEEPSEEK_PRICING_URL, id = "deepseek.api_pricing") {

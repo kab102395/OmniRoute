@@ -149,16 +149,16 @@ describe("catalog pricing surface (#8018)", () => {
       (
         pro.pricing_provenance as {
           rates?: {
-            inputCacheMiss?: { offPeak: number; peak: number };
-            inputCacheHit?: { offPeak: number; peak: number };
-            output?: { offPeak: number; peak: number };
+            inputCacheMiss?: { offPeak: string; peak: string };
+            inputCacheHit?: { offPeak: string; peak: string };
+            output?: { offPeak: string; peak: string };
           };
         }
       ).rates,
       {
-        inputCacheMiss: { offPeak: 0.15, peak: 0.3 },
-        inputCacheHit: { offPeak: 0.003, peak: 0.006 },
-        output: { offPeak: 0.6, peak: 1.2 },
+        inputCacheMiss: { offPeak: "0.15", peak: "0.3" },
+        inputCacheHit: { offPeak: "0.003", peak: "0.006" },
+        output: { offPeak: "0.6", peak: "1.2" },
       }
     );
     assert.equal((pro.pricing as CatalogPricing).input, 0.3);

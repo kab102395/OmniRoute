@@ -15365,6 +15365,30 @@ components:
                 webSearchReportedUsd:
                   type: string
                   nullable: true
+                inputCacheMiss:
+                  type: object
+                  description: Exact decimal rates for uncached input by provider schedule, expressed in rateUnit.
+                  properties:
+                    offPeak:
+                      type: string
+                    peak:
+                      type: string
+                inputCacheHit:
+                  type: object
+                  description: Exact decimal rates for cached input by provider schedule, expressed in rateUnit.
+                  properties:
+                    offPeak:
+                      type: string
+                    peak:
+                      type: string
+                output:
+                  type: object
+                  description: Exact decimal output rates by provider schedule, expressed in rateUnit.
+                  properties:
+                    offPeak:
+                      type: string
+                    peak:
+                      type: string
             overrides:
               type: array
               description: Source-reported conditional pricing overrides.

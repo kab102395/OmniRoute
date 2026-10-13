@@ -42,9 +42,10 @@ export interface ModelPricingRates extends Record<string, unknown> {
   inputCacheWrite1hPerTokenUsd?: string | null;
   internalReasoningPerTokenUsd?: string | null;
   webSearchReportedUsd?: string | null;
-  inputCacheMiss?: { offPeak: number; peak: number };
-  inputCacheHit?: { offPeak: number; peak: number };
-  output?: { offPeak: number; peak: number };
+  /** Exact decimal strings for conditional provider schedules; values use rateUnit. */
+  inputCacheMiss?: { offPeak: string; peak: string };
+  inputCacheHit?: { offPeak: string; peak: string };
+  output?: { offPeak: string; peak: string };
 }
 
 export interface ModelPricingProvenance extends Record<string, unknown> {

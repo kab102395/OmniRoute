@@ -41,7 +41,20 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
             properties: {
               state: { enum: string[] };
               resolvedModelId: { type: string };
-              rates: { properties: { videoReportedUsd?: { type: string; nullable?: boolean } } };
+              rates: {
+                properties: {
+                  videoReportedUsd?: { type: string; nullable?: boolean };
+                  inputCacheMiss?: {
+                    properties: { offPeak: { type: string }; peak: { type: string } };
+                  };
+                  inputCacheHit?: {
+                    properties: { offPeak: { type: string }; peak: { type: string } };
+                  };
+                  output?: {
+                    properties: { offPeak: { type: string }; peak: { type: string } };
+                  };
+                };
+              };
             };
           };
           route_selection: {
@@ -113,6 +126,15 @@ test("model catalog OpenAPI includes every emitted OpenRouter modality price dim
   const rates =
     spec.components.schemas.Model.properties.pricing_provenance.properties.rates.properties;
   assert.deepEqual(rates.videoReportedUsd, { type: "string", nullable: true });
+});
+
+test("model catalog OpenAPI preserves exact decimal conditional pricing schedules", () => {
+  const rates =
+    spec.components.schemas.Model.properties.pricing_provenance.properties.rates.properties;
+  for (const field of ["inputCacheMiss", "inputCacheHit", "output"] as const) {
+    assert.equal(rates[field]?.properties.offPeak.type, "string");
+    assert.equal(rates[field]?.properties.peak.type, "string");
+  }
 });
 
 test("model catalog OpenAPI documents the implemented routing filters", () => {
