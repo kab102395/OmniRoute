@@ -167,3 +167,48 @@ test("free admission rejects stale Hugging Face provider-route metadata", async 
     reason: "catalog_unverified",
   });
 });
+
+test("tool admission uses the exact selected connection's synced capability verdict", async () => {
+  await coreDb.ensureDbInitialized();
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", "groq-tools-test", [
+    {
+      id: "llama/tool-model",
+      name: "Tool model",
+      source: "imported",
+      supportsTools: true,
+      catalogRetrievedAt: new Date().toISOString(),
+    },
+    {
+      id: "llama/no-tools-model",
+      name: "No tools model",
+      source: "imported",
+      supportsTools: false,
+      catalogRetrievedAt: new Date().toISOString(),
+    },
+    {
+      id: "llama/stale-tools-model",
+      name: "Stale tool model",
+      source: "imported",
+      supportsTools: true,
+      catalogRetrievedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
+
+  assert.deepEqual(
+    await checkToolCallingRouteAdmission("groq", "llama/tool-model", "groq-tools-test"),
+    { kind: "eligible", source: "provider_model_catalog" }
+  );
+  assert.deepEqual(
+    await checkToolCallingRouteAdmission("groq", "llama/no-tools-model", "groq-tools-test"),
+    { kind: "ineligible", reason: "unsupported" }
+  );
+  assert.deepEqual(
+    await checkToolCallingRouteAdmission("groq", "llama/stale-tools-model", "groq-tools-test"),
+    { kind: "ineligible", reason: "catalog_unverified" }
+  );
+  assert.notDeepEqual(
+    await checkToolCallingRouteAdmission("groq", "llama/tool-model", "different-connection"),
+    { kind: "eligible", source: "provider_model_catalog" },
+    "one account's discovery must not qualify the same route on another account"
+  );
+});

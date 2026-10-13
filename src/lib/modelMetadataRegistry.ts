@@ -78,6 +78,7 @@ export interface CanonicalModelMetadata {
     toolCalling: boolean;
     supportsToolsSource:
       | "synced_capability_catalog"
+      | "provider_model_catalog"
       | "provider_registry"
       | "model_spec"
       | "provider_parameter_constraint"
@@ -778,9 +779,23 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   const syncedToolCalling =
     syncedToolCallingStatus &&
     typeof syncedToolCallingStatus === "object" &&
-    (syncedToolCallingStatus as JsonRecord).source === "synced_capability_catalog"
+    ["synced_capability_catalog", "provider_model_catalog"].includes(
+      String((syncedToolCallingStatus as JsonRecord).source)
+    )
       ? (syncedToolCallingStatus as JsonRecord).status === "supported"
       : undefined;
+  const providerCatalogCapabilityEvidence =
+    !hasCurrentOpenRouterCapabilities &&
+    syncedToolCallingStatus &&
+    typeof syncedToolCallingStatus === "object" &&
+    (syncedToolCallingStatus as JsonRecord).source === "provider_model_catalog"
+      ? {
+          ...(typeof (syncedToolCallingStatus as JsonRecord).retrievedAt === "string"
+            ? { retrievedAt: (syncedToolCallingStatus as JsonRecord).retrievedAt }
+            : { retrievedAt: null }),
+          stale: (syncedToolCallingStatus as JsonRecord).stale === true,
+        }
+      : {};
   const syncedStructuredOutput =
     typeof existingCapabilities.structured_output === "boolean"
       ? existingCapabilities.structured_output
@@ -958,8 +973,9 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
         : publicProvider === "openrouter"
           ? "unknown"
           : syncedToolCalling !== undefined
-            ? "synced_capability_catalog"
+            ? "provider_model_catalog"
             : metadata.capabilities.supportsToolsSource,
+      ...providerCatalogCapabilityEvidence,
     },
     structured_output: preserveProviderRouteStructuredOutputStatus
       ? existingStructuredOutputStatus

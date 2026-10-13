@@ -466,7 +466,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         );
       }
       const previous = await getSyncedAvailableModelsForConnection(logProvider, id);
-      const synced = await replaceSyncedAvailableModelsForConnection(logProvider, id, discovered);
+      const catalogRetrievedAt = new Date().toISOString();
+      const synced = await replaceSyncedAvailableModelsForConnection(
+        logProvider,
+        id,
+        discovered.map((model: unknown) => ({
+          ...asRecord(model),
+          catalogRetrievedAt,
+        }))
+      );
       const prevIds = new Set(previous.map((m) => String(m.id)));
       const added = synced.filter((m) => !prevIds.has(String(m.id))).length;
       const removed = previous.filter(
@@ -606,7 +614,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    const allFetchedModels = modelsData.models || [];
+    const catalogRetrievedAt = toNonEmptyString(modelsData.catalogRetrievedAt);
+    const allFetchedModels = Array.isArray(modelsData.models)
+      ? modelsData.models.map((model) => ({
+          ...asRecord(model),
+          ...(catalogRetrievedAt ? { catalogRetrievedAt } : {}),
+        }))
+      : [];
     // `selectModelsForImport` is provider-neutral and deliberately does not
     // infer eligibility from a route-looking id. At this boundary, however,
     // `source === "api"` follows the forced refresh above, so exact-route free

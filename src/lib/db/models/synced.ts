@@ -18,6 +18,8 @@ export interface SyncedAvailableModel {
   supportsThinking?: boolean;
   alwaysThinking?: boolean;
   supportsTools?: boolean;
+  /** Time the upstream model catalog supporting these facts was retrieved. */
+  catalogRetrievedAt?: string;
   supportsVideo?: boolean;
   inputModalities?: string[];
   outputModalities?: string[];
@@ -166,6 +168,13 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
       : {}),
     ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
     ...(typeof record.supportsTools === "boolean" ? { supportsTools: record.supportsTools } : {}),
+    ...(toNonEmptyString(record.catalogRetrievedAt ?? record.catalog_retrieved_at)
+      ? {
+          catalogRetrievedAt: toNonEmptyString(
+            record.catalogRetrievedAt ?? record.catalog_retrieved_at
+          )!,
+        }
+      : {}),
     ...(typeof record.supportsVideo === "boolean" ? { supportsVideo: record.supportsVideo } : {}),
     ...(record.supportsVision === true ? { supportsVision: true } : {}),
     ...(providerRoutes && providerRoutes.length > 0 ? { providerRoutes } : {}),

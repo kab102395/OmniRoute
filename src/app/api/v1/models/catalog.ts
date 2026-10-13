@@ -134,6 +134,10 @@ import { isUnifiedChatSourceModelSelectable } from "./catalogModelPolicy";
 import { isFreeModel } from "@/shared/utils/freeModels";
 import { isModelExposureAllowed } from "@/shared/utils/modelExposureList";
 import type { ModelCatalogEntry } from "@/domain/modelCatalogContract";
+import {
+  isFreshCatalogTimestamp,
+  SYNCED_PROVIDER_CATALOG_MAX_AGE_MS,
+} from "@/lib/catalog/metadataFreshness";
 import { isCodexDiscoveryModelExcluded } from "@/shared/services/codexDiscoveryPolicy";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
 import { getCatalogFreeAccess } from "./catalogFreeAccess";
@@ -1315,6 +1319,11 @@ async function buildUnifiedModelsResponseCore(
             !Number.isFinite(providerRoutesRetrievedAtMs) ||
             providerRoutesRetrievedAtMs > Date.now() ||
             Date.now() - providerRoutesRetrievedAtMs > 15 * 60 * 1000;
+          const providerCatalogIsStale = !isFreshCatalogTimestamp(
+            sm.catalogRetrievedAt,
+            Date.now(),
+            SYNCED_PROVIDER_CATALOG_MAX_AGE_MS
+          );
           const syncedFields = {
             ...(modelType ? { type: modelType } : {}),
             ...(apiFormat !== "chat-completions" ? { api_format: apiFormat } : {}),
@@ -1339,7 +1348,9 @@ async function buildUnifiedModelsResponseCore(
                   capability_status: {
                     tool_calling: {
                       status: sm.supportsTools ? "supported" : "unsupported",
-                      source: "synced_capability_catalog",
+                      source: "provider_model_catalog",
+                      retrievedAt: sm.catalogRetrievedAt ?? null,
+                      stale: providerCatalogIsStale,
                     },
                   },
                 }

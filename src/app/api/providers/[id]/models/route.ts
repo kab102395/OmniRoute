@@ -305,6 +305,11 @@ export async function GET(
         connectionId,
         models: cachedDiscoveryModels,
         source: "cache",
+        catalogRetrievedAt: cachedDiscoveryModels
+          .map((model) => (model as Record<string, unknown>).catalogRetrievedAt)
+          .filter((value): value is string => typeof value === "string")
+          .sort()
+          .at(-1),
         ...(warning ? { warning } : {}),
       });
 
@@ -391,7 +396,13 @@ export async function GET(
       warning?: string,
       extraPayload: Record<string, unknown> = {}
     ) => {
-      const discoveredModels = await persistDiscoveredModels(provider, connectionId, models);
+      const catalogRetrievedAt = new Date().toISOString();
+      const discoveredModels = await persistDiscoveredModels(
+        provider,
+        connectionId,
+        models,
+        catalogRetrievedAt
+      );
       if (discoveredModels.length > 0) {
         // #6976 — merge curated embedding/rerank specialty entries (e.g.
         // OpenRouter's embeddingRegistry catalog) into the live-discovery
@@ -403,6 +414,7 @@ export async function GET(
           connectionId,
           models: mergedModels,
           source: "api",
+          catalogRetrievedAt,
           ...(warning ? { warning } : {}),
           ...extraPayload,
         });
@@ -463,6 +475,7 @@ export async function GET(
         connectionId,
         models: [],
         source: "api",
+        catalogRetrievedAt,
       });
     };
 
@@ -613,9 +626,7 @@ export async function GET(
       try {
         const discovery = await discoverMaxaiModels({
           providerSpecificData: connection.providerSpecificData as
-            | Record<string, unknown>
-            | null
-            | undefined,
+            Record<string, unknown> | null | undefined,
           accessToken: apiKey || accessToken,
           fetchImpl: (url, init) =>
             safeOutboundFetch(url, {

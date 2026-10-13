@@ -105,6 +105,39 @@ test("model sync route skips success log when fetched models do not change store
   }
 });
 
+test("model sync preserves provider catalog capability provenance and retrieval time", async () => {
+  await resetStorage();
+  const connection = await providersDb.createProviderConnection({
+    provider: "groq",
+    authType: "apikey",
+    name: "Groq catalog",
+    apiKey: "test-key",
+  });
+  const catalogRetrievedAt = new Date().toISOString();
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("__readiness_probe__")) return new Response(null, { status: 404 });
+    return Response.json({
+      source: "api",
+      catalogRetrievedAt,
+      models: [{ id: "llama/tool-model", name: "Tool model", supportsTools: true }],
+    });
+  };
+
+  const response = await modelSyncRoute.POST(
+    new Request(`http://localhost/api/providers/${connection.id}/sync-models`, {
+      method: "POST",
+      headers: scheduler.buildModelSyncInternalHeaders(),
+    }),
+    { params: { id: connection.id } }
+  );
+  const synced = await modelsDb.getSyncedAvailableModelsForConnection("groq", connection.id);
+
+  assert.equal(response.status, 200);
+  assert.equal(synced[0]?.supportsTools, true);
+  assert.equal(synced[0]?.catalogRetrievedAt, catalogRetrievedAt);
+});
+
 test("model sync route stores the real provider while keeping the account label", async () => {
   await resetStorage();
 

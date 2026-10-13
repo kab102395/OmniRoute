@@ -445,6 +445,13 @@ export function normalizeDiscoveredModels(
           : {}),
       ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
       ...(typeof supportsTools === "boolean" ? { supportsTools } : {}),
+      ...(toNonEmptyString(record.catalogRetrievedAt ?? record.catalog_retrieved_at)
+        ? {
+            catalogRetrievedAt: toNonEmptyString(
+              record.catalogRetrievedAt ?? record.catalog_retrieved_at
+            )!,
+          }
+        : {}),
       ...(typeof record.supportsVideo === "boolean" ? { supportsVideo: record.supportsVideo } : {}),
       ...(inputModalities ? { inputModalities } : {}),
       ...(outputModalities ? { outputModalities } : {}),
@@ -470,7 +477,8 @@ export async function getCachedDiscoveredModels(
 export async function persistDiscoveredModels(
   providerId: string,
   connectionId: string,
-  models: unknown
+  models: unknown,
+  catalogRetrievedAt?: string
 ): Promise<SyncedAvailableModel[]> {
   // #11088 (option 1): the synced store is endpoint-agnostic — images/embeddings
   // models must persist so per-connection endpoint routing (#11088) and the
@@ -478,7 +486,10 @@ export async function persistDiscoveredModels(
   // (auto-pool expansion, chat projections), not at write time.
   const normalized = filterSelectableModels(
     providerId,
-    normalizeDiscoveredModels(models, providerId)
+    normalizeDiscoveredModels(models, providerId).map((model) => ({
+      ...model,
+      ...(catalogRetrievedAt ? { catalogRetrievedAt } : {}),
+    }))
   );
   await replaceSyncedAvailableModelsForConnection(providerId, connectionId, normalized);
   return normalized;

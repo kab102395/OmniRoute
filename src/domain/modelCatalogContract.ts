@@ -86,10 +86,13 @@ export interface CatalogCapabilityStatus {
       | "openrouter.models_api"
       | "huggingface.router_models_api"
       | "synced_capability_catalog"
+      | "provider_model_catalog"
       | "provider_registry"
       | "model_spec"
       | "provider_parameter_constraint"
       | "unknown";
+    retrievedAt?: string | null;
+    stale?: boolean;
   };
   structured_output?: {
     status: "supported" | "unsupported" | "unknown";
@@ -97,6 +100,7 @@ export interface CatalogCapabilityStatus {
       | "openrouter.models_api"
       | "huggingface.router_models_api"
       | "synced_capability_catalog"
+      | "provider_model_catalog"
       | "provider_registry"
       | "model_spec"
       | "provider_parameter_constraint"

@@ -889,6 +889,56 @@ test("v1 models free-only mode includes exact provider routes with guaranteed fr
   );
 });
 
+test("synced provider tool metadata preserves source freshness and filters stale routes", async () => {
+  const connection = await seedConnection("groq");
+  const connectionId = connection.id as string;
+  await modelsDb.replaceSyncedAvailableModelsForConnection("groq", connectionId, [
+    {
+      id: "llama/current-tool-model",
+      name: "Current",
+      source: "imported",
+      supportsTools: true,
+      catalogRetrievedAt: new Date().toISOString(),
+    },
+    {
+      id: "llama/stale-tool-model",
+      name: "Stale",
+      source: "imported",
+      supportsTools: true,
+      catalogRetrievedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
+
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/v1/models?require_tool_calling=true")
+  );
+  const body = (await response.json()) as {
+    data: Array<{
+      id?: string;
+      capability_status?: {
+        tool_calling?: {
+          status?: string;
+          source?: string;
+          retrievedAt?: string | null;
+          stale?: boolean;
+        };
+      };
+    }>;
+  };
+  const current = body.data.find((model) => model.id === "groq/llama/current-tool-model");
+
+  assert.equal(response.status, 200);
+  assert.ok(current, "a recently synced exact tool-capable route remains selectable");
+  assert.deepEqual(current.capability_status?.tool_calling?.status, "supported");
+  assert.equal(current.capability_status?.tool_calling?.source, "provider_model_catalog");
+  assert.equal(current.capability_status?.tool_calling?.stale, false);
+  assert.equal(
+    body.data.some((model) => model.id === "groq/llama/stale-tool-model"),
+    false,
+    "stale provider capability evidence cannot qualify a constrained catalog query"
+  );
+});
+
 test("v1 models removes a retired synchronized OpenRouter free route in free-only mode", async () => {
   const connection = await seedConnection("openrouter");
   await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [

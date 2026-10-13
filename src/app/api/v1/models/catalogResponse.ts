@@ -65,6 +65,9 @@ function hasVerifiedToolCalling(model: Record<string, unknown>): boolean {
   // A stale snapshot is useful for display, but cannot satisfy a constrained
   // candidate query that promises positively confirmed tool support.
   const capabilitySource = capabilityStatus.tool_calling.source;
+  if (capabilitySource === "provider_model_catalog") {
+    return capabilityStatus.tool_calling.stale === false;
+  }
   if (
     capabilitySource === "openrouter.models_api" ||
     capabilitySource === "huggingface.router_models_api"

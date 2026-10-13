@@ -2,10 +2,14 @@ import {
   getCurrentOpenRouterFreeRouteIds,
   getOpenRouterCatalog,
 } from "@/lib/catalog/openrouterCatalog";
-import { getSyncedAvailableModelsByConnection } from "@/lib/db/models";
+import {
+  getSyncedAvailableModelsByConnection,
+  getSyncedAvailableModelsForConnection,
+} from "@/lib/db/models";
 import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
 import { resolveProviderId } from "@/shared/constants/providers";
 import { isFreeModel } from "@/shared/utils/freeModels";
+import { isFreshCatalogTimestamp } from "@/lib/catalog/metadataFreshness";
 
 export type FreeRouteAdmission =
   | {
@@ -36,7 +40,8 @@ function isFreshProviderRouteTimestamp(value: string | null | undefined): boolea
 /** Check tool support against metadata for the exact selected route at dispatch time. */
 export async function checkToolCallingRouteAdmission(
   provider: string,
-  model: string
+  model: string,
+  connectionId?: string | null
 ): Promise<ToolCallingRouteAdmission> {
   const canonicalProvider = resolveProviderId(provider);
   if (canonicalProvider === "openrouter") {
@@ -82,6 +87,29 @@ export async function checkToolCallingRouteAdmission(
         kind: "ineligible",
         reason: route.supportsTools === false ? "unsupported" : "unknown",
       };
+    }
+  }
+
+  // Provider model discovery is connection-scoped. Prefer an exact capability
+  // verdict from the selected account before falling back to global model.dev,
+  // registry, or model-spec metadata; another account's discovery must not be
+  // treated as evidence for this route.
+  if (connectionId) {
+    const syncedModels = await getSyncedAvailableModelsForConnection(
+      canonicalProvider,
+      connectionId
+    );
+    const exactModelId = model.replace(/^[^/]+\//, "");
+    const syncedModel = syncedModels.find(
+      (entry) => entry.id === model || entry.id === exactModelId
+    );
+    if (typeof syncedModel?.supportsTools === "boolean") {
+      if (!isFreshCatalogTimestamp(syncedModel.catalogRetrievedAt)) {
+        return { kind: "ineligible", reason: "catalog_unverified" };
+      }
+      return syncedModel.supportsTools
+        ? { kind: "eligible", source: "provider_model_catalog" }
+        : { kind: "ineligible", reason: "unsupported" };
     }
   }
 

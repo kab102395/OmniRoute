@@ -611,7 +611,11 @@ export async function handleChatCore({
     }
   }
   if (toolCallingRequired && !providerSupportsEmulatedToolCalling(provider)) {
-    const admission = await checkToolCallingRouteAdmission(provider, model);
+    const admission = await checkToolCallingRouteAdmission(
+      provider,
+      model,
+      credentials?.connectionId ?? connectionId
+    );
     if (admission.kind !== "eligible") {
       const isUnverified =
         admission.reason === "catalog_unverified" || admission.reason === "unknown";
