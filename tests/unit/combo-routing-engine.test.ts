@@ -2649,7 +2649,7 @@ test("handleComboChat standalone lkgp strategy clears LKGP after the last-known-
   );
 });
 
-test("handleComboChat auto strategy falls back to the full pool when tool filtering empties candidates", async () => {
+test("handleComboChat auto strategy fails closed when every target lacks tool support", async () => {
   await settingsDb.updatePricing({
     openai: {
       "gpt-oss-120b": { input: 5, output: 10 },
@@ -2685,8 +2685,9 @@ test("handleComboChat auto strategy falls back to the full pool when tool filter
     allCombos: null,
   });
 
-  assert.equal(result.ok, true);
-  assert.equal(calls[0], "deepseek/reasoner");
+  assert.equal(result.ok, false);
+  assert.deepEqual(calls, [], "a model without verified tool support must not receive the request");
+  assert.equal(result.status, 400);
 });
 
 test("handleComboChat auto strategy falls back to rules when a custom router strategy throws", async () => {
