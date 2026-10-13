@@ -10562,9 +10562,51 @@ paths:
       tags:
         - Providers
       summary: "GET providers › health matrix"
+      description: >-
+        Returns provider-level breaker health, account cooldown and terminal states, model
+        lockouts, and request outcomes for the selected observation window. This is an
+        operational snapshot, not a guarantee that a future request will succeed. Requires
+        management authentication when `requireLogin` is enabled.
+      security:
+        - ManagementSessionAuth: []
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+          description: Restrict the report to one provider id or alias.
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1h, 24h, 7d, 30d]
+            default: 24h
+        - name: includeHealthy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false", "1", "0"]
+            default: "true"
+          description: Include providers/accounts/models with no observed issue.
       responses:
         "200":
-          description: OK
+          description: Provider health snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderHealthMatrixResponse"
+        "400":
+          description: Invalid provider health matrix query
+        "401":
+          $ref: "#/components/responses/ManagementAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/ManagementInvalidToken"
+        "500":
+          description: Failed to build provider health matrix
   /api/providers/import:
     post:
       tags:
@@ -13276,6 +13318,174 @@ components:
             requestId: 0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 
   schemas:
+    ProviderHealthMatrixResponse:
+      type: object
+      required: [checkedAt, range, cutoff, summary, providers, webSessionPools]
+      properties:
+        checkedAt: { type: string, format: date-time }
+        range: { type: string, enum: [1h, 24h, 7d, 30d] }
+        cutoff: { type: string, format: date-time }
+        summary:
+          type: object
+          required:
+            [
+              providerCount,
+              connectionCount,
+              modelCount,
+              issueCount,
+              healthyCount,
+              degradedCount,
+              downCount,
+            ]
+          properties:
+            providerCount: { type: integer }
+            connectionCount: { type: integer }
+            modelCount: { type: integer }
+            issueCount: { type: integer }
+            healthyCount: { type: integer }
+            degradedCount: { type: integer }
+            downCount: { type: integer }
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderHealthMatrixProvider"
+        webSessionPools:
+          type: object
+          required: [totalPools, healthyPools, degradedPools, downPools, pools]
+          properties:
+            totalPools: { type: integer }
+            healthyPools: { type: integer }
+            degradedPools: { type: integer }
+            downPools: { type: integer }
+            pools:
+              type: array
+              items:
+                type: object
+                required: [provider, health, pool, breaker, sessions, issues]
+                properties:
+                  provider: { type: string }
+                  health: { type: string, enum: [healthy, degraded, down] }
+                  pool: { type: object, nullable: true, additionalProperties: true }
+                  breaker: { type: object, nullable: true, additionalProperties: true }
+                  sessions:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  issues:
+                    type: array
+                    items: { type: string }
+    ProviderHealthMatrixProvider:
+      type: object
+      required:
+        - provider
+        - state
+        - score
+        - circuitBreaker
+        - connections
+        - modelLockoutCount
+        - requests
+        - successRate
+        - avgLatencyMs
+        - lastRequestAt
+        - lastErrorAt
+        - issueCount
+        - accounts
+      properties:
+        provider: { type: string }
+        state: { type: string, enum: [healthy, degraded, down] }
+        score: { type: number }
+        circuitBreaker:
+          type: object
+          nullable: true
+          required: [state, failureCount, retryAfterMs, lastFailureTime]
+          properties:
+            state: { type: string }
+            failureCount: { type: integer }
+            retryAfterMs: { type: number }
+            lastFailureTime: { type: number, nullable: true }
+        connections:
+          type: object
+          required: [total, active, cooldown, inactive, terminal]
+          properties:
+            total: { type: integer }
+            active: { type: integer }
+            cooldown: { type: integer }
+            inactive: { type: integer }
+            terminal: { type: integer }
+        modelLockoutCount: { type: integer }
+        requests: { type: integer }
+        successRate: { type: number, nullable: true }
+        avgLatencyMs: { type: number, nullable: true }
+        lastRequestAt: { type: string, format: date-time, nullable: true }
+        lastErrorAt: { type: string, format: date-time, nullable: true }
+        issueCount: { type: integer }
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderHealthMatrixAccount"
+    ProviderHealthMatrixAccount:
+      type: object
+      required:
+        - connectionId
+        - label
+        - isSynthetic
+        - isActive
+        - state
+        - testStatus
+        - rateLimitedUntil
+        - cooldownRemainingMs
+        - lastErrorType
+        - errorCode
+        - backoffLevel
+        - modelCount
+        - issueCount
+        - models
+      properties:
+        connectionId: { type: string, nullable: true }
+        label: { type: string }
+        isSynthetic: { type: boolean }
+        isActive: { type: boolean }
+        state: { type: string, enum: [healthy, degraded, down] }
+        testStatus: { type: string, nullable: true }
+        rateLimitedUntil: { type: string, format: date-time, nullable: true }
+        cooldownRemainingMs: { type: number }
+        lastErrorType: { type: string, nullable: true }
+        errorCode: { type: string, nullable: true }
+        backoffLevel: { type: integer }
+        modelCount: { type: integer }
+        issueCount: { type: integer }
+        models:
+          type: array
+          items:
+            type: object
+            required:
+              - model
+              - status
+              - isLockedOut
+              - lockoutReason
+              - lockoutRemainingMs
+              - requests
+              - successes
+              - successRate
+              - avgLatencyMs
+              - lastStatus
+              - lastErrorStatus
+              - lastRequestAt
+              - lastErrorAt
+            properties:
+              model: { type: string }
+              status: { type: string, enum: [healthy, degraded, error, locked, idle] }
+              isLockedOut: { type: boolean }
+              lockoutReason: { type: string, nullable: true }
+              lockoutRemainingMs: { type: number }
+              requests: { type: integer }
+              successes: { type: integer }
+              successRate: { type: number, nullable: true }
+              avgLatencyMs: { type: number, nullable: true }
+              lastStatus: { type: integer, nullable: true }
+              lastErrorStatus: { type: integer, nullable: true }
+              lastRequestAt: { type: string, format: date-time, nullable: true }
+              lastErrorAt: { type: string, format: date-time, nullable: true }
+
     ProviderLimitsResponse:
       type: object
       required: [caches, intervalMinutes, lastAutoSyncAt]

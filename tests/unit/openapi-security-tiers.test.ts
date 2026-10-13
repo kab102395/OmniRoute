@@ -88,6 +88,41 @@ test("provider-limits documents cached quota provenance and management auth", ()
   assert.equal(entry?.properties?.billing?.type, "object");
 });
 
+test("provider health matrix documents account and model routing health", () => {
+  const operation = paths["/api/providers/health-matrix"]?.get;
+  assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }]);
+  assert.match(operation?.description ?? "", /not a guarantee that a future request will succeed/i);
+  assert.deepEqual(
+    operation?.parameters?.find((parameter: { name?: string }) => parameter.name === "range")
+      ?.schema?.enum,
+    ["1h", "24h", "7d", "30d"]
+  );
+  assert.deepEqual(
+    operation?.parameters?.find(
+      (parameter: { name?: string }) => parameter.name === "includeHealthy"
+    )?.schema?.enum,
+    ["true", "false", "1", "0"]
+  );
+  assert.equal(
+    operation?.responses?.["200"]?.content?.["application/json"]?.schema?.$ref,
+    "#/components/schemas/ProviderHealthMatrixResponse"
+  );
+  assert.ok(operation?.responses?.["400"]);
+
+  const providerSchema = raw.components?.schemas?.ProviderHealthMatrixProvider;
+  const accountSchema = raw.components?.schemas?.ProviderHealthMatrixAccount;
+  assert.equal(providerSchema?.properties?.circuitBreaker?.nullable, true);
+  assert.equal(providerSchema?.properties?.modelLockoutCount?.type, "integer");
+  assert.equal(accountSchema?.properties?.rateLimitedUntil?.format, "date-time");
+  assert.deepEqual(accountSchema?.properties?.models?.items?.properties?.status?.enum, [
+    "healthy",
+    "degraded",
+    "error",
+    "locked",
+    "idle",
+  ]);
+});
+
 test("POST /api/openapi/try documents its bounded management proxy contract", () => {
   const operation = paths["/api/openapi/try"]?.post;
 
