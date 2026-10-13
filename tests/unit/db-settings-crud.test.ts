@@ -195,6 +195,16 @@ test("getPricingWithSources reports the winning layer for each provider/model", 
   assert.equal(sourceMap["layer-source"]["model-modelsdev"], "modelsDev");
   assert.equal(sourceMap["layer-source"]["model-user"], "user");
   assert.equal(sourceMap.openai["gpt-4o"], "default");
+
+  const modelWithSource = await settingsDb.getPricingForModelWithSource(
+    "layer-source",
+    "model-user"
+  );
+  assert.deepEqual(modelWithSource?.rateSources, {
+    prompt: "litellm",
+    completion: "modelsDev",
+    cached: "user",
+  });
 });
 
 test("LKGP values can be set, read and cleared", async () => {

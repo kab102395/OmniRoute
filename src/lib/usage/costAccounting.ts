@@ -23,6 +23,7 @@ export type CostAccountingFacts = {
   pricingRetrievedAt: string | null;
   pricingStale: boolean | null;
   pricingCondition?: string | null;
+  pricingRateSources?: import("./costCalculator").CostPricingEvidence["rateSources"];
   usageKind: "provider_reported_usage" | "estimated_usage" | "unknown";
   /** OpenRouter's serving host as reported after the generation completed. */
   downstreamProvider?: string;
@@ -127,6 +128,8 @@ function accountingSource(
       return "omniroute.static_pricing";
     case "deepseek":
       return "deepseek.api_pricing";
+    case "mixed":
+      return "omniroute.mixed_pricing_sources";
     default:
       return null;
   }
@@ -147,11 +150,14 @@ export function classifyModalCostAccounting(args: {
     pricingVersion: null as null,
     pricingEffectiveAt: null as null,
     pricingRetrievedAt:
-      args.pricingEvidence.retrievedAt === null
+      args.pricingEvidence.source === "mixed" || args.pricingEvidence.retrievedAt === null
         ? null
         : new Date(args.pricingEvidence.retrievedAt).toISOString(),
     pricingStale: args.pricingEvidence.stale,
     pricingCondition: args.pricingEvidence.condition ?? null,
+    ...(args.pricingEvidence.rateSources
+      ? { pricingRateSources: args.pricingEvidence.rateSources }
+      : {}),
     usageKind: "estimated_usage" as const,
   };
   if (args.costUsd === null) {
@@ -261,7 +267,9 @@ export function classifyCostAccounting(args: {
               ? "omniroute.static_pricing"
               : pricingSource === "deepseek"
                 ? "deepseek.api_pricing"
-                : "omniroute_local_pricing_table";
+                : pricingSource === "mixed"
+                  ? "omniroute.mixed_pricing_sources"
+                  : "omniroute_local_pricing_table";
     return {
       kind: "estimated_cost",
       amountUsd: calculatedCostUsd,
@@ -271,6 +279,9 @@ export function classifyCostAccounting(args: {
       pricingRetrievedAt: args.pricingEvidence?.retrievedAt ?? null,
       pricingStale: args.pricingEvidence?.stale ?? null,
       pricingCondition: args.pricingEvidence?.condition ?? null,
+      ...(args.pricingEvidence?.rateSources
+        ? { pricingRateSources: args.pricingEvidence.rateSources }
+        : {}),
       usageKind,
     };
   }
@@ -282,6 +293,15 @@ export function classifyCostAccounting(args: {
       currency: null,
       source: null,
       ...identity,
+      pricingRetrievedAt:
+        args.pricingEvidence?.source === "mixed"
+          ? null
+          : (args.pricingEvidence?.retrievedAt ?? null),
+      pricingStale: args.pricingEvidence?.stale ?? null,
+      pricingCondition: args.pricingEvidence?.condition ?? null,
+      ...(args.pricingEvidence?.rateSources
+        ? { pricingRateSources: args.pricingEvidence.rateSources }
+        : {}),
       usageKind,
     };
   }

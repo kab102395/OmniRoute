@@ -12,6 +12,7 @@ type PricingModels = Record<string, JsonRecord>;
 type PricingByProvider = Record<string, PricingModels>;
 export type PricingSource = "default" | "litellm" | "modelsDev" | "user";
 export type PricingSourceMap = Record<string, Record<string, PricingSource>>;
+export type PricingRateSourceMap = Record<string, Record<string, Record<string, PricingSource>>>;
 
 function readPricingNamespace(
   db: ReturnType<typeof getDbInstance>,
@@ -90,6 +91,40 @@ function buildPricingSourceMap(layers: {
   return sourceMap;
 }
 
+function buildPricingRateSourceMap(layers: {
+  defaults: PricingByProvider;
+  litellm: PricingByProvider;
+  modelsDev: PricingByProvider;
+  user: PricingByProvider;
+}): PricingRateSourceMap {
+  const result: PricingRateSourceMap = {};
+  const orderedLayers: Array<[PricingSource, PricingByProvider]> = [
+    ["default", layers.defaults],
+    ["litellm", layers.litellm],
+    ["modelsDev", layers.modelsDev],
+    ["user", layers.user],
+  ];
+  const merged = mergePricingLayers(orderedLayers.map(([, data]) => data));
+
+  for (const [provider, models] of Object.entries(merged)) {
+    result[provider] = {};
+    for (const [model, pricing] of Object.entries(models)) {
+      const fieldSources: Record<string, PricingSource> = {};
+      for (const field of Object.keys(toRecord(pricing))) {
+        for (const [source, layer] of [...orderedLayers].reverse()) {
+          if (Object.hasOwn(toRecord(layer[provider]?.[model]), field)) {
+            fieldSources[field] = source;
+            break;
+          }
+        }
+      }
+      result[provider][model] = fieldSources;
+    }
+  }
+
+  return result;
+}
+
 async function getPricingLayers() {
   const db = getDbInstance();
 
@@ -112,11 +147,13 @@ export async function getPricing() {
 export async function getPricingWithSources(): Promise<{
   pricing: PricingByProvider;
   sourceMap: PricingSourceMap;
+  rateSourceMap: PricingRateSourceMap;
 }> {
   const layers = await getPricingLayers();
   return {
     pricing: mergePricingLayers([layers.defaults, layers.litellm, layers.modelsDev, layers.user]),
     sourceMap: buildPricingSourceMap(layers),
+    rateSourceMap: buildPricingRateSourceMap(layers),
   };
 }
 
@@ -171,12 +208,14 @@ export async function getPricingForModel(provider: string, model: string) {
 }
 
 export async function getPricingForModelWithSource(provider: string, model: string) {
-  const { pricing, sourceMap } = await getPricingWithSources();
+  const { pricing, sourceMap, rateSourceMap } = await getPricingWithSources();
   const entry = resolvePricingModelEntry(pricing, provider, model);
   if (!entry) return null;
   const sourceProvider = findKeyInsensitive(sourceMap, entry.providerKey)?.value;
   const source = findKeyInsensitive(sourceProvider, entry.modelKey)?.value ?? null;
-  return { ...entry, source };
+  const rateSourceProvider = findKeyInsensitive(rateSourceMap, entry.providerKey)?.value;
+  const rateSources = findKeyInsensitive(rateSourceProvider, entry.modelKey)?.value ?? {};
+  return { ...entry, source, rateSources };
 }
 
 export async function updatePricing(pricingData: PricingByProvider) {

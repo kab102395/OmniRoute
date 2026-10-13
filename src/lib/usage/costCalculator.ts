@@ -41,12 +41,22 @@ export type CostCalculationOptions = {
 };
 
 export type CostPricingEvidence = {
-  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | null;
+  source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | "mixed" | null;
   modelId: string | null;
   retrievedAt: string | null;
   ttlMs: number | null;
   stale: boolean | null;
   condition?: string | null;
+  /** Provenance for each merged billable rate; rates can come from different sync layers. */
+  rateSources?: Record<
+    string,
+    {
+      source: "default" | "litellm" | "modelsDev" | "user" | "deepseek" | null;
+      retrievedAt: string | null;
+      ttlMs: number | null;
+      stale: boolean | null;
+    }
+  >;
 };
 
 export type CostEstimate = {
@@ -358,10 +368,98 @@ export async function calculateCostWithEvidence(
       Date.now(),
       pricingCondition
     );
-    const pricingFreshnessKnown =
-      (resolvedPricing.source === "default" && evidenceSource !== "deepseek") ||
-      resolvedPricing.source === "user" ||
-      (retrievedAt !== null && ttlMs !== null && pricingEvidence.stale === false);
+    type RateSource = "default" | "litellm" | "modelsDev" | "user";
+    const rateSources =
+      resolvedPricing.rateSources && typeof resolvedPricing.rateSources === "object"
+        ? (resolvedPricing.rateSources as Record<string, RateSource>)
+        : ({} as Record<string, RateSource>);
+    const usedRateFields = new Set<string>();
+    if (nonCachedInputTokens > 0) usedRateFields.add("input");
+    if (cachedTokens > 0) {
+      usedRateFields.add(hasRate(pricingRecord.cached) ? "cached" : "input");
+    }
+    if (cacheCreationTokens > 0) {
+      usedRateFields.add(hasRate(pricingRecord.cache_creation) ? "cache_creation" : "input");
+    }
+    if (outputTokens > 0) usedRateFields.add("output");
+    if (reasoningTokens > 0) {
+      usedRateFields.add(hasRate(pricingRecord.reasoning) ? "reasoning" : "output");
+    }
+
+    const syncStatusBySource: Partial<
+      Record<"modelsDev" | "litellm", { retrievedAt: string | null; ttlMs: number | null }>
+    > = {};
+    if (
+      [...usedRateFields].some(
+        (field) => (rateSources[field] ?? resolvedPricing.source) === "modelsDev"
+      )
+    ) {
+      const { getSyncStatus } = await import("@/lib/modelsDevSync");
+      const status = getSyncStatus();
+      syncStatusBySource.modelsDev = {
+        retrievedAt: status.sourceRetrievedAt,
+        ttlMs: status.intervalMs,
+      };
+    }
+    if (
+      [...usedRateFields].some(
+        (field) => (rateSources[field] ?? resolvedPricing.source) === "litellm"
+      )
+    ) {
+      const { getSyncStatus } = await import("@/lib/pricingSync");
+      const status = getSyncStatus();
+      syncStatusBySource.litellm = { retrievedAt: status.lastSync, ttlMs: status.intervalMs };
+    }
+
+    const evidenceForRate = (field: string) => {
+      const source =
+        resolvedPricing.source === "default" && evidenceSource === "deepseek"
+          ? "deepseek"
+          : (rateSources[field] ?? resolvedPricing.source);
+      if (source === "default" || source === "user" || source === "deepseek") {
+        return {
+          source,
+          retrievedAt: source === "deepseek" ? retrievedAt : null,
+          ttlMs: source === "deepseek" ? ttlMs : null,
+          stale: source === "deepseek" ? pricingEvidence.stale : false,
+        };
+      }
+      if (source !== "modelsDev" && source !== "litellm") {
+        return { source: null, retrievedAt: null, ttlMs: null, stale: null };
+      }
+      const status = syncStatusBySource[source];
+      const rateEvidence = buildCostPricingEvidence(
+        source,
+        resolvedPricing.modelKey,
+        status?.retrievedAt ?? null,
+        status?.ttlMs ?? null
+      );
+      return {
+        source,
+        retrievedAt: status?.retrievedAt ?? null,
+        ttlMs: status?.ttlMs ?? null,
+        stale: rateEvidence.stale,
+      };
+    };
+    const perRateEvidence = Object.fromEntries(
+      [...usedRateFields].map((field) => [field, evidenceForRate(field)])
+    ) as NonNullable<CostPricingEvidence["rateSources"]>;
+    pricingEvidence.rateSources = perRateEvidence;
+    const usedRateSourceIds = new Set(
+      Object.values(perRateEvidence)
+        .map((rate) => rate.source)
+        .filter(Boolean)
+    );
+    if (usedRateSourceIds.size > 1) pricingEvidence.source = "mixed";
+    const freshnessValues = Object.values(perRateEvidence).map((rate) => rate.stale);
+    pricingEvidence.stale = freshnessValues.some((value) => value === true)
+      ? true
+      : freshnessValues.length > 0 && freshnessValues.every((value) => value === false)
+        ? false
+        : null;
+    const pricingFreshnessKnown = [...usedRateFields].every(
+      (field) => perRateEvidence[field]?.stale === false
+    );
     const costKnown =
       pricingFreshnessKnown &&
       (nonCachedInputTokens === 0 || hasRate(pricingRecord.input)) &&
