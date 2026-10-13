@@ -15275,6 +15275,9 @@ components:
                 - not_in_current_free_catalog
             routeModelId:
               type: string
+            resolvedModelId:
+              type: string
+              description: Provider-resolved model identity used when pricing compatibility routes, when known.
             servedModelVersion:
               type: string
               description: Provider-documented serving version for a compatibility route, when known.

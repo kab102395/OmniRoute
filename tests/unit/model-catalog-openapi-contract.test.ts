@@ -31,6 +31,7 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
           pricing_provenance: {
             properties: {
               state: { enum: string[] };
+              resolvedModelId: { type: string };
               rates: { properties: { videoReportedUsd?: { type: string; nullable?: boolean } } };
             };
           };
@@ -71,6 +72,13 @@ test("model catalog OpenAPI covers every pricing provenance state emitted by Omn
     documentedStates,
     new Set(MODEL_PRICING_PROVENANCE_STATES),
     "OpenAPI and the runtime pricing provenance contract must contain the same states"
+  );
+});
+
+test("model catalog OpenAPI exposes provider-resolved pricing identity", () => {
+  assert.equal(
+    spec.components.schemas.Model.properties.pricing_provenance.properties.resolvedModelId.type,
+    "string"
   );
 });
 

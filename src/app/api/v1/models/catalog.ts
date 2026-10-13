@@ -133,6 +133,7 @@ import { incrementCcDiscoveryHitCount } from "@/lib/db/ccDiscoveryMetrics";
 import { isUnifiedChatSourceModelSelectable } from "./catalogModelPolicy";
 import { isFreeModel } from "@/shared/utils/freeModels";
 import { isModelExposureAllowed } from "@/shared/utils/modelExposureList";
+import type { ModelCatalogEntry } from "@/domain/modelCatalogContract";
 import { isCodexDiscoveryModelExcluded } from "@/shared/services/codexDiscoveryPolicy";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
 import { getCatalogFreeAccess } from "./catalogFreeAccess";
@@ -822,7 +823,7 @@ async function buildUnifiedModelsResponseCore(
     };
 
     // Collect models from active providers (or all if none active)
-    const models = [];
+    const models: ModelCatalogEntry[] = [];
     const timestamp = Math.floor(Date.now() / 1000);
     const listedIds = new Set<string>();
 
@@ -2133,7 +2134,7 @@ async function buildUnifiedModelsResponseCore(
 
     // Filter by API key permissions if requested
     const apiKey = extractApiKey(request);
-    let finalModels = models;
+    let finalModels: ModelCatalogEntry[] = models;
     if (apiKey) {
       const { isModelAllowedForKey, getApiKeyMetadata } = await import("@/lib/db/apiKeys");
 

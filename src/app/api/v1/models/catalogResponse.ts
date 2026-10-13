@@ -43,6 +43,7 @@ import { maybeOmitCatalogModelName } from "./catalogHelpers";
 import { isCodexModelCatalogClient } from "./catalogRequest";
 import { expandHuggingFaceProviderRoutes } from "./catalogProviderRoutes";
 import { isFreeOnlyCatalogModel } from "./freeOnlyCatalog";
+import type { ModelCatalogEntry, ModelCatalogResponse } from "@/domain/modelCatalogContract";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -130,7 +131,7 @@ function preservePinnedHuggingFaceRouteFacts(
  */
 export async function applyCatalogPostFilters(
   request: Request,
-  models: Array<Record<string, any>>,
+  models: ModelCatalogEntry[],
   ctx: {
     connections: Array<{ provider: string; providerSpecificData: unknown }>;
     prefixMode: string;
@@ -138,7 +139,7 @@ export async function applyCatalogPostFilters(
     providerNodeIdByPrefix?: Record<string, string>;
     hideNoThinkVariants?: boolean;
   }
-): Promise<Array<Record<string, any>>> {
+): Promise<ModelCatalogEntry[]> {
   const yieldTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
   let finalModels = models;
 
@@ -298,7 +299,7 @@ export async function filterUnauthorizedFunctionalGatewayMirrors(
  */
 export async function finalizeCatalogResponse(
   request: Request,
-  finalModels: Array<Record<string, unknown>>,
+  finalModels: ModelCatalogEntry[],
   getContextFallback: (model: Record<string, unknown>) => number | undefined,
   headers: Record<string, string>,
   enrichmentSnapshot?: CatalogEnrichmentSnapshot
@@ -395,7 +396,7 @@ export async function finalizeCatalogResponse(
   // empty/foreign `base_instructions` would drop codex's agent prompt to nothing and
   // break its agent behavior (verified empirically against codex 0.137). An empty array
   // keeps codex on its built-in model info — same inference as today, minus the error.
-  const responseBody: Record<string, unknown> = {
+  const responseBody: ModelCatalogResponse = {
     object: "list",
     data: orderedModels,
   };
