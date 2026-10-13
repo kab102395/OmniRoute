@@ -71,22 +71,27 @@ describe("catalog pricing lookup index (#8697 second bottleneck — findInsensit
     entryNeedingPricingResolution();
 
     const originalEntries = Object.entries;
-    let calls = 0;
+    let largeTableScans = 0;
     Object.entries = function patchedEntries(...args: Parameters<typeof Object.entries>) {
-      calls++;
-      return originalEntries.apply(this, args as never);
+      const entries = originalEntries.apply(this, args as never);
+      // Price normalization legitimately enumerates the resolved model's two
+      // rates. Count only provider/model catalog tables, which have at least
+      // MODELS_PER_PROVIDER keys, so this guard measures lookup scans rather
+      // than the independent per-entry normalization work.
+      if (entries.length >= MODELS_PER_PROVIDER) largeTableScans++;
+      return entries;
     } as typeof Object.entries;
 
     let baselineCalls: number;
     let withPricingCalls: number;
     try {
-      calls = 0;
+      largeTableScans = 0;
       for (let i = 0; i < ITERATIONS; i++) entryWithPricingPreset();
-      baselineCalls = calls;
+      baselineCalls = largeTableScans;
 
-      calls = 0;
+      largeTableScans = 0;
       for (let i = 0; i < ITERATIONS; i++) entryNeedingPricingResolution();
-      withPricingCalls = calls;
+      withPricingCalls = largeTableScans;
     } finally {
       Object.entries = originalEntries;
     }
