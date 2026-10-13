@@ -1553,9 +1553,21 @@ paths:
             type: string
             enum: ["true", "false"]
           description: >-
-            When true, append final usage and cost accounting metadata as SSE comment lines after
-            stream completion, even when server-wide SSE comments are disabled. This does not
-            change the response's initial HTTP accounting headers, which remain a pre-stream snapshot.
+            Applies when the request body has stream=true. When true, append final usage and cost
+            accounting metadata after stream completion, even when server-wide SSE comments are
+            disabled. Each field is an SSE comment line of the form `: x-omniroute-name=value`;
+            field names are lowercase and values use the same format as the corresponding response
+            headers. For example, `: x-omniroute-tokens-in=120`. Core fields are cache-hit,
+            latency-ms, tokens-in, tokens-out, version, model, provider, served-provider,
+            served-model, accounting-kind, and decision. Response-cost, cost-source, cost-currency,
+            usage-kind, pricing-retrieved-at, pricing-stale, pricing-condition, fallback-attempts,
+            and tokens-per-second are conditional. A standard SSE parser ignores comments, so clients
+            that need this metadata must inspect comment lines and split each line at its first `=`.
+            The initial HTTP accounting headers remain a pre-stream snapshot and are not updated.
+            Correlate the stream with X-OmniRoute-Request-Id from the initial response headers.
+            Fallback-Attempts is aggregate only; per-attempt details are available in the authorized
+            call-log receipt. Final comments may be absent if a stream fails or is cancelled before
+            the completion metadata is emitted.
         - in: header
           name: X-OmniRoute-Strict-Model
           required: false
