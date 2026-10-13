@@ -131,7 +131,7 @@ omniroute --mcp
 | 5   | `omniroute_check_quota`         | `read:quota`          | Remaining API quota per provider with token health status                                           |
 | 6   | `omniroute_route_request`       | `execute:completions` | Send a chat completion through intelligent routing                                                  |
 | 7   | `omniroute_cost_report`         | `read:usage`          | Cost report by period (session/day/week/month) with per-provider breakdown                          |
-| 8   | `omniroute_list_models_catalog` | `read:models`         | List model routes with capability status, limits, pricing provenance, and route eligibility facts  |
+| 8   | `omniroute_list_models_catalog` | `read:models`         | List model routes with capability status, limits, pricing provenance, and route eligibility facts   |
 
 ### Phase 2: Advanced Tools (8)
 
@@ -599,6 +599,9 @@ Tool support is returned as `toolCallingStatus` (`supported`, `unsupported`, or 
 catalog also retains context/output limits, exact-versus-dynamic route selection, availability,
 the full `capabilityStatus`, supported parameters, input/output modalities, documented free-access
 facts, and provider-specific routes when the source endpoint supplies them.
+`status` is `unknown` when the provider model listing does not declare a route status; a successful
+listing alone does not establish that the configured account can execute that model. For dispatch
+eligibility, require explicit `routeAvailability.accountEligibility == "eligible"` evidence.
 
 ### 📋 Use Case 5: Tool-Capable Model Discovery
 
@@ -606,7 +609,7 @@ An agent that finds currently listed routes with verified tool support and exact
 
 ```python
 async def find_tool_capable_exact_routes(session):
-    """Find available routes with known tool support and exact model identity."""
+    """Find routes with known tool support, account eligibility, and exact identity."""
     catalog = await session.call_tool("omniroute_list_models_catalog", {
         "capability": "chat",
     })
@@ -615,6 +618,7 @@ async def find_tool_capable_exact_routes(session):
     eligible = [
         m for m in models
         if m["status"] == "available"
+        and m.get("routeAvailability", {}).get("accountEligibility") == "eligible"
         and m["toolCallingStatus"] == "supported"
         and m.get("routeSelection", {}).get("exactModelIdentity") is True
     ]

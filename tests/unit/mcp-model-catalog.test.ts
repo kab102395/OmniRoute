@@ -42,7 +42,7 @@ test("getMcpModelsCatalog aggregates only active connection model endpoints", as
         id: "gpt-4.1",
         provider: "github",
         capabilities: ["chat"],
-        status: "available",
+        status: "unknown",
         toolCallingStatus: "unknown",
         pricing: undefined,
       },
@@ -50,7 +50,7 @@ test("getMcpModelsCatalog aggregates only active connection model endpoints", as
         id: "text-embedding-3-small",
         provider: "github",
         capabilities: ["embedding"],
-        status: "available",
+        status: "unknown",
         toolCallingStatus: "unknown",
         pricing: undefined,
       },
@@ -101,6 +101,7 @@ test("getMcpModelsCatalog preserves route eligibility, limits, and price evidenc
   );
 
   const model = result.models[0];
+  assert.equal(model?.status, "unknown");
   assert.equal(model?.toolCallingStatus, "supported");
   assert.equal(model?.contextLength, 65536);
   assert.equal(model?.maxOutputTokens, 8192);
