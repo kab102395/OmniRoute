@@ -776,8 +776,16 @@ test("provider models route caches discovered opencode-go models per connection"
 
   assert.equal(firstResponse.status, 200);
   assert.equal(firstBody.source, "api");
+  assert.ok(Number.isFinite(Date.parse(firstBody.catalogRetrievedAt)));
   assert.deepEqual(firstBody.models, [{ id: "glm-5.1", name: "GLM 5.1", owned_by: "opencode-go" }]);
-  assert.deepEqual(cachedModels, [{ id: "glm-5.1", name: "GLM 5.1", source: "imported" }]);
+  assert.deepEqual(cachedModels, [
+    {
+      id: "glm-5.1",
+      name: "GLM 5.1",
+      source: "imported",
+      catalogRetrievedAt: firstBody.catalogRetrievedAt,
+    },
+  ]);
 
   globalThis.fetch = async () => {
     throw new Error("cached route should not hit upstream");
@@ -788,7 +796,15 @@ test("provider models route caches discovered opencode-go models per connection"
 
   assert.equal(cachedResponse.status, 200);
   assert.equal(cachedBody.source, "cache");
-  assert.deepEqual(cachedBody.models, [{ id: "glm-5.1", name: "GLM 5.1", source: "imported" }]);
+  assert.equal(cachedBody.catalogRetrievedAt, firstBody.catalogRetrievedAt);
+  assert.deepEqual(cachedBody.models, [
+    {
+      id: "glm-5.1",
+      name: "GLM 5.1",
+      source: "imported",
+      catalogRetrievedAt: firstBody.catalogRetrievedAt,
+    },
+  ]);
   assert.equal(fetchCalls, 1);
 });
 

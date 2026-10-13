@@ -53,12 +53,12 @@ test("GLM import uses international coding endpoint when apiRegion is internatio
       { params: { id: connection.id } }
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      provider: "glm",
-      connectionId: connection.id,
-      models: [{ id: "glm-5", name: "GLM 5" }],
-      source: "api",
-    });
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.provider, "glm");
+    assert.equal(body.connectionId, connection.id);
+    assert.deepEqual(body.models, [{ id: "glm-5", name: "GLM 5" }]);
+    assert.equal(body.source, "api");
+    assert.ok(Number.isFinite(Date.parse(String(body.catalogRetrievedAt))));
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -162,12 +162,12 @@ test("GLM import falls back to Anthropic model discovery when coding discovery f
       { params: { id: connection.id } }
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      provider: "glm",
-      connectionId: connection.id,
-      models: [{ id: "glm-5.1", name: "GLM 5.1" }],
-      source: "api",
-    });
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.provider, "glm");
+    assert.equal(body.connectionId, connection.id);
+    assert.deepEqual(body.models, [{ id: "glm-5.1", name: "GLM 5.1" }]);
+    assert.equal(body.source, "api");
+    assert.ok(Number.isFinite(Date.parse(String(body.catalogRetrievedAt))));
     assert.deepEqual(seenUrls, [
       "https://api.z.ai/api/coding/paas/v4/models",
       "https://api.z.ai/api/anthropic/v1/models",
@@ -229,12 +229,12 @@ test("GLMT import shares the GLM coding models endpoint and surfaces provider me
       { params: { id: connection.id } }
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      provider: "glmt",
-      connectionId: connection.id,
-      models: [{ id: "glm-5.1", name: "GLM 5.1" }],
-      source: "api",
-    });
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.provider, "glmt");
+    assert.equal(body.connectionId, connection.id);
+    assert.deepEqual(body.models, [{ id: "glm-5.1", name: "GLM 5.1" }]);
+    assert.equal(body.source, "api");
+    assert.ok(Number.isFinite(Date.parse(String(body.catalogRetrievedAt))));
   } finally {
     globalThis.fetch = originalFetch;
   }
