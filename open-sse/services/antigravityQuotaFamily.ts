@@ -64,7 +64,7 @@ export function getQuotaFetchScope(
 }
 
 export function isAntigravityQuotaProvider(provider: string | null | undefined): boolean {
-  return provider === ANTIGRAVITY_PROVIDER_ID || provider === "agy";
+  return provider === "antigravity" || provider === "agy";
 }
 
 export function quotaWindowNamesForScope(
