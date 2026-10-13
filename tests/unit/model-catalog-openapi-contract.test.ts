@@ -28,6 +28,12 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
       Model: {
         properties: {
           [name: string]: unknown;
+          capabilities: { properties: Record<string, unknown> };
+          supported_endpoints: {
+            type: string;
+            description: string;
+            items: { type: string };
+          };
           pricing_provenance: {
             properties: {
               state: { enum: string[] };
@@ -80,6 +86,19 @@ test("model catalog OpenAPI exposes provider-resolved pricing identity", () => {
     spec.components.schemas.Model.properties.pricing_provenance.properties.resolvedModelId.type,
     "string"
   );
+});
+
+test("model catalog OpenAPI types emitted effort tiers and supported endpoints", () => {
+  const properties = spec.components.schemas.Model.properties;
+  assert.deepEqual(properties.capabilities.properties.effort_tiers, {
+    type: "array",
+    items: { type: "string" },
+  });
+  assert.deepEqual(properties.supported_endpoints, {
+    type: "array",
+    description: "API endpoint types supported by this synchronized model route, when reported.",
+    items: { type: "string" },
+  });
 });
 
 test("model catalog OpenAPI includes every emitted OpenRouter modality price dimension", () => {

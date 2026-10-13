@@ -15236,12 +15236,23 @@ components:
             Legacy boolean capability hints. Tool-call eligibility decisions must use
             capability_status.tool_calling, which distinguishes supported, unsupported, and
             unknown route evidence. When tool support is unknown, capabilities.tool_calling is
-            omitted rather than inferred from a model-name heuristic.
+            omitted rather than inferred from a model-name heuristic. Reasoning effort tiers are
+            represented as strings in effort_tiers.
+          properties:
+            effort_tiers:
+              type: array
+              items:
+                type: string
           additionalProperties:
             type: boolean
         supported_parameters:
           type: array
           description: Provider-reported request parameters accepted by this exact route.
+          items:
+            type: string
+        supported_endpoints:
+          type: array
+          description: API endpoint types supported by this synchronized model route, when reported.
           items:
             type: string
         input_modalities:
