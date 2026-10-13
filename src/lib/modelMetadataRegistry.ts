@@ -1056,10 +1056,13 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
   }
 
   if (provider === "deepseek" && metadata.model === "deepseek-v4-pro") {
-    // DeepSeek's current API catalog lists V4-Pro-0813 as text-only; do not
-    // inherit stale image metadata from earlier alias routing or generic feeds.
-    nextEntry.input_modalities = ["text"];
+    // DeepSeek now routes this legacy API id to V4.1-Flash, which supports image input.
+    nextEntry.input_modalities = ["text", "image"];
     nextEntry.output_modalities = ["text"];
+    nextEntry.capabilities = {
+      ...(nextEntry.capabilities as JsonRecord),
+      vision: true,
+    };
   }
 
   if (
