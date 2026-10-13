@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   getHeaderValueCaseInsensitive,
   isFreeRouteOnlyRequested,
+  isToolCallingRequiredRequested,
   resolveCompressionHeader,
 } from "../../open-sse/handlers/chatCore/headers.ts";
 
@@ -49,6 +50,22 @@ test("isFreeRouteOnlyRequested recognizes only the explicit true header", () => 
   assert.equal(isFreeRouteOnlyRequested({ "x-omniroute-require-free-route": " TRUE " }), true);
   assert.equal(isFreeRouteOnlyRequested({ "x-omniroute-require-free-route": "yes" }), false);
   assert.equal(isFreeRouteOnlyRequested({}), false);
+});
+
+test("isToolCallingRequiredRequested recognizes only the explicit true header", () => {
+  assert.equal(
+    isToolCallingRequiredRequested(new Headers({ "X-OmniRoute-Require-Tool-Calling": "true" })),
+    true
+  );
+  assert.equal(
+    isToolCallingRequiredRequested({ "x-omniroute-require-tool-calling": " TRUE " }),
+    true
+  );
+  assert.equal(
+    isToolCallingRequiredRequested({ "x-omniroute-require-tool-calling": "yes" }),
+    false
+  );
+  assert.equal(isToolCallingRequiredRequested({}), false);
 });
 
 test("getHeaderValueCaseInsensitive returns null for null/undefined/non-object inputs", () => {

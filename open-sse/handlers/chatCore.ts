@@ -79,11 +79,16 @@ import {
   getHeaderValueCaseInsensitive,
   isFreeRouteOnlyRequested,
   isStrictModelIdentityRequested,
+  isToolCallingRequiredRequested,
   isNoMemoryRequested,
   resolveCompressionHeader,
   isStripReasoningRequested,
 } from "./chatCore/headers.ts";
-import { checkFreeRouteAdmission } from "./chatCore/freeRouteAdmission.ts";
+import {
+  checkFreeRouteAdmission,
+  checkToolCallingRouteAdmission,
+} from "./chatCore/freeRouteAdmission.ts";
+import { providerSupportsEmulatedToolCalling } from "../services/combo/comboStructure.ts";
 import { markCodexScopeRateLimited } from "./chatCore/codexFailover.ts";
 import {
   getCodexClientSessionId,
@@ -578,6 +583,7 @@ export async function handleChatCore({
   let { provider, model, extendedContext } = modelInfo;
   const freeRouteOnly = isFreeRouteOnlyRequested(clientRawRequest?.headers);
   const strictModelRequested = isStrictModelIdentityRequested(clientRawRequest?.headers);
+  const toolCallingRequired = isToolCallingRequiredRequested(clientRawRequest?.headers);
   const selectedOpenRouterModel = model.replace(/^openrouter\//, "");
   if (
     strictModelRequested &&
@@ -600,6 +606,19 @@ export async function handleChatCore({
           ? "The selected route cannot be verified as currently free."
           : "The selected route is not classified as free by OmniRoute.";
       return Response.json(buildErrorBody(403, message), { status: 403 });
+    }
+  }
+  if (toolCallingRequired && !providerSupportsEmulatedToolCalling(provider)) {
+    const admission = await checkToolCallingRouteAdmission(provider, model);
+    if (admission.kind !== "eligible") {
+      const isUnverified =
+        admission.reason === "catalog_unverified" || admission.reason === "unknown";
+      const message = isUnverified
+        ? "Tool calling support for the selected route cannot be verified."
+        : "The selected route does not support tool calling.";
+      return Response.json(buildErrorBody(isUnverified ? 503 : 400, message), {
+        status: isUnverified ? 503 : 400,
+      });
     }
   }
   // #12150 P1b: true iff the video-bridge guardrail rendered >=1 transcript
@@ -644,7 +663,8 @@ export async function handleChatCore({
       : createOdysseusTelemetry(odysseusDecision, traceId, requestedModel);
   const odysseusStrictRoute =
     odysseusDecision.result === "allowed" && odysseusDecision.metadata?.freeOnly === true;
-  const strictModelIdentity = odysseusStrictRoute || freeRouteOnly || strictModelRequested;
+  const strictModelIdentity =
+    odysseusStrictRoute || freeRouteOnly || strictModelRequested || toolCallingRequired;
   // Emit request.started event for real-time dashboard
   setImmediate(() => {
     emit("request.started", {

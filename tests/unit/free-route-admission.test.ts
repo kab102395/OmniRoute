@@ -8,7 +8,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-free-route-admi
 process.env.DATA_DIR = dataDir;
 process.env.OPENROUTER_CATALOG_TTL_MS = "60000";
 
-const { checkFreeRouteAdmission } =
+const { checkFreeRouteAdmission, checkToolCallingRouteAdmission } =
   await import("../../open-sse/handlers/chatCore/freeRouteAdmission.ts");
 const { getCurrentOpenRouterFreeRouteIds } =
   await import("../../src/lib/catalog/openrouterCatalog.ts");
@@ -29,6 +29,8 @@ test("free admission is exact to the current OpenRouter route variant", async ()
         data: [
           { id: "openrouter/free", pricing: { prompt: "0", completion: "0" } },
           { id: "acme/model-a:free" },
+          { id: "acme/tool-model:free", supported_parameters: ["tools"] },
+          { id: "acme/non-tool-model:free", supported_parameters: ["temperature"] },
           { id: "acme/model-a", pricing: { prompt: "0.000001", completion: "0.000002" } },
         ],
       }),
@@ -39,11 +41,20 @@ test("free admission is exact to the current OpenRouter route variant", async ()
   const paidSibling = await checkFreeRouteAdmission("openrouter", "acme/model-a");
   const dynamicRouter = await checkFreeRouteAdmission("openrouter", "free");
   const exactFreeRouteIds = await getCurrentOpenRouterFreeRouteIds();
+  const toolCapable = await checkToolCallingRouteAdmission("openrouter", "acme/tool-model:free");
+  const nonToolCapable = await checkToolCallingRouteAdmission(
+    "openrouter",
+    "acme/non-tool-model:free"
+  );
+  const dynamicToolCapability = await checkToolCallingRouteAdmission("openrouter", "free");
 
   assert.deepEqual(currentFreeRoute, { kind: "eligible", source: "openrouter.models_api" });
   assert.deepEqual(paidSibling, { kind: "ineligible", reason: "not_free" });
   assert.deepEqual(dynamicRouter, { kind: "eligible", source: "openrouter.models_api" });
   assert.equal(exactFreeRouteIds?.has("openrouter/free"), false);
+  assert.deepEqual(toolCapable, { kind: "eligible", source: "openrouter.models_api" });
+  assert.deepEqual(nonToolCapable, { kind: "ineligible", reason: "unsupported" });
+  assert.deepEqual(dynamicToolCapability, { kind: "ineligible", reason: "unknown" });
 });
 
 test("the dynamic router does not prove that the free rotation has any exact routes", async () => {
@@ -76,8 +87,13 @@ test("free admission rejects stale OpenRouter membership after a failed refresh"
   }) as typeof fetch;
 
   const staleRoute = await checkFreeRouteAdmission("openrouter", "acme/model-a:free");
+  const staleToolCapability = await checkToolCallingRouteAdmission(
+    "openrouter",
+    "acme/model-a:free"
+  );
 
   assert.deepEqual(staleRoute, { kind: "ineligible", reason: "catalog_unverified" });
+  assert.deepEqual(staleToolCapability, { kind: "ineligible", reason: "catalog_unverified" });
 });
 
 test("free admission uses OmniRoute's existing exact provider model catalog", async () => {
@@ -111,6 +127,7 @@ test("free admission rechecks exact current Hugging Face provider routes", async
       providerRoutes: [
         { provider: "free-host", status: "live", isFree: true, supportsTools: true },
         { provider: "paid-host", status: "live", isFree: false, supportsTools: true },
+        { provider: "unknown-host", status: "live", isFree: true },
       ],
     },
   ]);
@@ -123,6 +140,14 @@ test("free admission rechecks exact current Hugging Face provider routes", async
     kind: "ineligible",
     reason: "not_free",
   });
+  assert.deepEqual(
+    await checkToolCallingRouteAdmission("huggingface", "org/tool-model:free-host"),
+    { kind: "eligible", source: "huggingface.router_models_api" }
+  );
+  assert.deepEqual(
+    await checkToolCallingRouteAdmission("huggingface", "org/tool-model:unknown-host"),
+    { kind: "ineligible", reason: "unknown" }
+  );
 });
 
 test("free admission rejects stale Hugging Face provider-route metadata", async () => {

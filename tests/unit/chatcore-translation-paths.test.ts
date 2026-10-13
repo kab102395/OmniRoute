@@ -2563,6 +2563,51 @@ test("chatCore dispatches the exact current OpenRouter free variant and rejects 
   assert.equal(paidSibling.calls.length, 0);
 });
 
+test("chatCore rechecks current OpenRouter tool support before strict dispatch", async () => {
+  const cachePath = path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json");
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  fs.writeFileSync(
+    cachePath,
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      data: [{ id: "acme/tool-model:free", supported_parameters: ["tools"] }],
+    })
+  );
+
+  const { calls, result } = await invokeChatCore({
+    provider: "openrouter",
+    model: "acme/tool-model:free",
+    body: {
+      model: "openrouter/acme/tool-model:free",
+      stream: false,
+      messages: [{ role: "user", content: "route has verified tool support" }],
+    },
+    requestHeaders: { "X-OmniRoute-Require-Tool-Calling": "true" },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.model, "acme/tool-model:free");
+});
+
+test("chatCore rejects unknown tool capability before dispatch when required", async () => {
+  const { calls, result } = await invokeChatCore({
+    provider: "unknown-provider-xyz",
+    model: "mystery-model-xyz",
+    body: {
+      model: "mystery-model-xyz",
+      stream: false,
+      messages: [{ role: "user", content: "must have verified tools" }],
+    },
+    requestHeaders: { "X-OmniRoute-Require-Tool-Calling": "true" },
+  });
+
+  assert.equal(result.status, 503);
+  const errorBody = await result.json();
+  assert.match(errorBody.error.message, /cannot be verified/i);
+  assert.equal(calls.length, 0);
+});
+
 test("chatCore rejects strict identity requests for the dynamic OpenRouter free router", async () => {
   const { calls, result } = await invokeChatCore({
     provider: "openrouter",

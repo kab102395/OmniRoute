@@ -41,6 +41,17 @@ export function isFreeRouteOnlyRequested(
   );
 }
 
+/** Require dispatch to positively verify tool calling for the selected route. */
+export function isToolCallingRequiredRequested(
+  headers: Record<string, unknown> | Headers | null | undefined
+): boolean {
+  return (
+    (getHeaderValueCaseInsensitive(headers, "x-omniroute-require-tool-calling") || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 /**
  * Per-request opt-out of memory (and skills) injection via the
  * `x-omniroute-no-memory` header. Mirrors the existing `x-omniroute-no-cache`

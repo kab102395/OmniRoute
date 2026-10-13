@@ -497,6 +497,11 @@ ID. That row carries the pinned host, route-scoped capability, price, and catalo
 Dispatch with `X-OmniRoute-Require-Free-Route: true` to recheck the current host-specific free
 classification. A current free-promotion label is not an account-level spending guarantee.
 
+For tool-using Work, dispatch with `X-OmniRoute-Require-Tool-Calling: true`. OmniRoute rechecks
+positive tool-support metadata for the exact selected route before sending the request. Unknown or
+stale route metadata is rejected, and cross-model fallback is disabled. This verifies catalog
+capability metadata; it does not guarantee provider account access or successful tool execution.
+
 Clients that render a model picker should request `?prefix=alias` — this is what the
 [OmniCopilot VS Code extension](../guides/VSCODE-COPILOT.md) does.
 

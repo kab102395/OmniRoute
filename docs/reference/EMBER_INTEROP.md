@@ -60,6 +60,13 @@ constraints do not establish account quota or a provider hard-stop guarantee bey
 catalog facts. Strict identity also bypasses configured cross-provider upstream proxy routing and
 its fallback leg, because those paths are outside the selected route's verified identity.
 
+When Work requires tool calling, send `X-OmniRoute-Require-Tool-Calling: true`. Dispatch then
+rechecks positive tool-support evidence for the exact OpenRouter or Hugging Face provider route,
+or the existing provider/model capability record. Unknown or stale route capabilities fail before
+upstream dispatch; emulated-tool providers remain eligible. This requirement also disables
+cross-model fallback so a retry cannot silently change to a route whose tool support was not
+checked.
+
 ## Non-streaming completions
 
 On success, read these headers:
