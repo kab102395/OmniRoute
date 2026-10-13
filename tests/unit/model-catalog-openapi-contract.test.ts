@@ -31,7 +31,12 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
       Model: {
         properties: {
           [name: string]: unknown;
-          capabilities: { properties: Record<string, unknown> };
+          capabilities: {
+            properties: Record<string, unknown>;
+            additionalProperties: {
+              oneOf: Array<{ type: string } | { type: string; items: { type: string } }>;
+            };
+          };
           supported_endpoints: {
             type: string;
             description: string;
@@ -116,6 +121,10 @@ test("model catalog OpenAPI types emitted effort tiers and supported endpoints",
     description: "API endpoint types supported by this synchronized model route, when reported.",
     items: { type: "string" },
   });
+  assert.deepEqual(properties.capabilities.additionalProperties.oneOf, [
+    { type: "boolean" },
+    { type: "array", items: { type: "string" } },
+  ]);
 });
 
 test("typed model catalog entries expose supported endpoints", () => {

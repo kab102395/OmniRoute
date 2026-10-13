@@ -15291,7 +15291,11 @@ components:
               items:
                 type: string
           additionalProperties:
-            type: boolean
+            oneOf:
+              - type: boolean
+              - type: array
+                items:
+                  type: string
         supported_parameters:
           type: array
           description: Provider-reported request parameters accepted by this exact route.

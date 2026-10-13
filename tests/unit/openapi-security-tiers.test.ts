@@ -263,7 +263,10 @@ test("model catalog schema documents selectable model constraints and capabiliti
   }
   assert.equal(modelSchema?.properties?.free?.type, "boolean");
   assert.equal(modelSchema?.properties?.context_length?.minimum, 1);
-  assert.equal(modelSchema?.properties?.capabilities?.additionalProperties?.type, "boolean");
+  assert.deepEqual(modelSchema?.properties?.capabilities?.additionalProperties?.oneOf, [
+    { type: "boolean" },
+    { type: "array", items: { type: "string" } },
+  ]);
 });
 
 test("POST /api/openapi/try documents its bounded management proxy contract", () => {
