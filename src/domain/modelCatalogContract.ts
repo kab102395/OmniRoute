@@ -166,6 +166,7 @@ export interface ModelCatalogEntry extends Record<string, unknown> {
   capability_status?: CatalogCapabilityStatus;
   input_modalities?: string[];
   output_modalities?: string[];
+  supported_endpoints?: string[];
   supported_parameters?: string[];
   free_access?: CatalogFreeAccess;
   route_selection?: CatalogRouteSelection;

@@ -3,7 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import * as yaml from "js-yaml";
-import { MODEL_PRICING_PROVENANCE_STATES } from "@/domain/modelCatalogContract";
+import {
+  MODEL_PRICING_PROVENANCE_STATES,
+  type ModelCatalogEntry,
+} from "@/domain/modelCatalogContract";
 
 const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.yaml"), "utf8")) as {
   paths: Record<
@@ -99,6 +102,11 @@ test("model catalog OpenAPI types emitted effort tiers and supported endpoints",
     description: "API endpoint types supported by this synchronized model route, when reported.",
     items: { type: "string" },
   });
+});
+
+test("typed model catalog entries expose supported endpoints", () => {
+  const model: ModelCatalogEntry = { id: "provider/model", supported_endpoints: ["chat"] };
+  assert.deepEqual(model.supported_endpoints, ["chat"]);
 });
 
 test("model catalog OpenAPI includes every emitted OpenRouter modality price dimension", () => {
