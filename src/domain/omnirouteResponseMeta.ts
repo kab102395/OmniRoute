@@ -345,11 +345,15 @@ export function buildOmniRouteSseMetadataComment(
           )
         )
       );
-    const encodedAttempts = encodeURIComponent(JSON.stringify(boundedAttempts));
-    // Keep the final SSE comment bounded even when provider request IDs or receipt metadata
-    // are unusually large. The call-log receipt remains the full authorized record.
-    if (encodedAttempts.length <= 65_536) {
-      lines.push(`: x-omniroute-execution-attempts=${encodedAttempts}`);
+    try {
+      const encodedAttempts = encodeURIComponent(JSON.stringify(boundedAttempts));
+      // Keep the final SSE comment bounded even when provider request IDs or receipt metadata
+      // are unusually large. The call-log receipt remains the full authorized record.
+      if (encodedAttempts.length <= 65_536) {
+        lines.push(`: x-omniroute-execution-attempts=${encodedAttempts}`);
+      }
+    } catch {
+      // Optional diagnostics must never turn a successful inference into a stream error.
     }
   }
 

@@ -313,6 +313,19 @@ test("SSE metadata includes bounded, allowlisted upstream attempt receipts", () 
   assert.doesNotMatch(comment, /must-not-be-exposed/);
 });
 
+test("SSE attempt receipt serialization cannot fail response metadata generation", () => {
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  const comment = buildOmniRouteSseMetadataComment({
+    provider: "openai",
+    model: "test-model",
+    executionAttempts: [{ accounting: circular }],
+  });
+
+  assert.match(comment, /^: x-omniroute-provider=openai/m);
+  assert.doesNotMatch(comment, /x-omniroute-execution-attempts/);
+});
+
 test("buildOmniRouteResponseMetaHeaders emits X-OmniRoute-Cost-Saved only when costSavedUsd is provided", () => {
   // Cache HIT: the incremental cost of serving the hit is 0, but the cache saved the
   // original (would-have-been) cost — surfaced via the Cost-Saved header for analytics.
