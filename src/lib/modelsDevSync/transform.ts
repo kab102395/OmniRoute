@@ -11,8 +11,8 @@
  */
 
 export type PricingEntry = {
-  input: number;
-  output: number;
+  input?: number;
+  output?: number;
   cached?: number;
   cache_creation?: number;
   reasoning?: number;
@@ -219,39 +219,25 @@ export function transformModelsDevToPricing(raw: ModelsDevData): PricingByProvid
     for (const [modelId, model] of Object.entries(providerData.models || {})) {
       if (!model.cost) continue;
 
-      // An absent billable dimension is unknown, not a zero rate. Do not persist
-      // partial token prices as if the missing side were free; consumers use a
-      // complete input/output pair for cost estimates and catalog eligibility.
-      const input = model.cost.input;
-      const output = model.cost.output;
-      if (
-        typeof input !== "number" ||
-        !Number.isFinite(input) ||
-        input < 0 ||
-        typeof output !== "number" ||
-        !Number.isFinite(output) ||
-        output < 0
-      ) {
-        continue;
-      }
-
-      const entry: PricingEntry = {
-        input,
-        output,
-      };
-
       const optionalDimensions = {
+        input: model.cost.input,
+        output: model.cost.output,
         cached: model.cost.cache_read,
         cache_creation: model.cost.cache_write,
         reasoning: model.cost.reasoning,
         input_audio: model.cost.input_audio,
         output_audio: model.cost.output_audio,
       } as const;
+      const entry: PricingEntry = {};
       for (const [key, value] of Object.entries(optionalDimensions)) {
         if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
           entry[key as keyof typeof optionalDimensions] = value;
         }
       }
+      // Preserve every valid source-reported dimension, even when the token-rate
+      // pair is incomplete. The catalog marks that assessment incomplete and
+      // cost accounting keeps any request using an absent rate unknown.
+      if (Object.keys(entry).length === 0) continue;
 
       // Write to ALL mapped OmniRoute providers
       for (const omniProvider of omniRouteProviders) {

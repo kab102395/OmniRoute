@@ -1798,10 +1798,10 @@ test("v1 models catalog advertises GLM-5.2 provider aliases with hosted context 
     const byId = new Map(body.data.map((item) => [item.id, item]));
 
     for (const [id, expectedContext] of [
-      ["huggingface/zai-org/GLM-5.2", 128000],
-      ["cloudflare-ai/@cf/zai-org/glm-5.2", 128000],
+      ["huggingface/zai-org/GLM-5.2", 262144],
+      ["cloudflare-ai/@cf/zai-org/glm-5.2", 262144],
       ["opencode-go/glm-5.2", 1000000],
-      ["zenmux/z-ai/glm-5.2", 128000],
+      ["zenmux/z-ai/glm-5.2", 1000000],
     ] as const) {
       const model = byId.get(id) as any;
       assert.ok(model, `expected ${id} in catalog`);
@@ -2105,6 +2105,7 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
     modelsDevSync.saveModelsDevPricing({
       openai: {
         "gpt-4o": { input: 2.5, output: 10 },
+        "gpt-4o-mini": { input: 0.15 },
       },
     });
     const response = await v1ModelsCatalog.getUnifiedModelsResponse(
@@ -2116,11 +2117,13 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
         pricing?: { input?: number; output?: number };
         pricing_provenance?: {
           state: string;
+          reason?: string;
           source: { id: string; retrievedAt: string | null; stale: boolean | null };
         };
       }>;
     };
     const model = body.data.find((item) => item.id === "openai/gpt-4o");
+    const incompleteModel = body.data.find((item) => item.id === "openai/gpt-4o-mini");
 
     assert.equal(response.status, 200);
     assert.ok(model);
@@ -2130,6 +2133,10 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
     assert.equal(model.pricing_provenance.source.id, "models_dev.api_json");
     assert.equal(model.pricing_provenance.source.retrievedAt, null);
     assert.equal(model.pricing_provenance.source.stale, null);
+    assert.ok(incompleteModel);
+    assert.deepEqual(incompleteModel.pricing, { input: 0.15 });
+    assert.equal(incompleteModel.pricing_provenance?.state, "incomplete");
+    assert.match(incompleteModel.pricing_provenance?.reason ?? "", /input and output token rates/);
   } finally {
     modelsDevSync.clearModelsDevPricing();
   }

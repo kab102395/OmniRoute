@@ -230,7 +230,7 @@ describe("modelsDevSync/transform split-guard", () => {
     assert.deepEqual(pricing.openai["gpt-x"], { input: 1, output: 2 });
   });
 
-  it("skips models with no cost or missing input pricing", () => {
+  it("skips models with no valid cost and retains one-sided token pricing", () => {
     const raw = {
       openai: {
         id: "openai",
@@ -241,7 +241,8 @@ describe("modelsDevSync/transform split-guard", () => {
       },
     };
     const pricing = transformModelsDevToPricing(raw as never);
-    assert.equal(pricing.openai, undefined);
+    assert.deepEqual(pricing.openai["no-input"], { output: 5 });
+    assert.equal(pricing.openai["no-cost"], undefined);
   });
 
   it("transforms capabilities incl. interleaved=true → reasoning_content", () => {

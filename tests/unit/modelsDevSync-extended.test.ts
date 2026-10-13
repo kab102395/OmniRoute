@@ -186,7 +186,7 @@ test.describe("modelsDevSync-extended", { concurrency: 1 }, async () => {
     invalidInterval.stopPeriodicSync();
   });
 
-  test("transform helpers skip incomplete pricing entries and preserve partial capability defaults", async () => {
+  test("transform helpers retain incomplete rates and preserve partial capability defaults", async () => {
     const modelsDev = await importFresh("transform-edge-cases");
     const raw = {
       sparse: {
@@ -215,7 +215,8 @@ test.describe("modelsDevSync-extended", { concurrency: 1 }, async () => {
     };
 
     const pricing = modelsDev.transformModelsDevToPricing(raw);
-    assert.equal(pricing.sparse, undefined, "missing output rate must remain unknown");
+    assert.deepEqual(pricing.sparse["missing-input"], { output: 4.2 });
+    assert.deepEqual(pricing.sparse.complete, { input: 1.5 });
     assert.equal(pricing.nomodels, undefined);
 
     const capabilities = modelsDev.transformModelsDevToCapabilities(raw);

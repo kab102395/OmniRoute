@@ -393,7 +393,8 @@ function resolveCatalogPricing(
               "models_dev.api_json",
               retrievedAt,
               ttlMs,
-              model
+              model,
+              pricing
             ),
           };
         }
@@ -438,7 +439,8 @@ function resolveCatalogPricing(
               "litellm.model_prices",
               retrievedAt,
               ttlMs,
-              model
+              model,
+              pricing
             ),
           };
         }
@@ -478,15 +480,19 @@ function buildSyncedPricingProvenance(
   sourceId: string,
   retrievedAt: string | null,
   ttlMs: number,
-  modelId: string
+  modelId: string,
+  pricing: Record<string, number>
 ): ModelPricingProvenance {
   const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
   const validRetrievedAt = Number.isFinite(retrievedAtMs);
   const now = Date.now();
   const futureDated = validRetrievedAt && retrievedAtMs > now;
   const ageMs = validRetrievedAt && !futureDated ? now - retrievedAtMs : null;
+  const hasInputRate = typeof pricing.input === "number" && Number.isFinite(pricing.input);
+  const hasOutputRate = typeof pricing.output === "number" && Number.isFinite(pricing.output);
+  const tokenPricingIncomplete = !hasInputRate || !hasOutputRate;
   return {
-    state: "third_party_reported_pricing",
+    state: tokenPricingIncomplete ? "incomplete" : "third_party_reported_pricing",
     source: {
       id: sourceId,
       retrievedAt: validRetrievedAt ? retrievedAt : null,
@@ -498,6 +504,9 @@ function buildSyncedPricingProvenance(
     currency: "USD",
     rateUnit: "Source-native USD units; token rates use USD / 1M tokens",
     authority: `${providerName} catalog metadata; not provider-authenticated billing evidence`,
+    ...(tokenPricingIncomplete
+      ? { reason: "The source reports only one of the input and output token rates" }
+      : {}),
   };
 }
 
