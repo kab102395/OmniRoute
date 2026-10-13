@@ -3593,11 +3593,31 @@ paths:
     get:
       tags: [Usage]
       summary: Get a specific call log
+      description: >-
+        Returns a persisted execution record keyed by `X-OmniRoute-Request-Id`. When executor
+        attempt receipts were recorded, `pipelinePayloads.executionAttempts` includes each observed
+        upstream attempt and the successful attempt's attributed usage/accounting facts. Provider
+        request/response bodies are present only when detailed logging retained them. Requires
+        management authentication when `requireLogin` is enabled; a dashboard session or
+        management-authorized bearer credential is accepted.
+      security:
+        - ManagementSessionAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/ResourceId"
       responses:
         "200":
-          description: Call log detail
+          description: Persisted request and execution diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLogDetail"
+        "401":
+          $ref: "#/components/responses/ManagementAuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/ManagementInvalidToken"
+        "404":
+          description: Call log not found
 
   /api/usage/{connectionId}:
     get:
@@ -13641,6 +13661,159 @@ components:
           type: object
           description: Sanitized provider-reported billing status when supplied.
           additionalProperties: true
+
+    CallLogDetail:
+      type: object
+      required: [id]
+      description: >-
+        Persisted request-level execution result. Detailed request/response bodies and some legacy
+        fields are optional; use pipelinePayloads.executionAttempts for the bounded executor
+        receipts when present.
+      properties:
+        id:
+          type: string
+          description: Matches X-OmniRoute-Request-Id on a non-streaming completion response.
+        timestamp:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: integer
+        model:
+          type: string
+          nullable: true
+        requestedModel:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        servedProvider:
+          type: string
+          nullable: true
+        servedModel:
+          type: string
+          nullable: true
+        connectionId:
+          type: string
+          nullable: true
+        accounting:
+          $ref: "#/components/schemas/CallLogAccounting"
+        tokens:
+          type: object
+          properties:
+            in: { type: integer }
+            out: { type: integer }
+            cacheRead: { type: integer, nullable: true }
+            cacheWrite: { type: integer, nullable: true }
+            reasoning: { type: integer, nullable: true }
+        pipelinePayloads:
+          type: object
+          nullable: true
+          properties:
+            executionAttempts:
+              type: array
+              maxItems: 64
+              description: Bounded executor-attempt receipts, in dispatch order.
+              items:
+                $ref: "#/components/schemas/CallLogExecutionAttempt"
+          additionalProperties: true
+        requestBody:
+          nullable: true
+          description: Present only when detailed request logging retained the request body.
+        responseBody:
+          nullable: true
+          description: Present only when detailed request logging retained the response body.
+      additionalProperties: true
+
+    CallLogExecutionAttempt:
+      type: object
+      required: [index, statusCode, outcome, costAttribution]
+      properties:
+        index:
+          type: integer
+          minimum: 1
+        executorIndex:
+          type: integer
+          description: Original index reported by the executor, when available.
+        endpointIndex:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: number
+          minimum: 0
+        statusCode:
+          type: integer
+          nullable: true
+        providerRequestId:
+          type: string
+        outcome:
+          type: string
+          enum: [response, network_error]
+        costAttribution:
+          type: string
+          enum: [unknown, provider_reported, estimated]
+        attemptSource:
+          type: string
+          enum: [executor_reported, wrapper_observed]
+        routeLeg:
+          type: string
+          enum: [native, proxy_fallback]
+        connectionId:
+          type: string
+        routeModel:
+          type: string
+        usage:
+          type: object
+          properties:
+            kind:
+              type: string
+              enum: [provider_reported_usage, estimated_usage, unknown]
+            dimensions:
+              type: object
+              additionalProperties:
+                type: number
+        accounting:
+          $ref: "#/components/schemas/CallLogAccounting"
+      additionalProperties: true
+
+    CallLogAccounting:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            [provider_reported_billed_cost, estimated_cost, usage_only, unknown, zero_cost, pending]
+        amountUsd:
+          type: number
+          nullable: true
+          description: Provider-reported charge or OmniRoute estimate, as identified by kind/source.
+        currency:
+          type: string
+          enum: [USD]
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        pricingProvider:
+          type: string
+          nullable: true
+        pricingModel:
+          type: string
+          nullable: true
+        pricingRetrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        pricingStale:
+          type: boolean
+          nullable: true
+        usageKind:
+          type: string
+          enum: [provider_reported_usage, estimated_usage, unknown]
+      additionalProperties: true
 
     ExclusiveConnectionLeaseLifecycle:
       type: object

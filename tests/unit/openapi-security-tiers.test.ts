@@ -98,6 +98,53 @@ test("provider connection inventory documents its management auth and Praxis rea
   assert.match(connection?.properties?.apiKey?.description ?? "", /masked by default/i);
 });
 
+test("call-log detail contract exposes persisted execution attempt accounting", () => {
+  const operation = paths["/api/usage/call-logs/{id}"]?.get;
+  const completionOperation = paths["/api/v1/chat/completions"]?.post;
+  assert.deepEqual(operation?.security, [{ ManagementSessionAuth: [] }, { BearerAuth: [] }]);
+  assert.match(operation?.description ?? "", /X-OmniRoute-Request-Id/i);
+  assert.equal(
+    operation?.responses?.["200"]?.content?.["application/json"]?.schema?.$ref,
+    "#/components/schemas/CallLogDetail"
+  );
+  assert.equal(
+    operation?.responses?.["401"]?.$ref,
+    "#/components/responses/ManagementAuthenticationRequired"
+  );
+  assert.equal(
+    operation?.responses?.["403"]?.$ref,
+    "#/components/responses/ManagementInvalidToken"
+  );
+  assert.ok(operation?.responses?.["404"]);
+
+  const detail = raw.components?.schemas?.CallLogDetail;
+  const attempts = raw.components?.schemas?.CallLogExecutionAttempt;
+  const accounting = raw.components?.schemas?.CallLogAccounting;
+  assert.equal(
+    detail?.properties?.pipelinePayloads?.properties?.executionAttempts?.items?.$ref,
+    "#/components/schemas/CallLogExecutionAttempt"
+  );
+  assert.equal(detail?.properties?.pipelinePayloads?.properties?.executionAttempts?.maxItems, 64);
+  assert.deepEqual(attempts?.properties?.costAttribution?.enum, [
+    "unknown",
+    "provider_reported",
+    "estimated",
+  ]);
+  assert.deepEqual(accounting?.properties?.kind?.enum, [
+    "provider_reported_billed_cost",
+    "estimated_cost",
+    "usage_only",
+    "unknown",
+    "zero_cost",
+    "pending",
+  ]);
+  assert.equal(accounting?.properties?.amountUsd?.nullable, true);
+  assert.match(
+    completionOperation?.responses?.["200"]?.headers?.["X-OmniRoute-Request-Id"]?.description ?? "",
+    /call-log ID on non-streaming responses/i
+  );
+});
+
 test("provider-limits documents cached quota provenance and management auth", () => {
   const getOperation = paths["/api/usage/provider-limits"]?.get;
   const postOperation = paths["/api/usage/provider-limits"]?.post;

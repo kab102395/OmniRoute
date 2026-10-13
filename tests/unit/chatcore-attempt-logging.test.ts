@@ -15,6 +15,7 @@ process.env.DATA_DIR = testDataDir;
 
 const coreDb = await import("../../src/lib/db/core.ts");
 const { getCallLogById } = await import("../../src/lib/usage/callLogs.ts");
+const callLogDetailRoute = await import("../../src/app/api/usage/call-logs/[id]/route.ts");
 const { attributeExecutionAttemptAccounting, persistAttemptLogs } =
   await import("../../open-sse/handlers/chatCore/attemptLogging.ts");
 const { getAuditLog } = await import("../../src/lib/compliance/index.ts");
@@ -187,6 +188,22 @@ test("persists per-attempt usage and accounting in the compact execution receipt
       },
     },
   ]);
+
+  const detailResponse = await callLogDetailRoute.GET(
+    new Request(`http://localhost/api/usage/call-logs/${id}`),
+    { params: Promise.resolve({ id }) }
+  );
+  assert.equal(detailResponse.status, 200);
+  const detail = (await detailResponse.json()) as {
+    id: string;
+    pipelinePayloads?: { executionAttempts?: Array<Record<string, unknown>> };
+  };
+  assert.equal(detail.id, id);
+  assert.equal(detail.pipelinePayloads?.executionAttempts?.length, 2);
+  assert.equal(
+    (detail.pipelinePayloads?.executionAttempts?.[1]?.accounting as { source?: string })?.source,
+    "models_dev.api_json"
+  );
 });
 
 test("compact execution receipts do not enable provider payload capture", async () => {
