@@ -31,6 +31,29 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
           pricing_provenance: {
             properties: { state: { enum: string[] } };
           };
+          route_selection: {
+            description: string;
+            properties: {
+              kind: { enum: string[] };
+              exactModelIdentity: { type: string };
+            };
+          };
+          route_availability: {
+            properties: {
+              catalogListed: { type: string; nullable: boolean };
+              accountEligibility: { enum: string[] };
+              source: {
+                properties: {
+                  id: { type: string };
+                  modelId: { type: string };
+                  retrievedAt: { format: string; nullable: boolean };
+                  stale: { type: string };
+                  cacheTtlMs: { type: string };
+                };
+              };
+              downstreamHostSelection: { enum: string[] };
+            };
+          };
         };
       };
     };
@@ -115,4 +138,28 @@ test("OmniRoute keeps catalog and execution facts needed by external routers", (
   ]) {
     assert.ok(headers && header in headers, `completion response must document ${header}`);
   }
+});
+
+test("model catalog distinguishes exact free variants from the dynamic OpenRouter router", () => {
+  const properties = spec.components.schemas.Model.properties;
+  assert.deepEqual(properties.route_selection.properties.kind.enum, [
+    "exact_model",
+    "dynamic_free_model",
+  ]);
+  assert.equal(properties.route_selection.properties.exactModelIdentity.type, "boolean");
+
+  const availability = properties.route_availability.properties;
+  assert.deepEqual(availability.accountEligibility.enum, ["unknown"]);
+  assert.deepEqual(availability.downstreamHostSelection.enum, ["aggregator_selected"]);
+  assert.deepEqual(availability.catalogListed, { type: "boolean", nullable: true });
+  assert.equal(availability.source.properties.id.type, "string");
+  assert.equal(availability.source.properties.modelId.type, "string");
+  assert.equal(availability.source.properties.retrievedAt.format, "date-time");
+  assert.equal(availability.source.properties.retrievedAt.nullable, true);
+  assert.equal(availability.source.properties.stale.type, "boolean");
+  assert.equal(availability.source.properties.cacheTtlMs.type, "integer");
+
+  const catalogDescription = spec.paths["/api/v1/models"]?.get?.description ?? "";
+  assert.match(catalogDescription, /exact OpenRouter free variants/i);
+  assert.match(properties.route_selection.description, /does not pin the model selected/i);
 });
