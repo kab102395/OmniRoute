@@ -184,6 +184,17 @@ test("stale checkedAt excludes even when status is SAFE", () => {
   );
 });
 
+test("future-dated checkedAt excludes because freshness cannot be verified", () => {
+  const entry = FREE_MODEL_BUDGETS.find(
+    (m) => m.provider === "groq" && m.modelId === "openai/gpt-oss-120b"
+  );
+  const future = freshState({ checkedAt: "2026-08-20T00:00:01.000Z" });
+  assert.deepEqual(
+    evaluateCandidateConnections(QUOTA_SAFE, entry, () => future, BASE_OPTIONS),
+    []
+  );
+});
+
 // 10 & 11. hardStopGuaranteed undefined / false → EXCLUDE
 test("hardStopGuaranteed undefined excludes even with a perfect SAFE state", () => {
   const entry = FREE_MODEL_BUDGETS.find(

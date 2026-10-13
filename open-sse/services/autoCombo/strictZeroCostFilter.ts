@@ -170,7 +170,11 @@ export function classifyConnectionState(
 
   const now = (options.now ?? Date.now)();
   const checkedAtMs = Date.parse(state.checkedAt);
-  if (!Number.isFinite(checkedAtMs) || now - checkedAtMs > options.maxStateAgeMs)
+  if (
+    !Number.isFinite(checkedAtMs) ||
+    checkedAtMs > now ||
+    now - checkedAtMs > options.maxStateAgeMs
+  )
     return "state-unknown";
 
   if (state.status === "EXHAUSTED") return "exhausted";
