@@ -14547,6 +14547,55 @@ components:
           example: model
         owned_by:
           type: string
+        free_access:
+          type: object
+          description: >-
+            Curated provider free-tier facts for this exact model route. This describes a
+            documented offering; it does not establish that the configured account is eligible
+            or currently has quota. OpenRouter rotating free variants use their current route
+            catalog metadata instead.
+          properties:
+            classification:
+              type: string
+              enum: [documented_free_tier]
+            freeType:
+              type: string
+              enum:
+                - recurring-daily
+                - recurring-monthly
+                - recurring-credit
+                - recurring-uncapped
+                - one-time-initial
+                - keyless
+            monthlyTokens:
+              type: integer
+            creditTokens:
+              type: integer
+            hardStopGuaranteed:
+              type: boolean
+              nullable: true
+            accountEligibility:
+              type: string
+              enum: [unknown]
+            zeroCostOnExhaustion:
+              type: string
+              enum: [provider_hard_stop, not_guaranteed]
+            termsOfService:
+              type: string
+              enum: [ok, caution, ambiguous, avoid, unknown]
+            source:
+              type: object
+              properties:
+                id:
+                  type: string
+                  enum: [omniroute.free_model_catalog]
+                freshness:
+                  type: string
+                  enum: [release_catalog]
+                retrievedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
         route_selection:
           type: object
           description: >-
