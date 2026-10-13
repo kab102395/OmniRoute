@@ -1815,6 +1815,76 @@ test("v1 models catalog preserves synchronized pricing provenance in serialized 
   }
 });
 
+test("v1 models catalog applies exact Amazon Bedrock metadata without pricing alias variants", async () => {
+  await seedConnection("bedrock", { name: "bedrock-models-dev-provenance" });
+
+  const raw = {
+    "amazon-bedrock": {
+      id: "amazon-bedrock",
+      models: {
+        "anthropic.claude-opus-4-7": {
+          id: "anthropic.claude-opus-4-7",
+          name: "Claude Opus 4.7",
+          cost: { input: 4, output: 20 },
+          tool_call: true,
+          limit: { context: 750_000, output: 100_000 },
+        },
+        "anthropic.claude-sonnet-4-5-20250929-v1:0": {
+          id: "anthropic.claude-sonnet-4-5-20250929-v1:0",
+          name: "Claude Sonnet 4.5 versioned Bedrock route",
+          cost: { input: 3.3, output: 16.5 },
+          tool_call: true,
+          limit: { context: 200_000, output: 64_000 },
+        },
+      },
+    },
+  };
+
+  try {
+    modelsDevSync.saveModelsDevPricing(modelsDevSync.transformModelsDevToPricing(raw as never));
+    modelsDevSync.saveModelsDevCapabilities(
+      modelsDevSync.transformModelsDevToCapabilities(raw as never)
+    );
+
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/api/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        pricing?: { input?: number; output?: number };
+        pricing_provenance?: { state?: string; source?: { id?: string } };
+        capability_status?: { tool_calling?: { status?: string; source?: string } };
+        context_length?: number;
+        max_output_tokens?: number;
+      }>;
+    };
+    const exactRoute = body.data.find((model) => model.id === "bedrock/anthropic.claude-opus-4-7");
+    const shortenedAlias = body.data.find(
+      (model) => model.id === "bedrock/anthropic.claude-sonnet-4-5"
+    );
+
+    assert.equal(response.status, 200);
+    assert.ok(exactRoute);
+    assert.deepEqual(exactRoute.pricing, { input: 4, output: 20 });
+    assert.equal(exactRoute.pricing_provenance?.state, "third_party_reported_pricing");
+    assert.equal(exactRoute.pricing_provenance?.source?.id, "models_dev.api_json");
+    assert.deepEqual(exactRoute.capability_status?.tool_calling, {
+      status: "supported",
+      source: "synced_capability_catalog",
+    });
+    assert.equal(exactRoute.context_length, 750_000);
+    assert.equal(exactRoute.max_output_tokens, 100_000);
+
+    assert.ok(shortenedAlias);
+    assert.equal(shortenedAlias.pricing, undefined);
+    assert.equal(shortenedAlias.pricing_provenance?.state, "unavailable");
+  } finally {
+    modelsDevSync.saveModelsDevPricing({});
+    modelsDevSync.saveModelsDevCapabilities({});
+  }
+});
+
 test("v1 models catalog exposes Bedrock Claude token limits from static metadata", async () => {
   await seedConnection("bedrock", { name: "bedrock-limits" });
 
