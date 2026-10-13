@@ -23,6 +23,9 @@ export interface SmartRoutingResult {
       served_provider: string | null;
       accounting_kind: string | null;
       accounting_source: string | null;
+      usage_kind: string | null;
+      input_tokens: number | null;
+      output_tokens: number | null;
       pricing_retrieved_at: string | null;
       pricing_stale: boolean | null;
       fallback_attempts: number;
@@ -48,6 +51,7 @@ export function readSmartRoutingReceipt(response: Response, requestedModel: stri
   const headers = response.headers;
   const kind = headers.get("X-OmniRoute-Accounting-Kind");
   const responseCost = finiteHeaderNumber(headers, "X-OmniRoute-Response-Cost");
+  const usageKind = headers.get("X-OmniRoute-Usage-Kind");
   const knownCost =
     kind === "estimated_cost"
       ? "estimated"
@@ -62,6 +66,15 @@ export function readSmartRoutingReceipt(response: Response, requestedModel: stri
     currency: responseCost === null ? null : headers.get("X-OmniRoute-Cost-Currency") || "USD",
     accountingKind: kind,
     accountingSource: headers.get("X-OmniRoute-Cost-Source"),
+    usageKind,
+    inputTokens:
+      usageKind === "provider_reported_usage" || usageKind === "estimated_usage"
+        ? finiteHeaderNumber(headers, "X-OmniRoute-Tokens-In")
+        : null,
+    outputTokens:
+      usageKind === "provider_reported_usage" || usageKind === "estimated_usage"
+        ? finiteHeaderNumber(headers, "X-OmniRoute-Tokens-Out")
+        : null,
     pricingRetrievedAt: headers.get("X-OmniRoute-Pricing-Retrieved-At"),
     pricingStale: booleanHeader(headers, "X-OmniRoute-Pricing-Stale"),
     requestId: headers.get("X-OmniRoute-Request-Id"),
@@ -122,6 +135,9 @@ export async function executeSmartRouting(task: A2ATask): Promise<SmartRoutingRe
         served_provider: receipt.servedProvider,
         accounting_kind: receipt.accountingKind,
         accounting_source: receipt.accountingSource,
+        usage_kind: receipt.usageKind,
+        input_tokens: receipt.inputTokens,
+        output_tokens: receipt.outputTokens,
         pricing_retrieved_at: receipt.pricingRetrievedAt,
         pricing_stale: receipt.pricingStale,
         fallback_attempts: receipt.fallbackAttempts,

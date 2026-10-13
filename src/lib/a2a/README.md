@@ -129,6 +129,9 @@ curl -X POST http://localhost:20128/a2a \
         "served_provider": "anthropic",
         "accounting_kind": "provider_reported_billed_cost",
         "accounting_source": "provider_usage.cost_in_usd_ticks",
+        "usage_kind": "provider_reported_usage",
+        "input_tokens": 128,
+        "output_tokens": 42,
         "pricing_retrieved_at": null,
         "pricing_stale": null,
         "fallback_attempts": 0
@@ -212,14 +215,14 @@ Routes prompts through OmniRoute's intelligent pipeline with full observability.
 
 **Returns:**
 
-| Field                          | Description                                                                             |
-| ------------------------------ | --------------------------------------------------------------------------------------- |
-| `artifacts[].content`          | The LLM response text                                                                   |
-| `metadata.routing_explanation` | Human-readable explanation of routing decision                                          |
-| `metadata.cost_envelope`       | Estimated and provider-reported cost; unavailable values are `null`                     |
-| `metadata.execution`           | Requested and served route, accounting source/freshness, request id, and fallback count |
-| `metadata.resilience_trace`    | Array of events (primary_selected, fallback_needed, etc.)                               |
-| `metadata.policy_verdict`      | Post-execution budget observation. It does not authorize or prevent the request         |
+| Field                          | Description                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `artifacts[].content`          | The LLM response text                                                                                      |
+| `metadata.routing_explanation` | Human-readable explanation of routing decision                                                             |
+| `metadata.cost_envelope`       | Estimated and provider-reported cost; unavailable values are `null`                                        |
+| `metadata.execution`           | Requested and served route, usage/cost provenance, token counts, freshness, request id, and fallback count |
+| `metadata.resilience_trace`    | Array of events (primary_selected, fallback_needed, etc.)                                                  |
+| `metadata.policy_verdict`      | Post-execution budget observation. It does not authorize or prevent the request                            |
 
 ### `quota-management`
 

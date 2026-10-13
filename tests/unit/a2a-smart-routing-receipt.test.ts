@@ -9,6 +9,9 @@ test("A2A routing receipt preserves actual provider-reported cost and route prov
       "X-OmniRoute-Response-Cost": "0.0012500000",
       "X-OmniRoute-Cost-Currency": "USD",
       "X-OmniRoute-Cost-Source": "openrouter_response.usage.cost",
+      "X-OmniRoute-Usage-Kind": "provider_reported_usage",
+      "X-OmniRoute-Tokens-In": "120",
+      "X-OmniRoute-Tokens-Out": "35",
       "X-OmniRoute-Request-Id": "request-123",
       "X-OmniRoute-Served-Model": "vendor/model:free",
       "X-OmniRoute-Served-Provider": "openrouter",
@@ -22,6 +25,9 @@ test("A2A routing receipt preserves actual provider-reported cost and route prov
     currency: "USD",
     accountingKind: "provider_reported_billed_cost",
     accountingSource: "openrouter_response.usage.cost",
+    usageKind: "provider_reported_usage",
+    inputTokens: 120,
+    outputTokens: 35,
     pricingRetrievedAt: null,
     pricingStale: null,
     requestId: "request-123",
@@ -41,6 +47,8 @@ test("A2A routing receipt keeps unknown and usage-only costs unknown", () => {
     assert.equal(receipt.actual, null, accountingKind ?? "missing accounting kind");
     assert.equal(receipt.estimated, null, accountingKind ?? "missing accounting kind");
     assert.equal(receipt.currency, null, accountingKind ?? "missing accounting kind");
+    assert.equal(receipt.inputTokens, null);
+    assert.equal(receipt.outputTokens, null);
   }
 });
 
