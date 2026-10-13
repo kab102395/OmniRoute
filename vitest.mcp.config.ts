@@ -25,7 +25,14 @@ export default defineConfig({
       "src/shared/hooks/__tests__/**/*.test.tsx",
       "src/app/(dashboard)/**/__tests__/**/*.test.tsx",
     ],
-    exclude: ["**/node_modules/**", "**/.git/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.git/**",
+      // These tests use node:test and are run by `npm run test:unit`; the broad
+      // autoCombo include exists for Vitest suites and must not collect them.
+      "tests/unit/autoCombo/paid-model-filter-6512.test.ts",
+      "tests/unit/autoCombo/resilience-candidate-filter-status.test.ts",
+    ],
     coverage: {
       reportsDirectory: "coverage",
     },
