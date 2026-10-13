@@ -62,6 +62,7 @@ export interface OpenRouterPricing {
   request?: unknown;
   audio?: unknown;
   audio_output?: unknown;
+  video?: unknown;
   input_audio_cache?: unknown;
   input_cache_read?: unknown;
   input_cache_write?: unknown;
@@ -78,7 +79,10 @@ export function isOpenRouterFreeRoute(modelId: string): boolean {
 }
 
 /** Explicit OpenRouter zero-rate evidence for this exact route, across reported billable fields. */
-export function isOpenRouterZeroPriceRoute(model: { pricing?: OpenRouterPricing }): boolean {
+export function isOpenRouterZeroPriceRoute(model: {
+  pricing?: OpenRouterPricing;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+}): boolean {
   const isNumericZero = (value: unknown) =>
     (typeof value === "number" && value === 0) ||
     (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
@@ -92,6 +96,7 @@ export function isOpenRouterZeroPriceRoute(model: { pricing?: OpenRouterPricing 
     "request",
     "audio",
     "audio_output",
+    "video",
     "input_audio_cache",
     "input_cache_read",
     "input_cache_write",
@@ -117,7 +122,84 @@ export function isOpenRouterZeroPriceRoute(model: { pricing?: OpenRouterPricing 
     isNumericZero(pricing.prompt) &&
     isNumericZero(pricing.completion) &&
     reportedRatesAreZero(pricing as Record<string, unknown>) &&
-    overridesAreZero
+    overridesAreZero &&
+    hasZeroRatesForAdvertisedModalities(model)
+  );
+}
+
+export function hasExplicitRatesForAdvertisedModalities(model: {
+  pricing?: OpenRouterPricing;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+}): boolean {
+  const pricing = model.pricing;
+  if (!pricing) return false;
+  const isReportedPrice = (value: unknown) =>
+    (typeof value === "number" && Number.isFinite(value) && value >= 0) ||
+    (typeof value === "string" && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value));
+  const inputModalities = model.architecture?.input_modalities ?? [];
+  const outputModalities = model.architecture?.output_modalities ?? [];
+
+  if (
+    inputModalities.includes("image") &&
+    !isReportedPrice(pricing.image) &&
+    !isReportedPrice(pricing.image_token)
+  ) {
+    return false;
+  }
+  if (inputModalities.includes("audio") && !isReportedPrice(pricing.audio)) return false;
+  if (
+    outputModalities.includes("image") &&
+    !isReportedPrice(pricing.image_output) &&
+    !isReportedPrice(pricing.image_token)
+  ) {
+    return false;
+  }
+  if (outputModalities.includes("audio") && !isReportedPrice(pricing.audio_output)) return false;
+  if (
+    [...inputModalities, ...outputModalities].includes("video") &&
+    !isReportedPrice(pricing.video)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function hasZeroRatesForAdvertisedModalities(model: {
+  pricing?: OpenRouterPricing;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+}): boolean {
+  const pricing = model.pricing;
+  if (!pricing) return false;
+  const inputModalities = model.architecture?.input_modalities;
+  const outputModalities = model.architecture?.output_modalities;
+  if (!Array.isArray(inputModalities) || !Array.isArray(outputModalities)) return false;
+  if (inputModalities.length === 0 && outputModalities.length === 0) return false;
+  const isNumericZero = (value: unknown) =>
+    (typeof value === "number" && value === 0) ||
+    (typeof value === "string" && /^\+?0(?:\.0+)?$/.test(value));
+  return (
+    (!inputModalities.includes("image") ||
+      isNumericZero(pricing.image) ||
+      isNumericZero(pricing.image_token)) &&
+    (!inputModalities.includes("audio") || isNumericZero(pricing.audio)) &&
+    (!outputModalities.includes("image") ||
+      isNumericZero(pricing.image_output) ||
+      isNumericZero(pricing.image_token)) &&
+    (!outputModalities.includes("audio") || isNumericZero(pricing.audio_output)) &&
+    (![...inputModalities, ...outputModalities].includes("video") || isNumericZero(pricing.video))
+  );
+}
+
+/** Free route identities recognized independently of incomplete pricing fields. */
+export function isOpenRouterFreeRouteModel(model: {
+  id?: string;
+  pricing?: OpenRouterPricing;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+}): boolean {
+  return (
+    model.id === "openrouter/free" ||
+    (typeof model.id === "string" && isOpenRouterFreeRoute(model.id)) ||
+    isOpenRouterZeroPriceRoute(model)
   );
 }
 
@@ -134,7 +216,8 @@ export async function getCurrentOpenRouterFreeRouteMetadata(options?: {
   if (catalog.stale) return null;
   const routes = new Map<string, CurrentOpenRouterFreeRoute>();
   for (const entry of catalog.data) {
-    const free = isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
+    if (entry.id === "openrouter/free") continue;
+    const free = isOpenRouterFreeRouteModel(entry);
     if (!free) continue;
     const supportsTools = Array.isArray(entry.supported_parameters)
       ? entry.supported_parameters.includes("tools")

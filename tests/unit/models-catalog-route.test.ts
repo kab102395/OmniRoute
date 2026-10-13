@@ -582,6 +582,12 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       JSON.stringify({
         data: [
           {
+            id: "openrouter/free",
+            name: "Free Models Router",
+            pricing: { prompt: "0", completion: "0" },
+            supported_parameters: ["tools"],
+          },
+          {
             id: "vendor/coder:free",
             name: "Vendor Coder Free",
             context_length: 64000,
@@ -599,6 +605,7 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
             id: "vendor/explicit-zero",
             name: "Vendor Explicit Zero",
             pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
             supported_parameters: ["tools"],
           },
           {
@@ -663,6 +670,12 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       kind: "dynamic_free_model",
       exactModelIdentity: false,
     });
+    assert.equal(
+      freeRouter.capability_status?.tool_calling?.status,
+      "unknown",
+      "router-wide tool parameters do not prove the randomly selected model supports tools"
+    );
+    assert.equal(freeRouter.capabilities?.tool_calling, undefined);
     assert.equal(freeRoute.capabilities.tool_calling, true);
     assert.deepEqual(freeRoute.supported_parameters, ["tools"]);
     assert.equal(freeRoute.context_length, 64000);

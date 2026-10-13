@@ -302,6 +302,7 @@ test("OpenRouter free route eligibility follows each successful catalog refresh"
         {
           id: "provider/explicit-zero",
           pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+          architecture: { input_modalities: ["text"], output_modalities: ["text"] },
         },
       ],
     },

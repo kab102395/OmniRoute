@@ -178,6 +178,7 @@ test("OpenRouter free-only sync imports current exact free routes without redund
           id: "vendor/zero-priced-current-route",
           name: "Vendor Zero-Priced Current Route",
           pricing: { prompt: "0", completion: "0" },
+          architecture: { input_modalities: ["text"], output_modalities: ["text"] },
         },
         {
           id: "vendor/coder",

@@ -10,6 +10,8 @@ process.env.OPENROUTER_CATALOG_TTL_MS = "60000";
 
 const { checkFreeRouteAdmission } =
   await import("../../open-sse/handlers/chatCore/freeRouteAdmission.ts");
+const { getCurrentOpenRouterFreeRouteIds } =
+  await import("../../src/lib/catalog/openrouterCatalog.ts");
 const { FREE_MODEL_BUDGETS } = await import("../../open-sse/config/freeModelCatalog.data.ts");
 const realFetch = globalThis.fetch;
 
@@ -23,6 +25,7 @@ test("free admission is exact to the current OpenRouter route variant", async ()
     new Response(
       JSON.stringify({
         data: [
+          { id: "openrouter/free", pricing: { prompt: "0", completion: "0" } },
           { id: "acme/model-a:free" },
           { id: "acme/model-a", pricing: { prompt: "0.000001", completion: "0.000002" } },
         ],
@@ -33,10 +36,27 @@ test("free admission is exact to the current OpenRouter route variant", async ()
   const currentFreeRoute = await checkFreeRouteAdmission("openrouter", "acme/model-a:free");
   const paidSibling = await checkFreeRouteAdmission("openrouter", "acme/model-a");
   const dynamicRouter = await checkFreeRouteAdmission("openrouter", "free");
+  const exactFreeRouteIds = await getCurrentOpenRouterFreeRouteIds();
 
   assert.deepEqual(currentFreeRoute, { kind: "eligible", source: "openrouter.models_api" });
   assert.deepEqual(paidSibling, { kind: "ineligible", reason: "not_free" });
   assert.deepEqual(dynamicRouter, { kind: "eligible", source: "openrouter.models_api" });
+  assert.equal(exactFreeRouteIds?.has("openrouter/free"), false);
+});
+
+test("the dynamic router does not prove that the free rotation has any exact routes", async () => {
+  const cachePath = path.join(dataDir, "cache", "openrouter-catalog.json");
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  fs.writeFileSync(
+    cachePath,
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      data: [{ id: "openrouter/free", pricing: { prompt: "0", completion: "0" } }],
+    })
+  );
+
+  const dynamicRouter = await checkFreeRouteAdmission("openrouter", "free");
+  assert.deepEqual(dynamicRouter, { kind: "ineligible", reason: "not_free" });
 });
 
 test("free admission rejects stale OpenRouter membership after a failed refresh", async () => {

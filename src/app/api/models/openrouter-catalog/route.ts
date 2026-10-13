@@ -10,8 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import {
   getOpenRouterCatalog,
-  isOpenRouterFreeRoute,
-  isOpenRouterZeroPriceRoute,
+  isOpenRouterFreeRouteModel,
   refreshOpenRouterCatalog,
 } from "@/lib/catalog/openrouterCatalog";
 import { getSettings } from "@/lib/db/settings";
@@ -40,17 +39,9 @@ export async function GET(req: NextRequest) {
             .filter(
               (model) =>
                 typeof model.id === "string" &&
-                (isOpenRouterFreeRoute(model.id) ||
-                  isOpenRouterZeroPriceRoute(
-                    model as {
-                      pricing?: {
-                        prompt?: unknown;
-                        completion?: unknown;
-                        image?: unknown;
-                        request?: unknown;
-                      };
-                    }
-                  ))
+                isOpenRouterFreeRouteModel(
+                  model as Parameters<typeof isOpenRouterFreeRouteModel>[0]
+                )
             )
             .map((model) => model.id as string)
         : []

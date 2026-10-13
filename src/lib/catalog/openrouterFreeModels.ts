@@ -1,8 +1,4 @@
-import {
-  isOpenRouterFreeRoute,
-  isOpenRouterZeroPriceRoute,
-  type OpenRouterCatalogEntry,
-} from "./openrouterCatalog";
+import { isOpenRouterFreeRouteModel, type OpenRouterCatalogEntry } from "./openrouterCatalog";
 
 export interface DiscoveredFreeModel {
   provider: "openrouter";
@@ -38,7 +34,8 @@ function positiveFiniteNumber(value: unknown): number | null {
 }
 
 function isFree(entry: OpenRouterCatalogEntry): boolean {
-  return isOpenRouterFreeRoute(entry.id) || isOpenRouterZeroPriceRoute(entry);
+  if (entry.id === "openrouter/free") return false;
+  return isOpenRouterFreeRouteModel(entry);
 }
 
 /**

@@ -196,6 +196,7 @@ test("catalogOpenrouter: free-model detection + display name", () => {
     isOpenRouterFreeModel({
       id: "z/model:free",
       pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] },
     }),
     true
   );
@@ -207,9 +208,18 @@ test("catalogOpenrouter: free-model detection + display name", () => {
     false
   );
   assert.equal(
-    isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0", completion: "0" } }),
+    isOpenRouterFreeModel({
+      id: "z/model",
+      pricing: { prompt: "0", completion: "0" },
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+    }),
     true,
-    "an exact route with explicit zero input and output rates is free"
+    "an exact text route with explicit zero input and output rates is free"
+  );
+  assert.equal(
+    isOpenRouterFreeModel({ id: "z/model", pricing: { prompt: "0", completion: "0" } }),
+    false,
+    "explicit zero token rates with unknown advertised modalities do not establish every billable dimension"
   );
   assert.equal(
     isOpenRouterFreeModel({
@@ -241,6 +251,15 @@ test("catalogOpenrouter: free-model detection + display name", () => {
   );
   assert.equal(
     isOpenRouterFreeModel({
+      id: "google/lyria-3-pro-preview",
+      pricing: { prompt: "0", completion: "0" },
+      architecture: { input_modalities: ["text", "image"], output_modalities: ["text", "audio"] },
+    }),
+    false,
+    "missing audio output pricing cannot make an audio-generation route free"
+  );
+  assert.equal(
+    isOpenRouterFreeModel({
       id: "z/current-catalog-free:free",
       pricing: { prompt: "0", completion: "0", internal_reasoning: "0.01" },
     }),
@@ -257,6 +276,7 @@ test("catalogOpenrouter: free-model detection + display name", () => {
       id: "z/m:free",
       name: "Free Model",
       pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] },
     }),
     "Free Model (Grátis)"
   );
@@ -283,6 +303,7 @@ test("catalogOpenrouter: source pricing evidence preserves exact rates and host 
     {
       id: "deepseek/deepseek-v4-flash",
       pricing: { prompt: "0", completion: "0", image: "0", request: "0" },
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] },
     },
     { retrievedAt: "2026-10-12T00:00:00.000Z", stale: false, ttlMs: 86_400_000 }
   );
@@ -363,6 +384,18 @@ test("catalogOpenrouter: incomplete or malformed route prices do not become zero
   );
   assert.equal(malformedOptionalRate.state, "incomplete");
   assert.equal(malformedOptionalRate.reportedPricing?.audio, "not-a-number");
+
+  const unpricedAdvertisedAudio = buildOpenRouterPricingEvidence(
+    {
+      id: "google/lyria-3-pro-preview",
+      pricing: { prompt: "0", completion: "0" },
+      architecture: { input_modalities: ["text", "image"], output_modalities: ["text", "audio"] },
+    },
+    { retrievedAt: "2026-10-12T00:00:00.000Z", stale: false, ttlMs: 900_000 }
+  );
+  assert.equal(unpricedAdvertisedAudio.state, "incomplete");
+  assert.equal(unpricedAdvertisedAudio.rates.audioOutputPerTokenUsd, null);
+  assert.equal(unpricedAdvertisedAudio.zeroCostEligibility, "no");
 
   const malformedDiscount = buildOpenRouterPricingEvidence(
     {

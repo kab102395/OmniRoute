@@ -74,7 +74,7 @@ test("GET /api/free-models?includeLive=true merges cached OpenRouter free discov
           id: "new-provider/new-free-model:free",
           name: "New Free Model",
           pricing: { prompt: "0", completion: "0" },
-          architecture: { output_modalities: ["text"] },
+          architecture: { input_modalities: ["text"], output_modalities: ["text"] },
         },
         {
           id: "new-provider/paid-model",

@@ -1445,7 +1445,9 @@ async function buildUnifiedModelsResponseCore(
         const openRouterCatalog = await getOpenRouterCatalog();
         const currentFreeRouteIds = new Set(
           (openRouterCatalog.data || [])
-            .filter((entry) => entry?.id && isOpenRouterFreeModel(entry))
+            .filter(
+              (entry) => entry?.id && entry.id !== "openrouter/free" && isOpenRouterFreeModel(entry)
+            )
             .map((entry) => entry.id)
         );
         const reconciledModels = reconcileOpenRouterFreeRoutes(models, currentFreeRouteIds, {
@@ -1488,7 +1490,10 @@ async function buildUnifiedModelsResponseCore(
         }
         for (const openRouterModel of openRouterCatalog.data || []) {
           if (!openRouterModel?.id || typeof openRouterModel.id !== "string") continue;
-          const isFreeVariant = isOpenRouterFreeModel(openRouterModel);
+          const isDynamicFreeRouter = openRouterModel.id === "openrouter/free";
+          const isFreeVariant = isDynamicFreeRouter
+            ? !openRouterCatalog.stale && currentFreeRouteIds.size > 0
+            : isOpenRouterFreeModel(openRouterModel);
           const qualifiedId = qualifyOpenRouterModelId(openRouterModel.id);
           const existingIndex = models.findIndex(
             (existingModel: any) => existingModel?.id === qualifiedId
@@ -1517,9 +1522,15 @@ async function buildUnifiedModelsResponseCore(
             retrievedAt: openRouterCatalog.cachedAt || "",
             stale: openRouterCatalog.stale,
             ttlMs: openRouterCatalog.cacheTtlMs,
+            isCurrentlyFree: isFreeVariant,
           });
           const legacyPricing = toOpenRouterLegacyTokenPricing(pricingEvidence);
-          const capabilities = getOpenRouterModelCapabilities(openRouterModel);
+          // The dynamic router accepts tool parameters but may choose a current
+          // free model that cannot execute them. Its own API capabilities do not
+          // establish capabilities of the randomly selected downstream model.
+          const capabilities = isDynamicFreeRouter
+            ? {}
+            : getOpenRouterModelCapabilities(openRouterModel);
 
           const liveModel: Record<string, unknown> = {
             ...(existingIndex >= 0 ? models[existingIndex] : {}),
@@ -1533,7 +1544,9 @@ async function buildUnifiedModelsResponseCore(
             name: getOpenRouterDisplayName(openRouterModel),
             type: modelType,
             free: isFree,
-            route_selection: { kind: "exact_model", exactModelIdentity: true },
+            route_selection: isDynamicFreeRouter
+              ? { kind: "dynamic_free_model", exactModelIdentity: false }
+              : { kind: "exact_model", exactModelIdentity: true },
             route_availability: {
               catalogListed: true,
               accountEligibility: "unknown",
@@ -1556,7 +1569,7 @@ async function buildUnifiedModelsResponseCore(
               : {}),
             ...(inputModalities.length > 0 ? { input_modalities: inputModalities } : {}),
             ...(outputModalities.length > 0 ? { output_modalities: outputModalities } : {}),
-            ...(Array.isArray(openRouterModel.supported_parameters)
+            ...(!isDynamicFreeRouter && Array.isArray(openRouterModel.supported_parameters)
               ? { supported_parameters: [...openRouterModel.supported_parameters] }
               : {}),
             ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
@@ -1564,7 +1577,7 @@ async function buildUnifiedModelsResponseCore(
           // A synchronized copy is not a source of current route capabilities.
           // Clear omitted upstream fields so stale values cannot survive the
           // live metadata merge and appear authoritative in the unified catalog.
-          if (!Array.isArray(openRouterModel.supported_parameters)) {
+          if (isDynamicFreeRouter || !Array.isArray(openRouterModel.supported_parameters)) {
             delete liveModel.supported_parameters;
           }
           if (Object.keys(capabilities).length === 0) delete liveModel.capabilities;

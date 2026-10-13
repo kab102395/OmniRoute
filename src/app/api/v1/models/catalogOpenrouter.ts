@@ -1,6 +1,6 @@
 import {
-  isOpenRouterFreeRoute,
-  isOpenRouterZeroPriceRoute,
+  hasExplicitRatesForAdvertisedModalities,
+  isOpenRouterFreeRouteModel,
   type OpenRouterPricing,
 } from "@/lib/catalog/openrouterCatalog";
 import type {
@@ -37,18 +37,23 @@ export function isZeroPrice(value: unknown) {
   return true;
 }
 
-export function isOpenRouterFreeModel(model: { id?: string; pricing?: OpenRouterPricing }) {
+export function isOpenRouterFreeModel(model: {
+  id?: string;
+  pricing?: OpenRouterPricing;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+}) {
   // Exact `:free` variants are OpenRouter's provider-classified free routes;
-  // complete explicit zero rates are also authoritative for that exact route.
+  // the dynamic router is an explicit separate route, and explicit zero rates
+  // qualify only when every advertised modality's applicable rate is present.
   // A sibling route never inherits another route's free classification.
-  if (typeof model.id === "string" && isOpenRouterFreeRoute(model.id)) return true;
-  return isOpenRouterZeroPriceRoute(model);
+  return isOpenRouterFreeRouteModel(model);
 }
 
 export function getOpenRouterDisplayName(model: {
   id?: string;
   name?: string;
   pricing?: OpenRouterPricing;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
 }) {
   const name = model.name || model.id || "OpenRouter model";
   return isOpenRouterFreeModel(model) && !/\bgr[aá]tis\b/i.test(name) ? `${name} (Grátis)` : name;
@@ -168,8 +173,17 @@ function parseReportedRate(value: unknown): string | null {
  * downstream host, so this evidence must not be interpreted as a cost ceiling.
  */
 export function buildOpenRouterPricingEvidence(
-  model: { id: string; pricing?: OpenRouterReportedPricing },
-  options: { retrievedAt: string; stale: boolean; ttlMs: number }
+  model: {
+    id: string;
+    pricing?: OpenRouterReportedPricing;
+    architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+  },
+  options: {
+    retrievedAt: string;
+    stale: boolean;
+    ttlMs: number;
+    isCurrentlyFree?: boolean;
+  }
 ) {
   const reportedRates = {
     inputPerTokenUsd: model.pricing?.prompt,
@@ -180,6 +194,7 @@ export function buildOpenRouterPricingEvidence(
     requestReportedUsd: model.pricing?.request,
     audioInputPerTokenUsd: model.pricing?.audio,
     audioOutputPerTokenUsd: model.pricing?.audio_output,
+    videoReportedUsd: model.pricing?.video,
     inputAudioCachePerTokenUsd: model.pricing?.input_audio_cache,
     inputCacheReadPerTokenUsd: model.pricing?.input_cache_read,
     inputCacheWritePerTokenUsd: model.pricing?.input_cache_write,
@@ -196,6 +211,7 @@ export function buildOpenRouterPricingEvidence(
     requestReportedUsd: parseReportedRate(reportedRates.requestReportedUsd),
     audioInputPerTokenUsd: parseReportedRate(reportedRates.audioInputPerTokenUsd),
     audioOutputPerTokenUsd: parseReportedRate(reportedRates.audioOutputPerTokenUsd),
+    videoReportedUsd: parseReportedRate(reportedRates.videoReportedUsd),
     inputAudioCachePerTokenUsd: parseReportedRate(reportedRates.inputAudioCachePerTokenUsd),
     inputCacheReadPerTokenUsd: parseReportedRate(reportedRates.inputCacheReadPerTokenUsd),
     inputCacheWritePerTokenUsd: parseReportedRate(reportedRates.inputCacheWritePerTokenUsd),
@@ -208,7 +224,8 @@ export function buildOpenRouterPricingEvidence(
     (value) => value !== undefined && value !== null && parseReportedRate(value) === null
   );
   const completeTokenRates = rates.inputPerTokenUsd !== null && rates.outputPerTokenUsd !== null;
-  const isFreeVariant = isOpenRouterFreeModel(model);
+  const missingAdvertisedModalityRate = !hasExplicitRatesForAdvertisedModalities(model);
+  const isFreeVariant = options.isCurrentlyFree ?? isOpenRouterFreeModel(model);
   const pricingOverrides = model.pricing?.overrides;
   const hasPricingOverrides = Array.isArray(pricingOverrides) && pricingOverrides.length > 0;
   const malformedPricingOverrides =
@@ -230,7 +247,8 @@ export function buildOpenRouterPricingEvidence(
         malformedReportedRates ||
         malformedPricingDiscount ||
         !hasAnyRate ||
-        !completeTokenRates
+        !completeTokenRates ||
+        missingAdvertisedModalityRate
       ? hasAnyRate ||
         malformedPricingOverrides ||
         malformedReportedRates ||

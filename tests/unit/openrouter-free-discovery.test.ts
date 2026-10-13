@@ -16,7 +16,21 @@ test("discoverOpenRouterFreeModels follows exact free variants regardless of num
         supported_parameters: ["tools", "reasoning", "structured_outputs", "parallel_tool_calls"],
       },
       { id: "provider/unpriced:free" },
-      { id: "provider/zero-priced", pricing: { prompt: "0", completion: "0" } },
+      {
+        id: "provider/zero-priced",
+        pricing: { prompt: "0", completion: "0" },
+        architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+      },
+      {
+        id: "google/lyria-3-pro-preview",
+        pricing: { prompt: "0", completion: "0" },
+        architecture: { input_modalities: ["text", "image"], output_modalities: ["text", "audio"] },
+      },
+      {
+        id: "openrouter/free",
+        pricing: { prompt: "0", completion: "0" },
+        supported_parameters: ["tools"],
+      },
       {
         id: "provider/paid",
         pricing: { prompt: "0.000001", completion: "0.000002" },
