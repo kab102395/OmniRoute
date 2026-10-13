@@ -64,7 +64,7 @@ export function getQuotaFetchScope(
 }
 
 export function isAntigravityQuotaProvider(provider: string | null | undefined): boolean {
-  return provider === "antigravity" || provider === "agy";
+  return provider === ANTIGRAVITY_PROVIDER_ID || provider === "agy";
 }
 
 export function quotaWindowNamesForScope(
@@ -72,11 +72,10 @@ export function quotaWindowNamesForScope(
   scope?: { provider?: string | null; requestedModel?: string | null }
 ): string[] {
   if (!scope?.requestedModel || !isAntigravityQuotaProvider(scope.provider)) return names;
-  const scoped = selectAntigravityQuotaWindowNames(names, scope.requestedModel);
-  return scoped.length > 0 ? scoped : names;
+  return selectAntigravityQuotaWindowNames(names, scope.requestedModel);
 }
 
-/** Min remaining % across scoped windows, or 100 when an Antigravity family scope matched none. */
+/** Min remaining % across scoped windows, or null when the requested family has no evidence. */
 export function remainingPercentFromQuotaWindows(
   rawWindows: Record<string, unknown>,
   scope?: { provider?: string | null; requestedModel?: string | null }
@@ -93,7 +92,6 @@ export function remainingPercentFromQuotaWindows(
     minRemaining = minRemaining === null ? remaining : Math.min(minRemaining, remaining);
   }
   if (minRemaining !== null) return minRemaining;
-  if (scope?.requestedModel && namesToScan !== names) return 100;
   return null;
 }
 
@@ -134,5 +132,7 @@ export function selectAntigravityQuotaWindowNames(
   const scoped = [...exactWindows, ...aggregateWindows];
   if (scoped.length > 0) return scoped;
 
-  return quotaNames.filter((windowName) => getAntigravityQuotaFamily(windowName) === requestedFamily);
+  return quotaNames.filter(
+    (windowName) => getAntigravityQuotaFamily(windowName) === requestedFamily
+  );
 }

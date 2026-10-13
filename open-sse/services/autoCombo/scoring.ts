@@ -110,6 +110,8 @@ export interface ProviderCandidate {
   model: string;
   quotaRemaining: number; // percentage 0..100
   quotaTotal: number;
+  /** False when no provider/account quota evidence is available. */
+  quotaKnown?: boolean;
   circuitBreakerState: "CLOSED" | "HALF_OPEN" | "OPEN";
   costPer1MTokens: number;
   p95LatencyMs: number;
@@ -299,7 +301,7 @@ export function calculateFactors(
   // affinities) so a single bad input can't produce a negative or >1 factor
   // that distorts the weighted score.
   return {
-    quota: clamp01(candidate.quotaRemaining / 100),
+    quota: candidate.quotaKnown === false ? 0.5 : clamp01(candidate.quotaRemaining / 100),
     health:
       candidate.circuitBreakerState === "CLOSED"
         ? 1.0

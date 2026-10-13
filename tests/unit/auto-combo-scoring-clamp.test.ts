@@ -79,6 +79,12 @@ test("calculateFactors — negative quotaRemaining clamps the quota factor to [0
   assert.ok(f.quota >= 0 && f.quota <= 1, `quota factor must be in [0,1], got ${f.quota}`);
 });
 
+test("calculateFactors — unknown quota capacity receives a neutral factor", () => {
+  const c = candidate({ quotaRemaining: 100, quotaKnown: false });
+  const f = calculateFactors(c, [c], "default", () => 0.5);
+  assert.equal(f.quota, 0.5);
+});
+
 test("calculateFactors — negative cost cannot push costInv above 1", () => {
   const c = candidate({ costPer1MTokens: -100 });
   const f = calculateFactors(c, [c], "default", () => 0.5);

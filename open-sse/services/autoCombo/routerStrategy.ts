@@ -63,6 +63,7 @@ function toSpeedCandidate(c: ProviderCandidate): SpeedCandidate {
     // Resource state
     quotaRemaining: c.quotaRemaining,
     quotaTotal: c.quotaTotal,
+    quotaKnown: c.quotaKnown,
     circuitBreakerState: c.circuitBreakerState,
     // Costs
     costPer1MTokens: c.costPer1MTokens,

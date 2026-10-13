@@ -7,7 +7,10 @@
  */
 
 import { EXECUTOR_CONTRACT_VIOLATION_CODE } from "../../config/constants.ts";
-import { remainingPercentFromQuotaWindows } from "../antigravityQuotaFamily.ts";
+import {
+  isAntigravityQuotaProvider,
+  remainingPercentFromQuotaWindows,
+} from "../antigravityQuotaFamily.ts";
 import { errorResponse } from "../../utils/error.ts";
 import { parseModel } from "../model.ts";
 import { isSelfInflictedUpstreamTimeout } from "../../handlers/chatCore/cooldownClassification.ts";
@@ -458,21 +461,24 @@ export function clampPercent(value: number): number {
 export function quotaRemainingPercentFromQuota(
   quota: unknown,
   scope?: { provider?: string | null; requestedModel?: string | null }
-): number {
-  if (!quota || typeof quota !== "object") return 100;
+): number | null {
+  if (!quota || typeof quota !== "object" || Array.isArray(quota)) return null;
   const record = quota as Record<string, unknown>;
 
   const windows = record.windows;
   if (windows && typeof windows === "object" && !Array.isArray(windows)) {
     const fromWindows = remainingPercentFromQuotaWindows(windows as Record<string, unknown>, scope);
     if (fromWindows !== null) return fromWindows;
+    // Do not substitute an unrelated aggregate percentage when a provider exposes
+    // windows but none can be attributed to the requested Antigravity model family.
+    if (isAntigravityQuotaProvider(scope?.provider)) return null;
   }
 
   if (record.limitReached === true) return 0;
 
   const percentUsed = Number(record.percentUsed);
-  if (Number.isFinite(percentUsed)) return clampPercent((1 - percentUsed) * 100);
-  return 100;
+  if (!Number.isFinite(percentUsed) || percentUsed < 0) return null;
+  return clampPercent((1 - percentUsed) * 100);
 }
 
 export const QUOTA_BLOCKING_CONNECTION_STATUSES = new Set([

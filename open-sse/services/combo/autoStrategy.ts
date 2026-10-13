@@ -401,8 +401,8 @@ export function scoreAutoTargets(
         score *= QUOTA_SOFT_DEPRIORITIZE_FACTOR;
       }
       // #4540: terminal/transient connection status soft penalty (no hard block).
-      // A no-fetcher exhausted provider keeps quotaRemaining=100, so without this its
-      // score would tie a healthy provider's. The penalty pushes it strictly below.
+      // This remains separate from quota scoring because the provider may not publish
+      // numeric quota evidence; unknown capacity uses a neutral quota factor.
       if ("statusPenalty" in candidate && candidate.statusPenalty === true) {
         score *= STATUS_SOFT_DEPRIORITIZE_FACTOR;
       }
