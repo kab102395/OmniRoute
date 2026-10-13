@@ -611,6 +611,7 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
       data: Array<{
         id?: string;
         free?: boolean;
+        route_selection?: { kind?: string; exactModelIdentity?: boolean };
         capabilities?: Record<string, boolean>;
         context_length?: number;
         max_output_tokens?: number;
@@ -629,9 +630,19 @@ test("v1 models exposes selectable exact OpenRouter free variants with their own
     const explicitZeroRoute = body.data.find(
       (model) => model.id === "openrouter/vendor/explicit-zero"
     );
+    const freeRouter = body.data.find((model) => model.id === "openrouter/free");
 
     assert.ok(freeRoute, "the exact :free route must be individually selectable");
     assert.equal(freeRoute.free, true);
+    assert.deepEqual(freeRoute.route_selection, {
+      kind: "exact_model",
+      exactModelIdentity: true,
+    });
+    assert.ok(freeRouter, "the optional OpenRouter free router is exposed separately");
+    assert.deepEqual(freeRouter.route_selection, {
+      kind: "dynamic_free_model",
+      exactModelIdentity: false,
+    });
     assert.equal(freeRoute.capabilities.tool_calling, true);
     assert.equal(freeRoute.context_length, 64000);
     assert.equal(freeRoute.max_output_tokens, 4096);

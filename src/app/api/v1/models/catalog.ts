@@ -1439,6 +1439,7 @@ async function buildUnifiedModelsResponseCore(
             name: getOpenRouterDisplayName(openRouterModel),
             type: modelType,
             free: isFree,
+            route_selection: { kind: "exact_model", exactModelIdentity: true },
             route_availability: {
               catalogListed: true,
               accountEligibility: "unknown",
