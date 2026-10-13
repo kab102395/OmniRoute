@@ -534,6 +534,18 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
     getAuthoritativeContextWindow(model);
   const specialtySurface = isNonChatCatalogSurface(entry.type);
   const capabilitySnapshot = snapshot?.capabilityResolutionSnapshot ?? null;
+  const pricingProvenance =
+    entry.pricing_provenance && typeof entry.pricing_provenance === "object"
+      ? (entry.pricing_provenance as JsonRecord)
+      : null;
+  const pricingSource =
+    pricingProvenance?.source && typeof pricingProvenance.source === "object"
+      ? (pricingProvenance.source as JsonRecord)
+      : null;
+  const hasCurrentOpenRouterContext =
+    publicProvider === "openrouter" &&
+    pricingSource?.id === "openrouter.models_api" &&
+    typeof entry.context_length === "number";
   const persistedContextWindow = getResolvedModelContextOverride(
     { provider, model },
     capabilitySnapshot
@@ -626,6 +638,7 @@ export function enrichCatalogModelEntry<T extends JsonRecord>(
 
   if (
     !specialtySurface &&
+    !hasCurrentOpenRouterContext &&
     (typeof nextEntry.context_length !== "number" ||
       authoritativeContextWindow !== null ||
       persistedContextWindow !== null) &&

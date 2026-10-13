@@ -658,6 +658,67 @@ test("v1 models removes a retired synchronized OpenRouter free route in free-onl
   }
 });
 
+test("current OpenRouter paid metadata refreshes matching synchronized route identity", async () => {
+  const connection = await seedConnection("openrouter");
+  await modelsDb.replaceSyncedAvailableModelsForConnection("openrouter", connection.id as string, [
+    {
+      id: "vendor/synced-paid",
+      name: "Synced Vendor Paid",
+      source: "imported",
+      supportsTools: false,
+      inputTokenLimit: 1000,
+    },
+  ]);
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "vendor/synced-paid",
+            name: "Current Vendor Paid",
+            context_length: 64000,
+            top_provider: { max_completion_tokens: 4096 },
+            pricing: { prompt: "0.000003", completion: "0.000005" },
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+            supported_parameters: ["tools"],
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+      new Request("http://localhost/v1/models")
+    );
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        name?: string;
+        capabilities?: Record<string, boolean>;
+        context_length?: number;
+        max_output_tokens?: number;
+        pricing?: { input?: number; output?: number };
+        pricing_provenance?: { state?: string; routeModelId?: string };
+      }>;
+    };
+    const route = body.data.find((model) => model.id === "openrouter/vendor/synced-paid");
+
+    assert.equal(response.status, 200);
+    assert.ok(route);
+    assert.equal(route.name, "Current Vendor Paid");
+    assert.equal(route.pricing?.input, 3);
+    assert.equal(route.pricing?.output, 5);
+    assert.equal(route.capabilities?.tool_calling, true);
+    assert.equal(route.context_length, 64000);
+    assert.equal(route.max_output_tokens, 4096);
+    assert.equal(route.pricing_provenance?.state, "reported");
+    assert.equal(route.pricing_provenance?.routeModelId, "vendor/synced-paid");
+  } finally {
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
 test("v1 models catalog does not final-enrich combo names as real models", async () => {
   await combosDb.createCombo({
     name: "gpt-5.5",

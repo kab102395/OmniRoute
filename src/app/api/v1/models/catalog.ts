@@ -1395,13 +1395,17 @@ async function buildUnifiedModelsResponseCore(
         for (const openRouterModel of openRouterCatalog.data || []) {
           if (!openRouterModel?.id || typeof openRouterModel.id !== "string") continue;
           const isFreeVariant = isOpenRouterFreeModel(openRouterModel);
-          // Synced OpenRouter model records remain authoritative for paid routes;
-          // add the current free variants from the live source alongside them.
-          if (providersWithSyncedModels.has("openrouter") && !isFreeVariant) continue;
           const qualifiedId = qualifyOpenRouterModelId(openRouterModel.id);
           const existingIndex = models.findIndex(
             (existingModel: any) => existingModel?.id === qualifiedId
           );
+          // A synced OpenRouter listing remains the availability gate for paid
+          // routes, but a matching row must still receive current upstream
+          // pricing and capabilities. Current free variants may also be added
+          // dynamically even when no synchronized copy exists.
+          if (providersWithSyncedModels.has("openrouter") && !isFreeVariant && existingIndex < 0) {
+            continue;
+          }
 
           const inputModalities = normalizeOpenRouterModalities(
             openRouterModel.architecture?.input_modalities
