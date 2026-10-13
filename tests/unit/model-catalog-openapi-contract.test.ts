@@ -13,6 +13,14 @@ const spec = yaml.load(fs.readFileSync(path.join(process.cwd(), "docs/openapi.ya
         parameters?: Array<{ name?: string; in?: string }>;
         description?: string;
       };
+      post?: {
+        responses?: Record<
+          string,
+          {
+            headers?: Record<string, { schema?: { type?: string; enum?: unknown[] } }>;
+          }
+        >;
+      };
     }
   >;
   components: {
@@ -52,4 +60,12 @@ test("model catalog OpenAPI documents the implemented routing filters", () => {
   }
   assert.match(operation?.description ?? "", /fresh upstream catalog/i);
   assert.match(operation?.description ?? "", /free_access/);
+});
+
+test("completion pricing freshness header uses its runtime string representation", () => {
+  const headers = spec.paths["/api/v1/chat/completions"]?.post?.responses?.["200"]?.headers;
+  assert.deepEqual(headers?.["X-OmniRoute-Pricing-Stale"]?.schema, {
+    type: "string",
+    enum: ["true", "false"],
+  });
 });

@@ -1600,7 +1600,7 @@ paths:
             X-OmniRoute-Pricing-Stale:
               schema:
                 type: string
-                enum: [true, false]
+                enum: ["true", "false"]
               description: Whether the source pricing metadata is past its known freshness interval.
             X-OmniRoute-Usage-Kind:
               schema:
