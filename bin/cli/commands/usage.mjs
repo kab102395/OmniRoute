@@ -12,6 +12,7 @@ const fmtTokens = (v) => {
   if (v > 1e3) return `${(v / 1e3).toFixed(1)}K`;
   return String(v);
 };
+const fmtOptionalTokens = (v) => (v == null ? "-" : fmtTokens(v));
 
 const analyticsSchema = [
   { key: "provider", header: "Provider", width: 20 },
@@ -32,11 +33,12 @@ const budgetSchema = [
 
 const quotaSchema = [
   { key: "provider", header: "Provider", width: 20 },
-  { key: "limit", header: "Limit", formatter: fmtTokens },
-  { key: "used", header: "Used", formatter: fmtTokens },
-  { key: "remaining", header: "Remaining", formatter: fmtTokens },
+  { key: "limit", header: "Limit", formatter: fmtOptionalTokens },
+  { key: "used", header: "Used", formatter: fmtOptionalTokens },
+  { key: "remaining", header: "Remaining", formatter: fmtOptionalTokens },
   { key: "resetAt", header: "Reset At", formatter: fmtTs },
   { key: "state", header: "State" },
+  { key: "quotaSource", header: "Evidence" },
 ];
 
 const logsSchema = [
@@ -194,17 +196,52 @@ export async function runUsageQuota(opts, cmd) {
   if (opts.check) p.set("check", "true");
   const res = await fetchOrExit(`/api/usage/quota?${p}`, globalOpts);
   const data = await res.json();
-  const rows = toArray(data.providers ?? data.data ?? (Array.isArray(data) ? data : [])).map(
-    (r) => ({
-      provider: r.provider ?? r.providerId ?? "",
-      limit: r.limit ?? r.quota ?? r.maxTokens ?? null,
-      used: r.used ?? r.tokensUsed ?? null,
-      remaining: r.remaining ?? r.percentRemaining ?? null,
-      resetAt: r.resetAt ?? r.nextReset ?? null,
-      state: r.state ?? (r.percentRemaining > 0 ? "available" : "exhausted"),
-    })
-  );
+  const rows = mapQuotaRows(data.providers ?? data.data ?? (Array.isArray(data) ? data : []));
   emit(rows, globalOpts, quotaSchema);
+}
+
+export function mapQuotaRows(rawProviders) {
+  return toArray(rawProviders).map((r) => {
+      const quotaSource = r.quotaSource ?? "legacy";
+      const hasTokenCountEvidence = quotaSource === "learned_limit" || quotaSource === "legacy";
+      const limit = hasTokenCountEvidence
+        ? (r.quotaTotal ?? r.limit ?? r.quota ?? r.maxTokens ?? null)
+        : null;
+      const used = hasTokenCountEvidence ? (r.quotaUsed ?? r.used ?? r.tokensUsed ?? null) : null;
+      const legacyRemaining = r.remaining ?? r.percentRemaining ?? null;
+      const remaining =
+        quotaSource === "learned_limit" && typeof limit === "number" && typeof used === "number"
+          ? Math.max(0, limit - used)
+          : quotaSource === "legacy"
+            ? legacyRemaining
+            : null;
+      const state =
+        quotaSource === "unknown"
+          ? "unknown"
+          : quotaSource === "observed_queue_pressure"
+            ? "queue pressure only"
+            : quotaSource === "observed_rate_limit"
+              ? "rate limited"
+              : quotaSource === "learned_limit"
+                ? typeof remaining === "number" && remaining > 0
+                  ? "available"
+                  : "exhausted"
+                : (r.state ??
+                  (typeof legacyRemaining === "number" && legacyRemaining > 0
+                    ? "available"
+                    : "exhausted"));
+
+      return {
+        provider: r.provider ?? r.providerId ?? "",
+        limit,
+        used,
+        remaining,
+        resetAt: r.resetAt ?? r.nextReset ?? null,
+        state,
+        quotaSource,
+      };
+    }
+  );
 }
 
 export async function runUsageLogs(opts, cmd) {
