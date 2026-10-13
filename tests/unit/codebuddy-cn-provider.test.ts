@@ -42,7 +42,12 @@ type UsageResult = {
 async function executeWithMockedUpstream(
   body: Record<string, unknown>,
   responses: Response[]
-): Promise<{ calls: CapturedRequest[]; responseBody: string; status: number }> {
+): Promise<{
+  calls: CapturedRequest[];
+  responseBody: string;
+  status: number;
+  executionAttempts: Array<{ index: number; statusCode: number | null }>;
+}> {
   const originalFetch = globalThis.fetch;
   const calls: CapturedRequest[] = [];
   globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
@@ -65,7 +70,18 @@ async function executeWithMockedUpstream(
       credentials: { accessToken: "test-token" },
     });
     const response = result instanceof Response ? result : result.response;
-    return { calls, responseBody: await response.clone().text(), status: response.status };
+    return {
+      calls,
+      responseBody: await response.clone().text(),
+      status: response.status,
+      executionAttempts:
+        result instanceof Response
+          ? []
+          : (result.executionAttempts ?? []).map(({ index, statusCode }) => ({
+              index,
+              statusCode,
+            })),
+    };
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -256,13 +272,17 @@ test("CodeBuddyCnExecutor strips reasoning_effort when caller asks for none/off"
 
 test("CodeBuddyCnExecutor retries a sensitive-content rejection with compact tools", async () => {
   const input = toolRequestBody();
-  const { calls, status } = await executeWithMockedUpstream(input, [
+  const { calls, status, executionAttempts } = await executeWithMockedUpstream(input, [
     rejectionResponse(),
     successResponse(),
   ]);
 
   assert.equal(status, 200);
   assert.equal(calls.length, 2, "known rejection should dispatch exactly one compact retry");
+  assert.deepEqual(executionAttempts, [
+    { index: 1, statusCode: 400 },
+    { index: 2, statusCode: 200 },
+  ]);
   // #9723 (55c2b35eb7): transformRequest now proactively strips descriptions from
   // oversized (>=64KB) tool payloads BEFORE the first dispatch, so the first
   // request already ships compact tools — it is no longer sent unchanged.
@@ -381,13 +401,17 @@ test("CodeBuddyCnExecutor stops after a rejected compact retry", async () => {
     JSON.stringify({ error: { message: SENSITIVE_CONTENT_REJECTION }, request_id: "second" }),
     { status: 400, headers: { "Content-Type": "application/json" } }
   );
-  const { calls, responseBody, status } = await executeWithMockedUpstream(toolRequestBody(), [
-    rejectionResponse(),
-    secondRejection,
-  ]);
+  const { calls, responseBody, status, executionAttempts } = await executeWithMockedUpstream(
+    toolRequestBody(),
+    [rejectionResponse(), secondRejection]
+  );
 
   assert.equal(status, 400);
   assert.equal(calls.length, 2);
+  assert.deepEqual(executionAttempts, [
+    { index: 1, statusCode: 400 },
+    { index: 2, statusCode: 400 },
+  ]);
   assert.equal(JSON.parse(responseBody).request_id, "second");
 });
 

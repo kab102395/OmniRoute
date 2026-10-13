@@ -1,5 +1,10 @@
 import { DefaultExecutor } from "./default.ts";
-import type { ExecuteInput, ExecutorExecuteResult, ProviderCredentials } from "./base.ts";
+import type {
+  ExecuteInput,
+  ExecutorAttemptSummary,
+  ExecutorExecuteResult,
+  ProviderCredentials,
+} from "./base.ts";
 
 const SENSITIVE_CONTENT_REJECTION =
   "抱歉，系统检测到您当前输入的信息存在敏感内容，我无法响应您的请求，请检查后重新输入";
@@ -25,6 +30,33 @@ function credentialsFromResult(
     accessToken: authorization.slice("Bearer ".length),
     expiresAt: undefined,
   };
+}
+
+function appendExecutionAttempts(
+  target: ExecutorAttemptSummary[],
+  result: ExecutorExecuteResult
+): void {
+  if (result instanceof Response || !Array.isArray(result.executionAttempts)) return;
+  for (const attempt of result.executionAttempts) {
+    target.push({ ...attempt, index: target.length + 1 });
+  }
+}
+
+function withExecutionAttempts(
+  result: ExecutorExecuteResult,
+  executionAttempts: ExecutorAttemptSummary[]
+): ExecutorExecuteResult {
+  return result instanceof Response ? result : { ...result, executionAttempts };
+}
+
+function appendErrorExecutionAttempts(target: ExecutorAttemptSummary[], error: unknown): void {
+  if (!error || typeof error !== "object") return;
+  const attempts = (error as { executionAttempts?: unknown }).executionAttempts;
+  if (!Array.isArray(attempts)) return;
+  for (const attempt of attempts) {
+    if (!attempt || typeof attempt !== "object") continue;
+    target.push({ ...(attempt as ExecutorAttemptSummary), index: target.length + 1 });
+  }
 }
 
 function compactToolDescriptions(body: unknown): unknown | null {
@@ -107,23 +139,44 @@ export class CodeBuddyCnExecutor extends DefaultExecutor {
   }
 
   async execute(input: ExecuteInput): Promise<ExecutorExecuteResult> {
-    const result = await super.execute(input);
+    const executionAttempts: ExecutorAttemptSummary[] = [];
+    let result: ExecutorExecuteResult;
+    try {
+      result = await super.execute(input);
+    } catch (error) {
+      appendErrorExecutionAttempts(executionAttempts, error);
+      if (error && typeof error === "object") {
+        Object.assign(error, { executionAttempts });
+      }
+      throw error;
+    }
+    appendExecutionAttempts(executionAttempts, result);
     if (!(await isSensitiveContentRejection(responseFromResult(result)))) {
-      return result;
+      return withExecutionAttempts(result, executionAttempts);
     }
 
     const compactBody = compactToolDescriptions(input.body);
-    if (!compactBody) return result;
+    if (!compactBody) return withExecutionAttempts(result, executionAttempts);
 
     input.log?.debug?.(
       "CODEBUDDY_CN",
       "Upstream rejected an oversized tool request as sensitive content; retrying with compact tool descriptions"
     );
-    return super.execute({
-      ...input,
-      body: compactBody,
-      credentials: credentialsFromResult(result, input.credentials),
-    });
+    try {
+      const retry = await super.execute({
+        ...input,
+        body: compactBody,
+        credentials: credentialsFromResult(result, input.credentials),
+      });
+      appendExecutionAttempts(executionAttempts, retry);
+      return withExecutionAttempts(retry, executionAttempts);
+    } catch (error) {
+      appendErrorExecutionAttempts(executionAttempts, error);
+      if (error && typeof error === "object") {
+        Object.assign(error, { executionAttempts });
+      }
+      throw error;
+    }
   }
 
   transformRequest(
@@ -149,8 +202,10 @@ export class CodeBuddyCnExecutor extends DefaultExecutor {
     // --- Agent system prompt replacement ---
     // Tencent's content filter flags CLI agent system prompts as sensitive content.
     // Detect and replace them with a neutral prompt.
-    const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";
-    const AGENT_PATTERN = /you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>/i;
+    const NEUTRAL_PROMPT =
+      "You are a helpful AI assistant that helps with software engineering tasks.";
+    const AGENT_PATTERN =
+      /you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>/i;
     const flatten = (content: unknown): string =>
       typeof content === "string"
         ? content
@@ -191,7 +246,13 @@ export class CodeBuddyCnExecutor extends DefaultExecutor {
         if (new TextEncoder().encode(s).byteLength >= 65536) {
           out.tools = (out.tools as Array<Record<string, unknown>>).map((tool) => {
             if (!tool || typeof tool !== "object" || Array.isArray(tool)) return tool;
-            if (tool.type !== "function" || !tool.function || typeof tool.function !== "object" || Array.isArray(tool.function)) return tool;
+            if (
+              tool.type !== "function" ||
+              !tool.function ||
+              typeof tool.function !== "object" ||
+              Array.isArray(tool.function)
+            )
+              return tool;
             if (!Object.prototype.hasOwnProperty.call(tool.function, "description")) return tool;
             const cf = { ...(tool.function as Record<string, unknown>) };
             delete cf.description;
