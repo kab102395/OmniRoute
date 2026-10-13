@@ -301,6 +301,50 @@ test("compact execution receipts do not enable provider payload capture", async 
   assert.equal("clientResponse" in pipelinePayloads, false);
 });
 
+test("execution receipts whitelist fields before persistence", async () => {
+  const id = "attempt-receipt-whitelist";
+  persistAttemptLogs(
+    { status: 200 },
+    baseCtx({
+      pendingRequestId: id,
+      getExecutionAttempts: () => [
+        {
+          index: 1,
+          statusCode: 200,
+          outcome: "response",
+          routeModel: "vendor/model",
+          providerRequestId: "request-1",
+          url: "https://provider.example/path?api_key=secret",
+          headers: { authorization: "Bearer secret" },
+          requestBody: { messages: [{ content: "private prompt" }] },
+          apiKey: "secret",
+          unknownFuturePayload: "must not be persisted",
+        },
+      ],
+    })
+  );
+
+  const row = await pollForCallLog(id);
+  assert.ok(row);
+  const pipelinePayloads = row.pipelinePayloads as {
+    executionAttempts?: Array<Record<string, unknown>>;
+  };
+  assert.deepEqual(pipelinePayloads.executionAttempts, [
+    {
+      index: 1,
+      statusCode: 200,
+      outcome: "response",
+      routeModel: "vendor/model",
+      providerRequestId: "request-1",
+    },
+  ]);
+  assert.equal(JSON.stringify(pipelinePayloads.executionAttempts).includes("secret"), false);
+  assert.equal(
+    JSON.stringify(pipelinePayloads.executionAttempts).includes("private prompt"),
+    false
+  );
+});
+
 test("persists exact provider-reported USD ticks in the public call-log receipt", async () => {
   const id = "attempt-accounting-exact-usd-ticks";
   persistAttemptLogs(

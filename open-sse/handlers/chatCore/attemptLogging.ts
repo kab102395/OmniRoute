@@ -291,16 +291,79 @@ const ATTEMPT_USAGE_DIMENSIONS = [
   "reasoning_tokens",
 ] as const;
 
+const EXECUTION_ATTEMPT_RECEIPT_STRING_LIMITS = {
+  providerRequestId: 256,
+  routeModel: 256,
+  connectionId: 128,
+} as const;
+
+/**
+ * Project executor-reported data onto the public, credential-free receipt contract.
+ * Executors are extensible and their runtime objects must not be persisted wholesale:
+ * a future implementation could otherwise accidentally attach a URL, headers, or body.
+ */
+function sanitizeExecutionAttemptReceipt(
+  attempt: Record<string, unknown>
+): Record<string, unknown> {
+  const receipt: Record<string, unknown> = {};
+  for (const key of ["index", "executorIndex", "endpointIndex"] as const) {
+    const value = attempt[key];
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+      receipt[key] = value;
+    }
+  }
+  if (typeof attempt.startedAt === "string" && attempt.startedAt.length <= 64) {
+    receipt.startedAt = attempt.startedAt;
+  }
+  if (typeof attempt.durationMs === "number" && Number.isFinite(attempt.durationMs)) {
+    receipt.durationMs = Math.max(0, attempt.durationMs);
+  }
+  if (
+    attempt.statusCode === null ||
+    (typeof attempt.statusCode === "number" && Number.isInteger(attempt.statusCode))
+  ) {
+    receipt.statusCode = attempt.statusCode;
+  }
+  if (attempt.outcome === "response" || attempt.outcome === "network_error") {
+    receipt.outcome = attempt.outcome;
+  }
+  if (
+    attempt.costAttribution === "unknown" ||
+    attempt.costAttribution === "provider_reported" ||
+    attempt.costAttribution === "estimated"
+  ) {
+    receipt.costAttribution = attempt.costAttribution;
+  }
+  if (
+    attempt.attemptSource === "executor_reported" ||
+    attempt.attemptSource === "wrapper_observed"
+  ) {
+    receipt.attemptSource = attempt.attemptSource;
+  }
+  if (attempt.routeLeg === "native" || attempt.routeLeg === "proxy_fallback") {
+    receipt.routeLeg = attempt.routeLeg;
+  }
+  for (const [key, maxLength] of Object.entries(EXECUTION_ATTEMPT_RECEIPT_STRING_LIMITS)) {
+    const value = attempt[key];
+    if (typeof value === "string" && value.length > 0 && value.length <= maxLength) {
+      receipt[key] = value;
+    }
+  }
+  return receipt;
+}
+
 /** Attach request-level final usage/accounting only to the successful upstream attempt. */
 export function attributeExecutionAttemptAccounting(
   attempts: Array<Record<string, unknown>>,
   tokens: unknown,
   accounting: PersistAttemptLogsArgs["accounting"]
 ): Array<Record<string, unknown>> {
-  if (!accounting || attempts.length === 0) return attempts;
+  if (attempts.length === 0) return attempts;
+  const safeAttempts = attempts.map(sanitizeExecutionAttemptReceipt);
+  if (!accounting) return safeAttempts;
   let successfulIndex = -1;
-  for (let index = attempts.length - 1; index >= 0; index--) {
-    const attempt = attempts[index];
+  for (let index = safeAttempts.length - 1; index >= 0; index--) {
+    const attempt = safeAttempts[index];
     const statusCode = attempt?.statusCode;
     if (
       attempt?.outcome === "response" &&
@@ -312,7 +375,7 @@ export function attributeExecutionAttemptAccounting(
       break;
     }
   }
-  if (successfulIndex < 0) return attempts;
+  if (successfulIndex < 0) return safeAttempts;
 
   const usageRecord =
     tokens && typeof tokens === "object" && !Array.isArray(tokens)
@@ -333,7 +396,7 @@ export function attributeExecutionAttemptAccounting(
         ? "estimated"
         : "unknown";
 
-  return attempts.map((attempt, index) =>
+  return safeAttempts.map((attempt, index) =>
     index === successfulIndex
       ? {
           ...attempt,
