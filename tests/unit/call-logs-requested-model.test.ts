@@ -71,6 +71,7 @@ test("call logs preserve pricing source freshness in accounting evidence", async
       pricingEffectiveAt: null,
       pricingRetrievedAt: "2026-10-12T12:00:00.000Z",
       pricingStale: false,
+      pricingCondition: "provider schedule determines peak and off-peak rates",
       usageKind: "provider_reported_usage",
     },
   });
@@ -81,6 +82,10 @@ test("call logs preserve pricing source freshness in accounting evidence", async
   assert.equal(detail?.accounting?.source, "models_dev.api_json");
   assert.equal(detail?.accounting?.pricingRetrievedAt, "2026-10-12T12:00:00.000Z");
   assert.equal(detail?.accounting?.pricingStale, false);
+  assert.equal(
+    detail?.accounting?.pricingCondition,
+    "provider schedule determines peak and off-peak rates"
+  );
 });
 
 test("requestedModel uses provider node prefix for openai-compatible provider at save time", async () => {
