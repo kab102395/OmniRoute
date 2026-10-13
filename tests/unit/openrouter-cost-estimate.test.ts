@@ -144,6 +144,49 @@ test("OpenRouter media estimates stay unknown without authoritative unit-specifi
   assert.equal(estimate.pricingEvidence.source, null);
 });
 
+test("current exact OpenRouter free membership establishes zero cost for modality usage", async () => {
+  writeCatalog(new Date().toISOString());
+  const estimate = await calculateModalCostWithEvidence(
+    "image",
+    "openrouter",
+    "vendor/model-3:free",
+    { n: 1 }
+  );
+
+  assert.equal(estimate.costUsd, 0);
+  assert.equal(estimate.pricingEvidence.source, "openrouter");
+  assert.equal(estimate.pricingEvidence.modelId, "vendor/model-3:free");
+  assert.equal(estimate.pricingEvidence.stale, false);
+  assert.equal(
+    estimate.pricingEvidence.condition,
+    "OpenRouter currently advertises this exact route as free."
+  );
+});
+
+test("stale exact OpenRouter free membership does not establish modality cost", async () => {
+  const originalFetch = globalThis.fetch;
+  writeCatalog(new Date(Date.now() - 30 * 60 * 1000).toISOString());
+  globalThis.fetch = async () => {
+    throw new Error("catalog refresh unavailable");
+  };
+
+  try {
+    const estimate = await calculateModalCostWithEvidence(
+      "image",
+      "openrouter",
+      "vendor/model-3:free",
+      { n: 1 }
+    );
+
+    assert.equal(estimate.costUsd, null);
+    assert.equal(estimate.pricingEvidence.source, "openrouter");
+    assert.equal(estimate.pricingEvidence.stale, true);
+    assert.match(estimate.pricingEvidence.condition || "", /eligibility is unverified/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("a current exact free route is zero-cost even when numeric rates are absent", async () => {
   fs.mkdirSync(path.dirname(cachePath), { recursive: true });
   fs.writeFileSync(

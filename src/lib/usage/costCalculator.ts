@@ -871,6 +871,26 @@ export async function calculateModalCostWithEvidence(
         resolvedPricing = await getPricingForModelWithSource(provider, normalized);
       }
     }
+    if (normalizeServiceTier(provider) === "openrouter" && resolvedPricing?.source !== "user") {
+      const { getOpenRouterCatalog, isOpenRouterFreeRouteModel } =
+        await import("@/lib/catalog/openrouterCatalog");
+      const catalog = await getOpenRouterCatalog();
+      const exactRouteId = model.replace(/^openrouter\//, "");
+      const route = catalog.data.find((entry) => entry.id === exactRouteId);
+      if (route && exactRouteId !== "free" && isOpenRouterFreeRouteModel(route)) {
+        const pricingEvidence = buildCostPricingEvidence(
+          "openrouter",
+          route.id,
+          catalog.cachedAt,
+          catalog.cacheTtlMs,
+          Date.now(),
+          catalog.stale
+            ? "OpenRouter's last cached catalog advertised this exact route as free; current eligibility is unverified."
+            : "OpenRouter currently advertises this exact route as free."
+        );
+        return { costUsd: catalog.stale ? null : 0, pricingEvidence };
+      }
+    }
     if (!resolvedPricing) return unknown;
     if (normalizeServiceTier(provider) === "openrouter" && resolvedPricing.source !== "user") {
       // The public OpenRouter model record does not establish a common unit for
