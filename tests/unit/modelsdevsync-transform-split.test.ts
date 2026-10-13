@@ -98,6 +98,52 @@ describe("modelsDevSync/transform split-guard", () => {
     assert.equal(capabilities.openrouter, undefined);
   });
 
+  it("keeps Vertex AI pricing and capabilities scoped to Vertex routes", () => {
+    for (const providerId of ["google-vertex", "vertex_ai", "google-vertex-anthropic"]) {
+      assert.deepEqual(mapProviderId(providerId), ["vertex"]);
+    }
+
+    const raw = {
+      "google-vertex-anthropic": {
+        id: "google-vertex-anthropic",
+        models: {
+          "claude-sonnet-4": {
+            id: "claude-sonnet-4",
+            name: "Claude Sonnet 4 on Vertex",
+            cost: { input: 3, output: 15 },
+            tool_call: true,
+            limit: { context: 200_000 },
+          },
+        },
+      },
+      "google-vertex": {
+        id: "google-vertex",
+        models: {
+          "gemini-2.5-pro": {
+            id: "gemini-2.5-pro",
+            name: "Gemini 2.5 Pro on Vertex",
+            cost: { input: 1.25, output: 10 },
+            tool_call: true,
+            limit: { context: 1_000_000 },
+          },
+        },
+      },
+    };
+    const pricing = transformModelsDevToPricing(raw as never);
+    const capabilities = transformModelsDevToCapabilities(raw as never);
+
+    assert.deepEqual(pricing.vertex["claude-sonnet-4"], { input: 3, output: 15 });
+    assert.deepEqual(pricing.vertex["gemini-2.5-pro"], { input: 1.25, output: 10 });
+    assert.equal(pricing.anthropic, undefined);
+    assert.equal(pricing.cc, undefined);
+    assert.equal(pricing.gemini, undefined);
+    assert.equal(capabilities.vertex["claude-sonnet-4"].tool_call, true);
+    assert.equal(capabilities.vertex["gemini-2.5-pro"].limit_context, 1_000_000);
+    assert.equal(capabilities.anthropic, undefined);
+    assert.equal(capabilities.cc, undefined);
+    assert.equal(capabilities.gemini, undefined);
+  });
+
   it("drops malformed optional billing dimensions instead of persisting unsafe values", () => {
     const raw = {
       openai: {

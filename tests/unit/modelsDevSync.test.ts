@@ -425,6 +425,9 @@ describe("modelsDevSync — mapProviderId", () => {
     assert.deepEqual(mapProviderId("fireworks-ai"), ["fireworks"]);
     assert.deepEqual(mapProviderId("togetherai"), ["together"]);
     assert.deepEqual(mapProviderId("together_ai"), ["together"]);
+    assert.deepEqual(mapProviderId("google-vertex"), ["vertex"]);
+    assert.deepEqual(mapProviderId("vertex_ai"), ["vertex"]);
+    assert.deepEqual(mapProviderId("google-vertex-anthropic"), ["vertex"]);
   });
 });
 

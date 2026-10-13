@@ -116,9 +116,11 @@ export const MODELS_DEV_PROVIDER_MAP: Record<string, string[]> = {
   openai: ["openai", "cx"], // cx = Codex (uses OpenAI models)
   anthropic: ["anthropic", "cc"], // cc = Claude Code
   google: ["gemini"],
-  "google-vertex": ["gemini", "vertex"],
-  "google-vertex-anthropic": ["anthropic", "cc", "vertex"],
-  vertex_ai: ["gemini", "vertex"],
+  // Vertex AI is a distinct serving and billing route from Google's direct API.
+  // Keep its rates and capability claims scoped to the Vertex provider.
+  "google-vertex": ["vertex"],
+  "google-vertex-anthropic": ["vertex"],
+  vertex_ai: ["vertex"],
   deepseek: ["deepseek", "if"], // if = Qoder (routes through DeepSeek)
   groq: ["groq"],
   xai: ["xai"],
