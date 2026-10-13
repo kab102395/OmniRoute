@@ -143,6 +143,7 @@ import { buildErrorBody } from "@omniroute/open-sse/utils/error";
 import { getCatalogFreeAccess } from "./catalogFreeAccess";
 import { isFreeOnlyCatalogModel } from "./freeOnlyCatalog";
 import { expandHuggingFaceProviderRoutes } from "./catalogProviderRoutes";
+import { boundRoutingCatalogCacheTtl } from "./catalogFreshness";
 
 // Public API of this module is preserved after the catalog helper extraction:
 // `isVisionModelId` (vision-detection-consistency.test.ts) and
@@ -293,6 +294,7 @@ async function buildCatalogPayload(
   } catch {
     // Swallow — use default TTL on DB error
   }
+  cacheTTL = boundRoutingCatalogCacheTtl(body, request.url, cacheTTL);
   return { body, headers, status: built.status, cacheTTL };
 }
 

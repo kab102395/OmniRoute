@@ -10,7 +10,10 @@ import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
 import { getSyncStatus as getModelsDevSyncStatus } from "@/lib/modelsDevSync";
 import { resolveProviderId } from "@/shared/constants/providers";
 import { isFreeModel } from "@/shared/utils/freeModels";
-import { isFreshCatalogTimestamp } from "@/lib/catalog/metadataFreshness";
+import {
+  isFreshCatalogTimestamp,
+  PROVIDER_ROUTE_CATALOG_MAX_AGE_MS,
+} from "@/lib/catalog/metadataFreshness";
 import { FREE_MODEL_BUDGETS } from "@omniroute/open-sse/config/freeModelCatalog.ts";
 import {
   classifyStrictZeroCostCandidate,
@@ -51,14 +54,12 @@ export type ZeroCostRouteAdmission =
         | "no_connection";
     };
 
-const PROVIDER_ROUTE_FRESHNESS_MS = 15 * 60 * 1000;
-
 function isFreshProviderRouteTimestamp(value: string | null | undefined): boolean {
   const retrievedAt = value ? Date.parse(value) : Number.NaN;
   return (
     Number.isFinite(retrievedAt) &&
     retrievedAt <= Date.now() &&
-    Date.now() - retrievedAt <= PROVIDER_ROUTE_FRESHNESS_MS
+    Date.now() - retrievedAt <= PROVIDER_ROUTE_CATALOG_MAX_AGE_MS
   );
 }
 

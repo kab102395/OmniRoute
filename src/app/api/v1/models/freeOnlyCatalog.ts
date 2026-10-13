@@ -1,10 +1,28 @@
+import {
+  isFreshCatalogTimestamp,
+  PROVIDER_ROUTE_CATALOG_MAX_AGE_MS,
+} from "@/lib/catalog/metadataFreshness";
+
 /** Return true for an exact current free route or OpenRouter's dynamic free router. */
 export function isExplicitOpenRouterFreeCatalogModel(model: Record<string, unknown>): boolean {
+  const availability = isRecord(model.route_availability) ? model.route_availability : null;
+  const source = availability && isRecord(availability.source) ? availability.source : null;
+  const retrievedAt =
+    source && typeof source.retrievedAt === "string" ? Date.parse(source.retrievedAt) : Number.NaN;
+  const cacheTtlMs = source?.cacheTtlMs;
   return (
     typeof model.id === "string" &&
     model.id.startsWith("openrouter/") &&
     model.owned_by === "openrouter" &&
-    model.free === true
+    model.free === true &&
+    source?.id === "openrouter.models_api" &&
+    source.stale === false &&
+    Number.isFinite(retrievedAt) &&
+    retrievedAt <= Date.now() &&
+    typeof cacheTtlMs === "number" &&
+    Number.isFinite(cacheTtlMs) &&
+    cacheTtlMs > 0 &&
+    Date.now() - retrievedAt < cacheTtlMs
   );
 }
 
@@ -69,7 +87,8 @@ function isFreshProviderCatalogFreeRoute(model: Record<string, unknown>): boolea
     source?.id === "provider_model_catalog" &&
     source.stale === false &&
     typeof source.modelId === "string" &&
-    source.modelId === model.root
+    source.modelId === model.root &&
+    isFreshCatalogTimestamp(typeof source.retrievedAt === "string" ? source.retrievedAt : null)
   );
 }
 
@@ -84,6 +103,9 @@ function isExactCurrentHuggingFaceFreeRoute(model: Record<string, unknown>): boo
     !isRecord(provenance) ||
     provenance.source !== "huggingface.router_models_api" ||
     provenance.stale !== false ||
+    !isFreshProviderRouteTimestamp(
+      typeof provenance.retrieved_at === "string" ? provenance.retrieved_at : null
+    ) ||
     !Array.isArray(routes) ||
     routes.length !== 1
   ) {
@@ -95,5 +117,14 @@ function isExactCurrentHuggingFaceFreeRoute(model: Record<string, unknown>): boo
     route.status === "live" &&
     route.free_catalog_eligible === true &&
     route.route_model === model.id
+  );
+}
+
+function isFreshProviderRouteTimestamp(value: string | null): boolean {
+  const retrievedAt = value ? Date.parse(value) : Number.NaN;
+  return (
+    Number.isFinite(retrievedAt) &&
+    retrievedAt <= Date.now() &&
+    Date.now() - retrievedAt <= PROVIDER_ROUTE_CATALOG_MAX_AGE_MS
   );
 }
