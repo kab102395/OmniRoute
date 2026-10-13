@@ -218,6 +218,55 @@ test("refreshOpenRouterCatalog invalidates only on success", async () => {
   }
 });
 
+test("malformed OpenRouter payloads do not replace a valid catalog snapshot", async () => {
+  installMockOpenRouterFetch({ data: [{ id: "provider/current:free" }] });
+  try {
+    assert.equal((await openRouterCatalog.refreshOpenRouterCatalog()).ok, true);
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ models: [{ id: "provider/invalid:free" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+
+    const refresh = await openRouterCatalog.refreshOpenRouterCatalog();
+    assert.equal(refresh.ok, false, "a missing upstream data array is a failed refresh");
+    const catalog = await openRouterCatalog.getOpenRouterCatalog();
+    assert.deepEqual(
+      catalog.data.map((entry) => entry.id),
+      ["provider/current:free"],
+      "the malformed response must not replace the last valid display snapshot"
+    );
+    assert.equal(
+      [...(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds())!][0],
+      "provider/current:free",
+      "the still-fresh prior snapshot remains valid until its TTL expires"
+    );
+  } finally {
+    restoreRealFetch();
+  }
+});
+
+test("malformed cached OpenRouter data is ignored and cannot authorize free routes", async () => {
+  installMockOpenRouterFetch({ data: [{ id: "provider/current:free" }] });
+  try {
+    assert.equal((await openRouterCatalog.refreshOpenRouterCatalog()).ok, true);
+    const cachePath = path.join(TEST_DATA_DIR, "cache", "openrouter-catalog.json");
+    fs.writeFileSync(
+      cachePath,
+      JSON.stringify({ fetchedAt: new Date().toISOString(), data: { id: "provider/invalid:free" } })
+    );
+    installFailingOpenRouterFetch();
+
+    const catalog = await openRouterCatalog.getOpenRouterCatalog();
+    assert.equal(catalog.stale, true);
+    assert.equal(catalog.fromCache, false);
+    assert.deepEqual(catalog.data, []);
+    assert.equal(await openRouterCatalog.getCurrentOpenRouterFreeRouteIds(), null);
+  } finally {
+    restoreRealFetch();
+  }
+});
+
 test("OpenRouter free route eligibility follows each successful catalog refresh", async () => {
   const snapshots = [
     { data: [{ id: "provider/new-free:free", supported_parameters: ["tools"] }] },

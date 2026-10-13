@@ -146,10 +146,29 @@ function readCache(): CacheFile | null {
   try {
     if (!fs.existsSync(filePath)) return null;
     const raw = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(raw) as CacheFile;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const cache = parsed as { fetchedAt?: unknown; data?: unknown };
+    if (
+      typeof cache.fetchedAt !== "string" ||
+      !Number.isFinite(Date.parse(cache.fetchedAt)) ||
+      !Array.isArray(cache.data)
+    ) {
+      return null;
+    }
+    return {
+      fetchedAt: cache.fetchedAt,
+      data: cache.data.filter(isCatalogEntry),
+    };
   } catch {
     return null;
   }
+}
+
+function isCatalogEntry(value: unknown): value is OpenRouterCatalogEntry {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === "string" && id.trim().length > 0;
 }
 
 /** Write catalog to disk cache. */
@@ -180,9 +199,15 @@ async function fetchFromAPI(): Promise<OpenRouterCatalogEntry[]> {
     throw new Error(`OpenRouter API returned ${res.status}: ${res.statusText}`);
   }
 
-  const json = (await res.json()) as { data?: OpenRouterCatalogEntry[] };
-  const models = Array.isArray(json.data) ? json.data : [];
-  return models;
+  const json: unknown = await res.json();
+  if (!json || typeof json !== "object" || Array.isArray(json)) {
+    throw new Error("OpenRouter API returned an invalid catalog payload");
+  }
+  const data = (json as { data?: unknown }).data;
+  if (!Array.isArray(data)) {
+    throw new Error("OpenRouter API catalog payload is missing its data array");
+  }
+  return data.filter(isCatalogEntry);
 }
 
 /**
