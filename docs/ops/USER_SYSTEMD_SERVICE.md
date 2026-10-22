@@ -48,13 +48,20 @@ curl --fail http://127.0.0.1:20128/healthz
 ```
 
 For Praxis processes started without the login-session bus environment, use
-`scripts/runtime/omniroute-userctl`. The helper accepts only a small set of
-service actions and the exact unit `omniroute.service`; it derives the current
-UID, verifies `/run/user/<uid>` and its bus belong to that UID, and invokes
-`/usr/bin/systemctl --user`. It does not invoke the system manager, sudo, or
-control any other unit. Praxis's Linux launch path selects this helper. A
-process under a different account cannot control `kab`'s user
-service through this helper.
+[`scripts/runtime/omniroute-userctl`](https://github.com/kab102395/praxis_phase5-plus/blob/codex/praxis-omniroute-user-service-integration/scripts/runtime/omniroute-userctl)
+from the Praxis repository checkout (this helper is not part of the OmniRoute
+repository). For example, with `PRAXIS_ROOT` set to that checkout:
+
+```sh
+"$PRAXIS_ROOT/scripts/runtime/omniroute-userctl" restart omniroute.service
+```
+
+The helper accepts only a small set of service actions and the exact unit
+`omniroute.service`; it derives the current UID, verifies `/run/user/<uid>` and
+its bus belong to that UID, and invokes `/usr/bin/systemctl --user`. It does not
+invoke the system manager, sudo, or control any other unit. Praxis's Linux
+launch path selects this helper. A process under a different account cannot
+control `kab`'s user service through this helper.
 
 The production endpoint remains `http://127.0.0.1:20128`, including
 `/healthz` and `/api/v1/models`.
