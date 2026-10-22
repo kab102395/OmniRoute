@@ -69,7 +69,7 @@ existing service running and arrange an authorized system-manager stop; do not
 kill the process or start a competing instance.
 
 On the current host the user unit is enabled and active after cutover. The
-system unit is disabled and stopped; its unit and drop-ins remain installed
+system unit is disabled and not running; its unit and drop-ins remain installed
 for administrator-authorized rollback. The user unit passed start, restart,
 stop/start, health, catalog, and process-crash recovery checks. Lingering and
 the default-target enablement establish boot persistence; the host was not
