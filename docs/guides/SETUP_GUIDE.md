@@ -47,7 +47,7 @@ yay -S omniroute-bin
 systemctl --user enable --now omniroute.service
 ```
 
-The [AUR package](https://aur.archlinux.org/packages/omniroute-bin) installs OmniRoute and provides a systemd user service.
+The [AUR package](https://aur.archlinux.org/packages/omniroute-bin) installs OmniRoute and provides a systemd user service. For a headless host that must start the service at boot without a login session, enable systemd lingering for the user with the host's normal administrator procedure. Praxis's local gateway setup is documented in [User systemd service](../ops/USER_SYSTEMD_SERVICE.md).
 
 ### From Source
 
