@@ -68,10 +68,12 @@ and the model catalog. If stopping the system unit is denied, leave the
 existing service running and arrange an authorized system-manager stop; do not
 kill the process or start a competing instance.
 
-On the current host the user unit is installed and enabled, but remains
-inactive while the system unit is active. The system-manager stop was attempted
-with prompting disabled and returned `Access denied`; the live service was
-left untouched. Complete the privileged stop before starting the user unit.
+On the current host the user unit is enabled and active after cutover. The
+system unit is disabled and stopped; its unit and drop-ins remain installed
+for administrator-authorized rollback. The user unit passed start, restart,
+stop/start, health, catalog, and process-crash recovery checks. Lingering and
+the default-target enablement establish boot persistence; the host was not
+rebooted as part of verification.
 
 The system unit and its drop-ins remain installed as rollback configuration:
 
@@ -80,10 +82,11 @@ The system unit and its drop-ins remain installed as rollback configuration:
 - `/etc/systemd/system/omniroute.service.d/override.conf`
 
 The system unit is disabled at boot. To roll back, stop the user unit, then
-start the existing system unit using an authorized system-manager operation;
-verify `/healthz` before returning Praxis traffic. Do not remove the user unit
-or data directory during rollback. An old system service image alone is not
-enough to roll back if a future release changes persistent data formats.
+use an authorized system-manager operation to start the existing system unit;
+if it is in a failed state, reset only that unit's failure state first. Verify
+`/healthz` before returning Praxis traffic. Do not remove the user unit or data
+directory during rollback. An old system service image alone is not enough to
+roll back if a future release changes persistent data formats.
 
 No reboot is needed to verify persistence: `Linger=yes`, `is-enabled`, and the
 user unit's `WantedBy=default.target` establish the configured boot behavior.
