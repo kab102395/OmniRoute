@@ -70,6 +70,7 @@ type TrafficType = "production" | "shadow";
 
 type ExecuteChatWithBreakerOptions = {
   trafficType?: TrafficType;
+  nonReplayableRequest?: boolean;
   [key: string]: any;
 };
 
@@ -435,6 +436,7 @@ export async function executeChatWithBreaker({
   providerProfile,
   cachedSettings,
   skipUpstreamRetry = false,
+  nonReplayableRequest = false,
   trafficType = "production",
   correlationId = null,
   conversationId = null,
@@ -498,6 +500,7 @@ export async function executeChatWithBreaker({
             comboExecutionKey,
             cachedSettings,
             skipUpstreamRetry,
+            nonReplayableRequest,
             trafficType: normalizedTrafficType,
             correlationId,
             conversationId,

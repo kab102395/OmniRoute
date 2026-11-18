@@ -1366,6 +1366,37 @@ test("BaseExecutor.execute returns response metadata and merges headers", async 
   }
 });
 
+test("BaseExecutor: generic skipUpstreamRetry does not mark the request non-replayable", async () => {
+  const executor = new TestExecutor();
+  const originalFetch = globalThis.fetch;
+  let capturedOptions: RequestInit | undefined;
+  globalThis.fetch = async (_url, options = {}) => {
+    capturedOptions = options;
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    await executor.execute({
+      model: "gpt-4.1",
+      body: { messages: [{ role: "user", content: "skip only executor retry" }] },
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      skipUpstreamRetry: true,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.ok(capturedOptions);
+  assert.equal(
+    (capturedOptions as RequestInit & { __omnirouteNoReplay?: boolean }).__omnirouteNoReplay,
+    undefined
+  );
+});
+
 test("BaseExecutor.execute refreshes credentials before the request when needed", async () => {
   class RefreshingExecutor extends BaseExecutor {
     constructor() {

@@ -68,6 +68,7 @@ function capability(overrides = {}) {
 
 test.beforeEach(async () => {
   await resetStorage();
+  featureFlagsDb.removeFeatureFlagOverride("REQUIRE_API_KEY");
 });
 
 test.after(async () => {
@@ -77,6 +78,7 @@ test.after(async () => {
 });
 
 test("v1 models catalog requires auth when the route is protected and login is enabled", async () => {
+  featureFlagsDb.setFeatureFlagOverride("REQUIRE_API_KEY", "true");
   await settingsDb.updateSettings({
     requireLogin: true,
     password: "hashed-password",
@@ -94,6 +96,7 @@ test("v1 models catalog requires auth when the route is protected and login is e
 });
 
 test("v1 models catalog accepts bearer API keys and filters the list by allowed model patterns", async () => {
+  featureFlagsDb.setFeatureFlagOverride("REQUIRE_API_KEY", "true");
   await settingsDb.updateSettings({
     requireLogin: true,
     password: "hashed-password",
@@ -134,6 +137,7 @@ test("v1 models catalog does NOT accept API keys supplied via query string (#330
   // logs / Referer headers. The VS Code integration uses the path-scoped
   // `/vscode/<token>/…` form instead (covered by the next test). So a `?token=`
   // on the catalog route is no longer a usable credential → auth fails.
+  featureFlagsDb.setFeatureFlagOverride("REQUIRE_API_KEY", "true");
   await settingsDb.updateSettings({
     requireLogin: true,
     password: "hashed-password",
@@ -151,6 +155,7 @@ test("v1 models catalog does NOT accept API keys supplied via query string (#330
 });
 
 test("v1 models catalog accepts API keys embedded in vscode path aliases when auth is required", async () => {
+  featureFlagsDb.setFeatureFlagOverride("REQUIRE_API_KEY", "true");
   await settingsDb.updateSettings({
     requireLogin: true,
     password: "hashed-password",

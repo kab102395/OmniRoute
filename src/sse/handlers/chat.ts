@@ -1540,6 +1540,9 @@ async function handleSingleModelChat(
     // Intentional override (e.g. providerId points to a different credential pool).
     return runtimeOptions.providerId;
   })();
+  // A configured custom OpenAI-compatible node is one explicit upstream route.
+  // The provider may accept the POST before a transport/response failure surfaces.
+  const customProviderNoReplay = provider.startsWith("openai-compatible-");
   const forceLiveComboTest = runtimeOptions.forceLiveComboTest === true;
   const bypassProviderQuotaPolicy = hasProviderQuotaBypassScope(apiKeyInfo?.scopes);
   const deterministicRoute = runtimeOptions.deterministicRoute ?? null;
@@ -1644,6 +1647,7 @@ async function handleSingleModelChat(
   // combo.ts's comboCooldownBudgetLeftMs. Declared outside requestAttemptLoop so
   // it persists (and only decreases) across `continue requestAttemptLoop` retries.
   let requestRetryBudgetLeftMs = retrySettings.budgetMs;
+  let upstreamDispatchMayHaveOccurred = false;
 
   if (Array.isArray(effectiveAllowedConnections) && effectiveAllowedConnections.length === 0) {
     log.debug("AUTH", `${provider}/${model} filtered out by connection-level routing constraints`);
@@ -1738,9 +1742,13 @@ async function handleSingleModelChat(
         !credentials.connectionId
       ) {
         if (credentials?.allRateLimited) {
+          const cooldownSettings =
+            customProviderNoReplay && upstreamDispatchMayHaveOccurred
+              ? disableCooldownAwareRetry(baseRetrySettings, true)
+              : retrySettings;
           const retryDecision = getCooldownAwareRetryDecision({
             retryAfter: credentials.retryAfter,
-            settings: retrySettings,
+            settings: cooldownSettings,
             attempt: requestRetryAttempt,
             budgetLeftMs: requestRetryBudgetLeftMs,
           });
@@ -1949,6 +1957,7 @@ async function handleSingleModelChat(
       if (telemetry) telemetry.startPhase("connect");
       let execution: Awaited<ReturnType<typeof dispatchChatWithAffinityEviction>>;
       try {
+        upstreamDispatchMayHaveOccurred = true;
         execution = await dispatchChatWithAffinityEviction(
           {
             bypassCircuitBreaker: forceLiveComboTest || hasForcedConnection,
@@ -1975,7 +1984,8 @@ async function handleSingleModelChat(
             modelTargetFormat: targetFormat,
             providerProfile,
             cachedSettings: runtimeOptions.cachedSettings,
-            skipUpstreamRetry: runtimeOptions.skipUpstreamRetry ?? false,
+            skipUpstreamRetry: runtimeOptions.skipUpstreamRetry === true || customProviderNoReplay,
+            nonReplayableRequest: customProviderNoReplay,
             correlationId: runtimeOptions?.correlationId ?? null,
             conversationId: runtimeOptions?.conversationId ?? null,
             modelPinned: runtimeOptions?.modelPinned ?? false,
@@ -2082,6 +2092,7 @@ async function handleSingleModelChat(
         // for the early close.
         if (
           shouldRetryStreamEarlyEof(result.errorCode, streamEarlyEofRetries) &&
+          !customProviderNoReplay &&
           !hasForcedConnection
         ) {
           streamEarlyEofRetries += 1;
@@ -2242,6 +2253,7 @@ async function handleSingleModelChat(
       if (
         !deterministicRoute &&
         !odysseusFreeOnly &&
+        !customProviderNoReplay &&
         !runtimeOptions.emergencyFallbackTried &&
         !comboName
       ) {
@@ -2384,6 +2396,7 @@ async function handleSingleModelChat(
       const transportAttempts = sameAccountTransportRetries.get(credentials.connectionId) || 0;
       if (
         !runtimeOptions.emergencyFallbackTried &&
+        !customProviderNoReplay &&
         !comboName &&
         !forceLiveComboTest &&
         shouldRetrySameAccountTransport({
@@ -2447,7 +2460,7 @@ async function handleSingleModelChat(
       // to the next target — with ITS own pin. Same rule the antigravity
       // stream-readiness / pre-response-timeout and account-semaphore paths above
       // already apply.
-      if (shouldFallback && !hasForcedConnection) {
+      if (shouldFallback && !hasForcedConnection && !customProviderNoReplay) {
         if (Number.isFinite(cooldownMs) && cooldownMs > 0) {
           lastCooldownMs = cooldownMs;
           requestRetryLastCooldownMs = cooldownMs;

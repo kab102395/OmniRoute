@@ -140,6 +140,10 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/lib/combos/builderOptions.ts": 1,
     "src/lib/copilot/tools.ts": 1,
     "src/lib/credentialHealth/scheduler.ts": 1,
+    // Deterministic alias resolution reads a candidate connection so the later
+    // chat pipeline can pin it; getProviderCredentials still enforces API-key
+    // allowedConnections before dispatch.
+    "src/lib/deterministicProviderRoutes.ts": 1,
     // Base drift (already present before #11754 boarded, from earlier-merged
     // #11698/#11720 retirement PRs' combined getProviderConnectionById
     // fallback in the three write-path functions): not introduced by this PR.
@@ -174,7 +178,9 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/lib/usage/callLogs.ts": 1,
     "src/lib/usage/codexResetCredits.ts": 1,
     "src/lib/usage/comboScoringInspector.ts": 1,
-    "src/lib/usage/providerLimits.ts": 4,
+    // The current usage refresh path performs one additional connection lookup;
+    // it remains read-only telemetry and never dispatches provider work.
+    "src/lib/usage/providerLimits.ts": 5,
     "src/lib/usage/resilienceExplain.ts": 1,
     "src/lib/usage/usageStats.ts": 1,
     "src/lib/vncSession/service.ts": 2,

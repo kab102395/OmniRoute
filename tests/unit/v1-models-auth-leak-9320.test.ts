@@ -22,6 +22,7 @@ process.env.API_KEY_SECRET = process.env.API_KEY_SECRET || "test-secret-9320";
 const core = await import("../../src/lib/db/core.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const settingsModule = await import("../../src/lib/db/settings.ts");
+const featureFlagsDb = await import("../../src/lib/db/featureFlags.ts");
 const v1ModelsCatalog = await import("../../src/app/api/v1/models/catalog.ts");
 
 async function resetStorage() {
@@ -38,6 +39,7 @@ async function resetStorage() {
 
 test.beforeEach(async () => {
   await resetStorage();
+  featureFlagsDb.setFeatureFlagOverride("REQUIRE_API_KEY", "true");
 });
 
 test.after(async () => {

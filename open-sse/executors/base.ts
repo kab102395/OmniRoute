@@ -215,6 +215,8 @@ export type ExecuteInput = {
   ) => Promise<void> | void;
   /** When true, skip the intra-URL 429 retry in execute() so the caller handles fallback. */
   skipUpstreamRetry?: boolean;
+  /** Custom-provider POST may have been accepted; transport recovery must not replay it. */
+  nonReplayableRequest?: boolean;
   /** Delegated Context Editing (Claude only): when enabled, attach the
    * `context_management.clear_tool_uses` strategy so the provider clears stale
    * tool-use blocks server-side. Honored only on the genuine `claude` path. */
@@ -726,6 +728,7 @@ export class BaseExecutor {
       upstreamExtraHeaders,
       clientHeaders,
       skipUpstreamRetry = false,
+      nonReplayableRequest = false,
       onCredentialsRefreshed,
       contextEditing,
     } = input;
@@ -956,9 +959,12 @@ export class BaseExecutor {
           const optionsWithSignal = combinedSignal
             ? { ...requestOptions, signal: combinedSignal }
             : requestOptions;
+          const fetchOptions = nonReplayableRequest
+            ? { ...optionsWithSignal, __omnirouteNoReplay: true }
+            : optionsWithSignal;
 
           try {
-            return await fetch(requestUrl, optionsWithSignal);
+            return await fetch(requestUrl, fetchOptions);
           } finally {
             if (timeoutId) clearTimeout(timeoutId);
           }
