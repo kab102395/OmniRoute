@@ -548,6 +548,7 @@ export async function handleChatCore({
   comboExecutionKey = null,
   cachedSettings = null,
   skipUpstreamRetry = false,
+  nonReplayableRequest = false,
   createPiiTransform = null,
   correlationId = null,
   conversationId = null,
@@ -3212,6 +3213,7 @@ export async function handleChatCore({
                           clientResponseFormat,
                           onCredentialsRefreshed,
                           skipUpstreamRetry,
+                          nonReplayableRequest,
                           contextEditing: { enabled: contextEditingEnabled },
                         })
                       ),
@@ -3534,6 +3536,7 @@ export async function handleChatCore({
                               clientResponseFormat,
                               onCredentialsRefreshed,
                               skipUpstreamRetry,
+                              nonReplayableRequest,
                               contextEditing: { enabled: contextEditingEnabled },
                             })
                           ),
