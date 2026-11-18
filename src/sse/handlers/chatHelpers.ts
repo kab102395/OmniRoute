@@ -70,6 +70,7 @@ type TrafficType = "production" | "shadow";
 
 type ExecuteChatWithBreakerOptions = {
   trafficType?: TrafficType;
+  nonReplayableRequest?: boolean;
   [key: string]: any;
 };
 
