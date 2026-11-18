@@ -109,9 +109,10 @@ const TLS_PROVIDER_PROFILE: Record<string, { browser: string; os: string }> = {
   maxai: { browser: "firefox_150", os: "windows" },
 };
 
-function tlsProfileForProvider(
-  provider: string | null | undefined
-): { browserProfile?: string; os?: string } {
+function tlsProfileForProvider(provider: string | null | undefined): {
+  browserProfile?: string;
+  os?: string;
+} {
   if (!provider) return {};
   const p = TLS_PROVIDER_PROFILE[provider.trim().toLowerCase()];
   return p ? { browserProfile: p.browser, os: p.os } : {};
@@ -202,7 +203,11 @@ export function runWithAppliedProxyCapture<T>(sink: AppliedProxySink, fn: () => 
   return appliedProxyContext.run(sink, fn);
 }
 
-type FetchWithDispatcherOptions = RequestInit & { dispatcher?: unknown };
+type FetchWithDispatcherOptions = RequestInit & {
+  dispatcher?: unknown;
+  /** Internal executor hint: never retry or change egress after a possibly accepted POST. */
+  __omnirouteNoReplay?: boolean;
+};
 type FetchWithDispatcher = (
   input: RequestInfo | URL,
   init?: FetchWithDispatcherOptions
@@ -268,8 +273,10 @@ function isStreamLikeBody(body: unknown): boolean {
 
 function requestHasNonReplayableBody(
   input: RequestInfo | URL,
-  options: FetchWithDispatcherOptions
+  options: FetchWithDispatcherOptions,
+  forceNonReplayable = false
 ): boolean {
+  if (forceNonReplayable) return true;
   if (isStreamLikeBody(options.body as unknown)) return true;
   if (typeof Request !== "undefined" && input instanceof Request) {
     if (input.bodyUsed) return true;
@@ -306,8 +313,10 @@ function isTlsRequestEligible(
 
 function isTlsFallbackReplaySafe(
   input: RequestInfo | URL,
-  options: FetchWithDispatcherOptions
+  options: FetchWithDispatcherOptions,
+  forceNonReplayable = false
 ): boolean {
+  if (forceNonReplayable) return false;
   const method = (
     options.method ??
     (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")
@@ -758,6 +767,11 @@ async function patchedFetch(
   options: FetchWithDispatcherOptions = {},
   deps: ProxyFetchDeps = {}
 ) {
+  const noReplay = options.__omnirouteNoReplay === true;
+  if (noReplay) {
+    const { __omnirouteNoReplay: _noReplay, ...fetchOptions } = options;
+    options = fetchOptions;
+  }
   // Explicit direct contexts must win even when a caller supplied a stale
   // dispatcher. Native fetch preserves direct streaming semantics.
   if (proxyContext.getStore() === DIRECT_PROXY_CONTEXT) {
@@ -815,7 +829,7 @@ async function patchedFetch(
           typeof error === "object" &&
           "sessionHadCookies" in error &&
           error.sessionHadCookies === true;
-        if (!isTlsFallbackReplaySafe(input, options) || sessionHadCookies) {
+        if (!isTlsFallbackReplaySafe(input, options, noReplay) || sessionHadCookies) {
           throw sanitizeTransportError(
             error,
             sessionHadCookies
@@ -840,7 +854,7 @@ async function patchedFetch(
       return _nativeFetch(input, options);
     }
     // Direct undici path: bound response-start, fresh-socket retry, and body guard.
-    const hasNonReplayableBody = requestHasNonReplayableBody(input, options);
+    const hasNonReplayableBody = requestHasNonReplayableBody(input, options, noReplay);
     const maxAttempts = hasNonReplayableBody ? 1 : 2;
     const _undiciDirect =
       deps.undiciFetch ?? (undiciFetch as unknown as (...args: unknown[]) => Promise<Response>);
@@ -1009,7 +1023,7 @@ async function patchedFetch(
     // connections again.
     const _undiciRelay =
       deps.undiciFetch ?? (undiciFetch as unknown as (...args: unknown[]) => Promise<Response>);
-    const hasNonReplayableRelayBody = requestHasNonReplayableBody(input, options);
+    const hasNonReplayableRelayBody = requestHasNonReplayableBody(input, options, noReplay);
     const maxRelayAttempts = hasNonReplayableRelayBody ? 1 : 2;
     const relayUrl = `https://${vc.host}`;
     let lastRelayError: unknown = null;
@@ -1108,7 +1122,7 @@ async function patchedFetch(
         typeof error === "object" &&
         "sessionHadCookies" in error &&
         error.sessionHadCookies === true;
-      if (!isTlsFallbackReplaySafe(input, options) || sessionHadCookies) {
+      if (!isTlsFallbackReplaySafe(input, options, noReplay) || sessionHadCookies) {
         throw sanitizeTransportError(
           error,
           sessionHadCookies
@@ -1129,7 +1143,7 @@ async function patchedFetch(
   // of killing all idle sockets after 1ms or surfacing a bare 502.
   const _undiciProxy =
     deps.undiciFetch ?? (undiciFetch as unknown as (...args: unknown[]) => Promise<Response>);
-  const hasNonReplayableProxyBody = requestHasNonReplayableBody(input, options);
+  const hasNonReplayableProxyBody = requestHasNonReplayableBody(input, options, noReplay);
   const maxProxyAttempts = hasNonReplayableProxyBody ? 1 : 2;
   let lastProxyError: unknown = null;
   for (let attempt = 0; attempt < maxProxyAttempts; attempt++) {

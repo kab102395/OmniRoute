@@ -956,9 +956,12 @@ export class BaseExecutor {
           const optionsWithSignal = combinedSignal
             ? { ...requestOptions, signal: combinedSignal }
             : requestOptions;
+          const fetchOptions = skipUpstreamRetry
+            ? { ...optionsWithSignal, __omnirouteNoReplay: true }
+            : optionsWithSignal;
 
           try {
-            return await fetch(requestUrl, optionsWithSignal);
+            return await fetch(requestUrl, fetchOptions);
           } finally {
             if (timeoutId) clearTimeout(timeoutId);
           }
